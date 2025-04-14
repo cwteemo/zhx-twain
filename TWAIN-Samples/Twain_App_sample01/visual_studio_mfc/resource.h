@@ -23,6 +23,7 @@
 #define IDB_PATH                        1023
 #define IDLC_CAPS                       1024
 #define IDC_KEEPOPEN                    1025
+#define IDC_HTTP_SERVER 1001  // 添加HTTP服务器控件ID
 
 // Next default values for new objects
 // 

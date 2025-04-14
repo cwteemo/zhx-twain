@@ -56,6 +56,10 @@ public:
 // Overrides
   public:
   virtual BOOL InitInstance();
+  virtual int ExitInstance();
+
+  // 添加公开方法来获取HTTP服务器实例
+  HttpServer* GetHttpServer() { return &m_httpServer; }
 
 // Implementation
 

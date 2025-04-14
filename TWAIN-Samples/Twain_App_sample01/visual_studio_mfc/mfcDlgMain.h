@@ -38,6 +38,15 @@
 
 #pragma once
 
+// 定义自定义消息
+#define WM_RECEIVE_DATA (WM_USER + 100)
+
+// 声明全局的客户端线程函数
+UINT WINAPI ClientThread(LPVOID pParam);
+
+// 禁用inet_addr的废弃警告
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+
 #ifndef __AFXWIN_H__
   #error include 'stdafx.h' before including this file for PCH
 #endif
@@ -72,7 +81,7 @@ public:
 protected:
   HICON     m_hIcon;
   TwainApp *_pTWAINApp;
-  HttpServer* m_httpServer;  // HTTP 服务器实例
+  HttpServer* m_httpServer;  // 指向HTTP服务器的指针而不是对象
 
   // Generated message map functions
   virtual BOOL OnInitDialog();
@@ -81,14 +90,18 @@ protected:
   afx_msg HCURSOR OnQueryDragIcon();
   DECLARE_MESSAGE_MAP()
   void PopulateDSList();
-
-public:
+  afx_msg LRESULT OnHttpRequest(WPARAM wParam, LPARAM lParam);
+  afx_msg LRESULT OnHttpServerStarted(WPARAM wParam, LPARAM lParam);
+  afx_msg LRESULT OnHttpServerError(WPARAM wParam, LPARAM lParam);
+  afx_msg LRESULT OnTcpData(WPARAM wParam, LPARAM lParam);
   afx_msg void OnDestroy();
   afx_msg void OnLbnSelchangeDS();
   afx_msg void OnBnClickedConnectDs();
   afx_msg void OnLbnDblclkDs();
   afx_msg void OnBnClickedDefaultDs();
+  afx_msg LRESULT OnReceiveData(WPARAM wParam, LPARAM lParam);
 
+public:
   CString   m_sStc_DS;
   CListBox  m_lst_DS;
   CButton   m_btn_Connect_DS;

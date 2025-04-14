@@ -70,6 +70,10 @@ Cmfc32App theApp;
 
 BOOL Cmfc32App::InitInstance()
 {
+  // 初始化日志系统
+  Logger::Init();
+  Logger::Log("=== Application Started (App Level) ===");
+
   // InitCommonControls() is required on Windows XP if an application
   // manifest specifies use of ComCtl32.dll version 6 or later to enable
   // visual styles.  Otherwise, any window creation will fail.
@@ -78,12 +82,6 @@ BOOL Cmfc32App::InitInstance()
   CWinApp::InitInstance();
 
   AfxEnableControlContainer();
-
-  // 启动HTTP服务器
-  if (!m_httpServer.Start(8080)) {
-    AfxMessageBox(_T("Failed to start HTTP server!"), MB_ICONERROR);
-    return FALSE;
-  }
 
   // Standard initialization
   // If you are not using these features and wish to reduce the size
@@ -109,6 +107,15 @@ BOOL Cmfc32App::InitInstance()
   {
     CmfcDlgMain dlg;
     m_pMainWnd = &dlg;
+    
+    // 启动HTTP服务器，并设置主窗口句柄
+    if (!m_httpServer.Start(8080)) {
+      AfxMessageBox(_T("Failed to start HTTP server!"), MB_ICONERROR);
+      return FALSE;
+    }
+    m_httpServer.SetMainWindow(m_pMainWnd->GetSafeHwnd());
+    Logger::Log("App级HTTP服务器已设置主窗口句柄为: %p", m_pMainWnd->GetSafeHwnd());
+    
     nResponse = dlg.DoModal();
   }
 
@@ -126,4 +133,14 @@ BOOL Cmfc32App::InitInstance()
   // Since the dialog has been closed, return FALSE so that we exit the
   //  application, rather than start the application's message pump.
   return FALSE;
+}
+
+// 添加应用程序退出时的清理代码
+int Cmfc32App::ExitInstance() 
+{
+  // 停止HTTP服务器
+  m_httpServer.Stop();
+  Logger::Log("App级HTTP服务器已停止");
+  
+  return CWinApp::ExitInstance();
 }
