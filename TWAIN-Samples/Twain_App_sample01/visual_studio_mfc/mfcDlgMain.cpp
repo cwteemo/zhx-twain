@@ -159,14 +159,23 @@ BOOL CmfcDlgMain::OnInitDialog()
     SetIcon(m_hIcon, FALSE);    // Set small icon
 
     try {
-        // 获取App级HTTP服务器并更新主窗口句柄
-        Cmfc32App* pApp = (Cmfc32App*)AfxGetApp();
-        if (pApp) {
-            // 使用GetHttpServer方法获取HTTP服务器实例
-            m_httpServer = pApp->GetHttpServer();
-            // 确保主窗口句柄是最新的
+        // 初始化HTTP服务器
+        m_httpServer = new HttpServer();
+        if (m_httpServer) {
+            Logger::Log("HTTP server instance created");
             m_httpServer->SetMainWindow(GetSafeHwnd());
-            Logger::Log("对话框级别更新HTTP服务器主窗口句柄为: %p", GetSafeHwnd());
+            
+            // 保存HttpServer实例到窗口用户数据
+            ::SetWindowLongPtr(GetSafeHwnd(), GWLP_USERDATA, (LONG_PTR)m_httpServer);
+            Logger::Log("HTTP server instance stored in window user data");
+            
+            if (m_httpServer->Start(8080)) {
+                Logger::Log("HTTP server started on port 8080");
+            } else {
+                Logger::Log("Failed to start HTTP server");
+            }
+        } else {
+            Logger::Log("Failed to create HTTP server instance");
         }
 
         // 修改现有的 TWAIN 初始化代码
@@ -503,18 +512,112 @@ LRESULT CmfcDlgMain::OnReceiveData(WPARAM wParam, LPARAM lParam)
 
 LRESULT CmfcDlgMain::OnHttpRequest(WPARAM wParam, LPARAM lParam)
 {
-    Logger::Log("OnHttpRequest: main window received HTTP request message!");
+    Logger::Log("OnHttpRequest: Main window received HTTP request message!");
 
     CString* pRequest = (CString*)wParam;
     if (pRequest)
     {
-        // 在状态栏显示请求内容
-        m_sStc_DS = *pRequest;
+        // 提取URL和参数
+        CString urlValue = _T("(no URL)");
+        CString paramsValue = _T("(no parameters)");
+
+        // 检查是否包含"URL:"
+        int urlPos = pRequest->Find(_T("URL:"));
+        if (urlPos != -1) {
+            // 查找URL行的结束
+            int urlEndPos = pRequest->Find(_T("\r\n"), urlPos);
+            if (urlEndPos != -1) {
+                // 提取URL（跳过"URL: "前缀）
+                urlValue = pRequest->Mid(urlPos + 5, urlEndPos - urlPos - 5);
+            }
+        }
+
+        // 检查是否包含"Params:"
+        int paramsPos = pRequest->Find(_T("Params:"));
+        if (paramsPos != -1) {
+            // 提取参数（跳过"Params: "前缀）
+            paramsValue = pRequest->Mid(paramsPos + 8);
+        }
+
+        // 检查是否包含"RequestType: ScannerList"标记
+        bool isScannerListRequest = (pRequest->Find(_T("RequestType: ScannerList")) != -1);
+
+        // 检查参数中是否包含"handle=scanners"
+        bool handleScannersRequested = (paramsValue.Find(_T("handle=scanners")) != -1);
+
+        // 处理请求
+        if (isScannerListRequest || handleScannersRequested || pRequest->Find(_T("handle=scanners")) != -1) {
+            Logger::Log("Detected scanner list request, returning scanner list");
+            
+            // 构建扫描仪列表
+            CString scannerList = _T("SCANNERS:");
+            
+            // 只有在TWAIN已连接时才获取扫描仪列表
+            if (_pTWAINApp && _pTWAINApp->m_DSMState >= 3) {
+                // 获取扫描仪数量
+                int scannerCount = 0;
+                pTW_IDENTITY pID = NULL;
+                
+                while (NULL != (pID = _pTWAINApp->getDataSource((TW_INT16)scannerCount))) {
+                    scannerList.AppendFormat(_T("[%d]%s;"), 
+                                          scannerCount, 
+                                          pID->ProductName);
+                    scannerCount++;
+                }
+                
+                if (scannerCount == 0) {
+                    scannerList += _T("No scanners found");
+                }
+                
+                Logger::Log("Found %d scanners", scannerCount);
+            } else {
+                scannerList += _T("DSM not connected");
+                Logger::Log("DSM not connected, cannot get scanner list");
+            }
+            
+            // 将扫描仪列表设置为状态显示
+            m_sStc_DS = scannerList;
+            
+            // 保存扫描仪列表以便HTTP服务器返回给浏览器
+            if (m_httpServer) {
+                // 重新检查HttpServer实例和主窗口关联
+                Logger::Log("HttpServer instance: %p", m_httpServer);
+                HWND currentWnd = GetSafeHwnd();
+                if (currentWnd) {
+                    Logger::Log("Current main window handle: %p", currentWnd);
+                    m_httpServer->SetMainWindow(currentWnd);
+                    Logger::Log("Re-confirmed HTTP server main window handle: %p", currentWnd);
+                    
+                    // 重新设置窗口用户数据
+                    ::SetWindowLongPtr(currentWnd, GWLP_USERDATA, (LONG_PTR)m_httpServer);
+                    Logger::Log("Re-confirmed window user data pointing to HTTP server: %p", m_httpServer);
+                }
+                
+                // 直接设置最后的响应
+                m_httpServer->SetLastResponse(scannerList);
+                Logger::Log("Scanner list saved for HTTP response: %s", (LPCTSTR)scannerList);
+                
+                // 保存一个全局副本作为备份
+                AfxGetApp()->WriteProfileString(_T("Settings"), _T("LastScannerList"), scannerList);
+                Logger::Log("Saved scanner list to application profile as backup");
+            } else {
+                Logger::Log("ERROR: m_httpServer is NULL, cannot set last response");
+            }
+        } else {
+            // 如果没有scanners关键词，显示提取的参数
+            if (paramsValue != _T("(no parameters)")) {
+                m_sStc_DS.Format(_T("Request parameters: %s"), paramsValue);
+            } else {
+                // 没有参数，显示完整请求
+                m_sStc_DS = *pRequest;
+            }
+        }
+        
         UpdateData(FALSE);  // 更新UI显示
 
         // 记录日志
         CString strLog;
-        strLog.Format(_T("收到HTTP请求内容: %s"), *pRequest);
+        strLog.Format(_T("Received HTTP request content: %s"), *pRequest);
         Logger::Log((LPCTSTR)strLog);
 
         // 记录到文件日志
@@ -522,11 +625,11 @@ LRESULT CmfcDlgMain::OnHttpRequest(WPARAM wParam, LPARAM lParam)
 
         // 清理数据
         delete pRequest;
-        Logger::Log("HTTP request processed successfully");
+        Logger::Log("HTTP request processing completed");
     }
     else
     {
-        Logger::Log("OnHttpRequest: accept HTTP request, but no data received");
+        Logger::Log("OnHttpRequest: Received NULL request pointer");
     }
     
     return 0;

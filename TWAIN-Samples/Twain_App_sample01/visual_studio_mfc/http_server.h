@@ -55,6 +55,22 @@ public:
         m_mutex.unlock();
     }
     
+    // 设置最后的HTTP响应内容
+    void SetLastResponse(const CString& response) {
+        m_mutex.lock();
+        m_lastResponse = response;
+        m_mutex.unlock();
+        Logger::Log("Last HTTP response set: %s", (LPCTSTR)response);
+    }
+    
+    // 获取最后设置的响应内容
+    CString GetLastResponse() {
+        m_mutex.lock();
+        CString response = m_lastResponse;
+        m_mutex.unlock();
+        return response;
+    }
+    
     // 添加获取主窗口句柄的方法
     HWND GetMainWindow() {
         // 在非const方法中使用锁，避免任何潜在问题
@@ -80,4 +96,5 @@ private:
     std::mutex m_mutex;  // 移除mutable修饰符，使用非const方法
     std::condition_variable m_cv;
     bool m_wsaInitialized;  // 标记WSA是否已初始化
+    CString m_lastResponse;  // 保存最后的HTTP响应内容
 }; 

@@ -71,87 +71,92 @@ CInternetServerContext* CInternetServer::GetContext() {
     return nullptr;
 }
 
+// Declare 'lastResponse' as a CString
+CString lastResponse;
+
+// Initialize 'lastResponse' with a default value or fetch from a relevant source
+// Example: lastResponse = GetLastResponse(); // Assuming GetLastResponse() is a function that retrieves the last response
+
 bool HttpServer::Start(int port) {
-    if (m_isRunning) {
-        TRACE(_T("HTTP server is already running\n"));
-        return false;
-    }
-
     try {
-        // 如果WSA尚未初始化，则初始化
-        if (!m_wsaInitialized) {
-            WSADATA wsaData;
-            int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
-            if (result != 0) {
-                Logger::Log("ERROR: Failed to initialize WinSock. Error: %d", result);
-                return false;
-            }
-            m_wsaInitialized = true;
-            Logger::Log("WSA initialized successfully");
+        // 保存端口号
+        m_port = port;
+        
+        // 初始化WSA
+        WSADATA wsaData;
+        int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
+        if (result != 0) {
+            Logger::Log("WSA initialization failed: %d", result);
+            return false;
         }
-
-        // 创建服务器套接字
+        m_wsaInitialized = true;
+        Logger::Log("WSA initialized successfully");
+        
+        // 创建socket
         m_serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (m_serverSocket == INVALID_SOCKET) {
-            TRACE(_T("Failed to create server socket. Error: %d\n"), WSAGetLastError());
+            Logger::Log("Socket creation failed: %d", WSAGetLastError());
             return false;
         }
-
-        // 设置套接字选项
-        int opt = 1;
-        if (setsockopt(m_serverSocket, SOL_SOCKET, SO_REUSEADDR, (char*)&opt, sizeof(opt)) == SOCKET_ERROR) {
-            TRACE(_T("Failed to set socket options. Error: %d\n"), WSAGetLastError());
-            closesocket(m_serverSocket);
-            m_serverSocket = INVALID_SOCKET;
-            return false;
-        }
-
-        // 绑定地址和端口
+        
+        // 绑定IP和端口
         sockaddr_in serverAddr;
         serverAddr.sin_family = AF_INET;
-        serverAddr.sin_addr.s_addr = INADDR_ANY;
+        serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
         serverAddr.sin_port = htons(port);
-
-        if (bind(m_serverSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
-            TRACE(_T("Failed to bind socket. Error: %d\n"), WSAGetLastError());
+        result = bind(m_serverSocket, (sockaddr*)&serverAddr, sizeof(serverAddr));
+        if (result == SOCKET_ERROR) {
+            Logger::Log("Bind failed: %d", WSAGetLastError());
             closesocket(m_serverSocket);
-            m_serverSocket = INVALID_SOCKET;
             return false;
         }
-
-        // 开始监听
-        if (listen(m_serverSocket, 5) == SOCKET_ERROR) {
-            TRACE(_T("Failed to start listening. Error: %d\n"), WSAGetLastError());
+        
+        // 监听
+        result = listen(m_serverSocket, SOMAXCONN);
+        if (result == SOCKET_ERROR) {
+            Logger::Log("Listen failed: %d", WSAGetLastError());
             closesocket(m_serverSocket);
-            m_serverSocket = INVALID_SOCKET;
             return false;
         }
-
-        m_port = port;
+        
+        // 检查并记录主窗口句柄状态
+        HWND mainWnd = GetMainWindow();
+        if (mainWnd && ::IsWindow(mainWnd)) {
+            Logger::Log("Starting server with valid main window handle: %p", mainWnd);
+        } else {
+            Logger::Log("WARNING: Starting server with invalid main window handle: %p", mainWnd);
+            
+            // 尝试从应用程序获取主窗口句柄
+            CWnd* pMainWnd = AfxGetApp()->GetMainWnd();
+            if (pMainWnd && ::IsWindow(pMainWnd->GetSafeHwnd())) {
+                SetMainWindow(pMainWnd->GetSafeHwnd());
+                Logger::Log("Retrieved and set main window handle from app: %p", pMainWnd->GetSafeHwnd());
+            }
+        }
+        
+        // 设置运行标志
         m_isRunning = true;
-
+        m_running = true;
+        
         // 创建服务器线程
         m_pThread = AfxBeginThread(ServerThread, this);
+        
         if (!m_pThread) {
-            TRACE(_T("Failed to create server thread. Error: %d\n"), GetLastError());
-            closesocket(m_serverSocket);
-            m_serverSocket = INVALID_SOCKET;
+            Logger::Log("Failed to create server thread");
             m_isRunning = false;
+            m_running = false;
+            closesocket(m_serverSocket);
             return false;
         }
-
-        TRACE(_T("HTTP server started successfully on port %d\n"), port);
+        
         return true;
+    } catch (std::exception& e) {
+        Logger::Log("Exception in Start method: %s", e.what());
+    } catch (...) {
+        Logger::Log("Unknown exception in Start method");
     }
-    catch (...) {
-        TRACE(_T("Unknown exception while starting server\n"));
-        if (m_serverSocket != INVALID_SOCKET) {
-            closesocket(m_serverSocket);
-            m_serverSocket = INVALID_SOCKET;
-        }
-        m_isRunning = false;
-        return false;
-    }
+    
+    return false;
 }
 
 void HttpServer::Stop() {
@@ -210,12 +215,32 @@ void HttpServer::RunServer() {
         if (clientSocket != INVALID_SOCKET) {
             // 每次都获取当前最新的主窗口句柄，而不是使用启动时的句柄
             HWND currentMainWnd = GetMainWindow();
-            if (currentMainWnd && !::IsWindow(currentMainWnd)) {
-                Logger::Log("warning: main window handle (%p) is invalid or NULL", currentMainWnd);
+            
+            // 记录并验证主窗口句柄是否有效
+            if (currentMainWnd && ::IsWindow(currentMainWnd)) {
+                Logger::Log("RunServer: valid main window handle: %p", currentMainWnd);
+            } else {
+                Logger::Log("WARNING: main window handle (%p) is invalid or NULL", currentMainWnd);
+                
+                // 尝试从应用程序获取主窗口句柄
+                CWnd* pMainWnd = AfxGetApp()->GetMainWnd();
+                if (pMainWnd && ::IsWindow(pMainWnd->GetSafeHwnd())) {
+                    currentMainWnd = pMainWnd->GetSafeHwnd();
+                    Logger::Log("RunServer: retrieved main window handle from app: %p", currentMainWnd);
+                    
+                    // 同时更新HttpServer实例中的主窗口句柄
+                    SetMainWindow(currentMainWnd);
+                }
             }
             
-            // 创建新线程处理客户端请求，传递主窗口句柄和socket
-            auto* pData = new std::pair<HWND, SOCKET>(currentMainWnd, clientSocket);
+            // 创建包含自身指针、主窗口句柄和socket的数据结构
+            struct RequestData {
+                HttpServer* pServer;
+                HWND hMainWnd;
+                SOCKET clientSocket;
+            };
+            
+            auto* pData = new RequestData{this, currentMainWnd, clientSocket};
 
             Logger::Log("RunServer: create client request thread, use main window handle: %p", currentMainWnd);
             AfxBeginThread(&HttpServer::ProcessRequest, (LPVOID)pData);
@@ -239,15 +264,24 @@ UINT HttpServer::ProcessRequest(LPVOID pParam) {
             return 1;
         }
 
-        // 获取主窗口句柄和客户端socket
-        auto* pPair = (std::pair<HWND, SOCKET>*)pParam;
-        HWND hMainWnd = pPair->first;
-        SOCKET clientSocket = pPair->second;
+        // 使用新的RequestData结构
+        struct RequestData {
+            HttpServer* pServer;
+            HWND hMainWnd;
+            SOCKET clientSocket;
+        };
         
-        Logger::Log("ProcessRequest: Received main window handle: %p", hMainWnd);
+        // 获取HttpServer实例、主窗口句柄和客户端socket
+        auto* pData = (RequestData*)pParam;
+        HttpServer* pHttpServer = pData->pServer;
+        HWND hMainWnd = pData->hMainWnd;
+        SOCKET clientSocket = pData->clientSocket;
         
-        delete pPair;  // 释放内存
-        pPair = nullptr;  // 防止悬挂指针
+        Logger::Log("ProcessRequest: Received parameters - HttpServer: %p, main window handle: %p, socket: %d", 
+                   pHttpServer, hMainWnd, clientSocket);
+        
+        delete pData;  // 释放内存
+        pData = nullptr;  // 防止悬挂指针
         
         // 验证客户端socket
         if (clientSocket == INVALID_SOCKET) {
@@ -263,6 +297,99 @@ UINT HttpServer::ProcessRequest(LPVOID pParam) {
             
             Logger::Log("Received HTTP request: %s", request.c_str());
             
+            // 解析HTTP请求中的参数
+            std::string url = "/";
+            std::string params = "";
+            
+            // 查找第一个空格（第一个空格之后到第二个空格之前是URL）
+            size_t firstSpacePos = request.find(" ");
+            if (firstSpacePos != std::string::npos) {
+                size_t secondSpacePos = request.find(" ", firstSpacePos + 1);
+                if (secondSpacePos != std::string::npos) {
+                    // 提取URL（不包括HTTP参数）
+                    std::string fullURL = request.substr(firstSpacePos + 1, secondSpacePos - firstSpacePos - 1);
+                    Logger::Log("Full URL from request: %s", fullURL.c_str());
+                    
+                    // 查找URL中的参数（以?开始）
+                    size_t paramPos = fullURL.find("?");
+                    if (paramPos != std::string::npos) {
+                        url = fullURL.substr(0, paramPos);
+                        params = fullURL.substr(paramPos + 1);
+                        Logger::Log("URL path: %s, Parameters: %s", url.c_str(), params.c_str());
+                    } else {
+                        url = fullURL;
+                        Logger::Log("URL path with no parameters: %s", url.c_str());
+                    }
+                }
+            }
+            
+            // 同时从POST请求体中解析参数
+            size_t bodyPos = request.find("\r\n\r\n");
+            if (bodyPos != std::string::npos && bodyPos + 4 < request.length()) {
+                std::string body = request.substr(bodyPos + 4);
+                if (!body.empty()) {
+                    Logger::Log("Request body: %s", body.c_str());
+                    
+                    // 检查是否为 form-data 格式
+                    if (request.find("Content-Type: multipart/form-data") != std::string::npos) {
+                        Logger::Log("Detected multipart/form-data request");
+                        
+                        // 解析 form-data 格式
+                        std::string boundary;
+                        size_t boundaryPos = request.find("boundary=");
+                        if (boundaryPos != std::string::npos) {
+                            size_t boundaryEnd = request.find("\r\n", boundaryPos);
+                            if (boundaryEnd != std::string::npos) {
+                                boundary = request.substr(boundaryPos + 9, boundaryEnd - boundaryPos - 9);
+                                Logger::Log("Form boundary: %s", boundary.c_str());
+                                
+                                // 寻找 "handle" 字段
+                                std::string searchName = "name=\"handle\"";
+                                size_t handlePos = body.find(searchName);
+                                if (handlePos != std::string::npos) {
+                                    // 找到值的开始位置
+                                    size_t valueStart = body.find("\r\n\r\n", handlePos);
+                                    if (valueStart != std::string::npos) {
+                                        valueStart += 4; // 跳过 \r\n\r\n
+                                        
+                                        // 找到值的结束位置
+                                        size_t valueEnd = body.find(boundary, valueStart);
+                                        if (valueEnd != std::string::npos && valueEnd > valueStart) {
+                                            // 提取值
+                                            std::string value = body.substr(valueStart, valueEnd - valueStart - 2); // -2 去掉末尾的 \r\n
+                                            Logger::Log("Found handle value: %s", value.c_str());
+                                            
+                                            // 将提取的值添加到params
+                                            if (params.empty()) {
+                                                params = "handle=" + value;
+                                            } else {
+                                                params += "&handle=" + value;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else if (request.find("Content-Type: application/x-www-form-urlencoded") != std::string::npos) {
+                        // 标准表单编码
+                        if (params.empty()) {
+                            params = body;
+                        } else {
+                            params += "&" + body;
+                        }
+                    } else {
+                        // 其他格式，默认添加
+                        if (params.empty()) {
+                            params = body;
+                        } else {
+                            params += "&" + body;
+                        }
+                    }
+                    
+                    Logger::Log("Combined parameters (URL + body): %s", params.c_str());
+                }
+            }
+            
             bool messageSent = false;
             
             // 发送消息到主窗口 - 再次验证窗口有效性
@@ -270,10 +397,36 @@ UINT HttpServer::ProcessRequest(LPVOID pParam) {
                 Logger::Log("Posting WM_HTTP_REQUEST message to main window (handle: %p)", hMainWnd);
                 
                 try {
-                    CString* pRequest = new CString(request.c_str());
+                    // 创建包含URL和参数的格式化消息
+                    CString messageContent;
+                    if (!params.empty()) {
+                        messageContent.Format(_T("URL: %s\r\nParams: %s"), 
+                                            url.c_str(), 
+                                            params.c_str());
+                        
+                        // 检查是否包含handle=scanners参数，特别标记这种请求
+                        if (params.find("handle=scanners") != std::string::npos) {
+                            messageContent += _T("\r\nRequestType: ScannerList");
+                            Logger::Log("Adding ScannerList request type marker to message");
+                        }
+                        // 检查 form-data 中是否包含 handle=scanners
+                        else if (request.find("name=\"handle\"") != std::string::npos && 
+                                request.find("scanners") != std::string::npos) {
+                            messageContent += _T("\r\nRequestType: ScannerList");
+                            Logger::Log("Adding ScannerList request type marker for form-data");
+                        }
+                    } else {
+                        messageContent.Format(_T("URL: %s\r\nNo parameters"), 
+                                            url.c_str());
+                    }
+                    
+                    CString* pRequest = new CString(messageContent);
                     if (!pRequest) {
                         Logger::Log("Failed to allocate memory for request");
                     } else {
+                        // 检查是否包含scanners关键词
+                        bool containsScanners = (pRequest->Find(_T("scanners")) != -1);
+                        
                         BOOL result = ::PostMessage(hMainWnd, WM_HTTP_REQUEST, (WPARAM)pRequest, 0);
                         if (!result) {
                             Logger::Log("PostMessage failed. Error: %d", GetLastError());
@@ -285,6 +438,11 @@ UINT HttpServer::ProcessRequest(LPVOID pParam) {
                             
                             // 等待一小段时间，让主窗口有机会处理消息
                             Sleep(100);
+                        }
+                        
+                        // 保存是否包含scanners关键词的结果，用于构建响应
+                        if (containsScanners) {
+                            Logger::Log("Request contains 'scanners' keyword");
                         }
                     }
                 } catch (std::exception& e) {
@@ -299,25 +457,150 @@ UINT HttpServer::ProcessRequest(LPVOID pParam) {
             
             // 无论主窗口是否处理了消息，都发送HTTP响应
             std::string response;
+
+            // 检查请求是否包含handle=scanners参数
+            bool scannerListRequested = false;
+
+            // 优先检查参数中的handle=scanners
+            if (params.find("handle=scanners") != std::string::npos) {
+                scannerListRequested = true;
+                Logger::Log("Scanner list explicitly requested via params");
+            }
+
+            // 检查是否在 form-data 中传递了 handle=scanners
+            if (!scannerListRequested && 
+                request.find("name=\"handle\"") != std::string::npos && 
+                request.find("scanners") != std::string::npos) {
+                scannerListRequested = true;
+                Logger::Log("Scanner list requested via form-data");
+            }
+
+            // 如果参数中没有找到，检查整个请求
+            if (!scannerListRequested && request.find("handle=scanners") != std::string::npos) {
+                scannerListRequested = true;
+                Logger::Log("Scanner list requested detected in full request");
+            }
+
+            Logger::Log("Scanner list requested: %s", scannerListRequested ? "YES" : "NO");
+
+            // 检查请求是否包含scanners关键词但不是handle=scanners参数
+            bool containsScannersKeyword = (!scannerListRequested && (request.find("scanners") != std::string::npos));
+            Logger::Log("Contains 'scanners' keyword: %s", containsScannersKeyword ? "YES" : "NO");
             
-            if (messageSent) {
+            if (scannerListRequested) {
+                // 处理handle=scanners请求
+                std::string scannerResponse;
+                
+                // 使用传递给函数的HttpServer实例
+                Logger::Log("Using HttpServer instance from parameters: %p", pHttpServer);
+                
+                // 验证HttpServer实例
+                CString lastResponse;
+                if (pHttpServer) {
+                    // 直接从HttpServer实例获取最后的响应
+                    lastResponse = pHttpServer->GetLastResponse();
+                    Logger::Log("Retrieved last response directly from HttpServer instance: %s", (LPCTSTR)lastResponse);
+                } else {
+                    Logger::Log("Invalid HttpServer instance");
+                    
+                    // 尝试从窗口用户数据获取HttpServer实例（备用方法）
+                    if (hMainWnd && ::IsWindow(hMainWnd)) {
+                        HttpServer* pBackupServer = (HttpServer*)::GetWindowLongPtr(hMainWnd, GWLP_USERDATA);
+                        if (pBackupServer) {
+                            lastResponse = pBackupServer->GetLastResponse();
+                            Logger::Log("Retrieved last response from window user data backup: %s", (LPCTSTR)lastResponse);
+                        } else {
+                            Logger::Log("Failed to get HttpServer instance from window user data");
+                        }
+                    } else {
+                        Logger::Log("Invalid main window handle, cannot get HttpServer instance");
+                    }
+                }
+                
+                if (!lastResponse.IsEmpty()) {
+                    // 将CString转换为std::string - 处理UNICODE/MBCS差异
+                    #ifdef _UNICODE
+                    // 如果是Unicode版本，需要转换
+                    int len = lastResponse.GetLength();
+                    char* buffer = new char[len*2 + 1]; // 为安全起见乘以2
+                    // 转换宽字符到多字节字符
+                    int size = WideCharToMultiByte(CP_ACP, 0, lastResponse.GetBuffer(), -1,
+                                                    buffer, len*2 + 1, NULL, NULL);
+                    lastResponse.ReleaseBuffer();
+                    if (size > 0) {
+                        scannerResponse = buffer;
+                    } else {
+                        scannerResponse = "SCANNERS:Conversion error";
+                        Logger::Log("Error converting Unicode to ASCII");
+                    }
+                    delete[] buffer; // 移动到这里确保无论如何都会释放
+                    #else
+                    // 非Unicode版本可以直接转换
+                    scannerResponse = (LPCSTR)lastResponse;
+                    #endif
+                    
+                    Logger::Log("Returning scanner list: %s", scannerResponse.c_str());
+                } else {
+                    // 尝试从应用程序配置文件中获取备份扫描仪列表
+                    CString backupList = AfxGetApp()->GetProfileString(_T("Settings"), _T("LastScannerList"), _T(""));
+                    if (!backupList.IsEmpty()) {
+                        Logger::Log("Using backup scanner list from app profile: %s", (LPCTSTR)backupList);
+                        
+                        #ifdef _UNICODE
+                        // 转换备份列表
+                        int len = backupList.GetLength();
+                        char* buffer = new char[len*2 + 1]; // 为安全起见乘以2
+                        int size = WideCharToMultiByte(CP_ACP, 0, backupList.GetBuffer(), -1,
+                                                       buffer, len*2 + 1, NULL, NULL);
+                        backupList.ReleaseBuffer();
+                        if (size > 0) {
+                            scannerResponse = buffer;
+                        } else {
+                            scannerResponse = "SCANNERS:Backup conversion error";
+                        }
+                        delete[] buffer;
+                        #else
+                        scannerResponse = (LPCSTR)backupList;
+                        #endif
+                    } else {
+                        scannerResponse = "SCANNERS:No data available";
+                        Logger::Log("No scanner list available, returning default message");
+                    }
+                }
+                
                 response = "HTTP/1.1 200 OK\r\n"
-                        "Content-Type: text/html\r\n"
-                        "Connection: close\r\n"
-                        "\r\n"
-                        "<html><body>"
-                        "<h1>TWAIN HTTP Server</h1>"
-                        "<p>Request received and processed by main window.</p>"
-                        "</body></html>";
+                          "Content-Type: text/plain\r\n"
+                          "Connection: close\r\n"
+                          "\r\n" + scannerResponse;
+            }
+            else if (containsScannersKeyword) {
+                // 特殊响应
+                response = "HTTP/1.1 200 OK\r\n"
+                          "Content-Type: text/plain\r\n"
+                          "Connection: close\r\n"
+                          "\r\n"
+                          "123456";
+            } else if (!params.empty()) {
+                // 包含其他参数的响应
+                std::string paramResponse = "HTTP/1.1 200 OK\r\n"
+                                          "Content-Type: text/html\r\n"
+                                          "Connection: close\r\n"
+                                          "\r\n"
+                                          "<html><body>"
+                                          "<h1>TWAIN HTTP Server</h1>"
+                                          "<p>Received parameters: " + params + "</p>"
+                                          "</body></html>";
+                response = paramResponse;
             } else {
+                // 普通响应
                 response = "HTTP/1.1 200 OK\r\n"
-                        "Content-Type: text/html\r\n"
-                        "Connection: close\r\n"
-                        "\r\n"
-                        "<html><body>"
-                        "<h1>TWAIN HTTP Server</h1>"
-                        "<p>Request received but main window unavailable.</p>"
-                        "</body></html>";
+                          "Content-Type: text/html\r\n"
+                          "Connection: close\r\n"
+                          "\r\n"
+                          "<html><body>"
+                          "<h1>TWAIN HTTP Server</h1>"
+                          "<p>Request received and processed by main window.</p>"
+                          "</body></html>";
             }
             
             send(clientSocket, response.c_str(), response.length(), 0);
