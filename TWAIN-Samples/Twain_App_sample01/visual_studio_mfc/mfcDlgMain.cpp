@@ -126,6 +126,7 @@ BEGIN_MESSAGE_MAP(CmfcDlgMain, CDialog)
   ON_MESSAGE(WM_HTTP_REQUEST, OnHttpRequest)
   ON_MESSAGE(WM_TCP_DATA_RECEIVED, OnTcpData)
   ON_MESSAGE(WM_RECEIVE_DATA, OnReceiveData)
+  ON_MESSAGE(WM_CONNECT_SCANNER, OnConnectScanner)
 END_MESSAGE_MAP()
 
 
@@ -694,5 +695,136 @@ LRESULT CmfcDlgMain::OnTcpData(WPARAM wParam, LPARAM lParam)
 {
     // Implementation of OnTcpData method
     return 0;
+}
+
+LRESULT CmfcDlgMain::OnConnectScanner(WPARAM wParam, LPARAM lParam)
+{
+    Logger::Log("OnConnectScanner: Received request to connect to scanner");
+    
+    // 从wParam参数中获取扫描仪名称
+    HGLOBAL hMem = (HGLOBAL)wParam;
+    if (!hMem)
+    {
+        Logger::Log("ERROR: Invalid memory handle for scanner name");
+        return 1;
+    }
+    
+    char* pScannerName = (char*)::GlobalLock(hMem);
+    if (!pScannerName)
+    {
+        Logger::Log("ERROR: Failed to lock memory for scanner name");
+        ::GlobalFree(hMem);
+        return 1;
+    }
+    
+    // 将扫描仪名称转换为CString
+    CString scannerName;
+#ifdef _UNICODE
+    // 将UTF-8转换为Unicode
+    int reqLen = MultiByteToWideChar(CP_UTF8, 0, pScannerName, -1, NULL, 0);
+    if (reqLen > 0)
+    {
+        wchar_t* wBuffer = new wchar_t[reqLen];
+        if (MultiByteToWideChar(CP_UTF8, 0, pScannerName, -1, wBuffer, reqLen))
+        {
+            scannerName = wBuffer;
+        }
+        delete[] wBuffer;
+    }
+#else
+    scannerName = pScannerName;
+#endif
+    
+    // 释放全局内存
+    ::GlobalUnlock(hMem);
+    ::GlobalFree(hMem);
+    
+    Logger::Log("Connecting to scanner: %s", (LPCTSTR)scannerName);
+    
+    // 检查TWAIN应用实例是否有效
+    if (!_pTWAINApp)
+    {
+        Logger::Log("ERROR: TWAIN application instance is NULL");
+        return 1;
+    }
+    
+    // 确保DSM已连接
+    if (_pTWAINApp->m_DSMState < 3)
+    {
+        Logger::Log("Connecting to DSM...");
+        _pTWAINApp->connectDSM();
+        
+        // 检查连接后的状态
+        if (_pTWAINApp->m_DSMState < 3)
+        {
+            Logger::Log("ERROR: Failed to connect to DSM");
+            return 1;
+        }
+    }
+    
+    // 查找匹配扫描仪名称的设备
+    int scannerIndex = -1;
+    pTW_IDENTITY pID = NULL;
+    int scannerCount = 0;
+    
+    while (NULL != (pID = _pTWAINApp->getDataSource((TW_INT16)scannerCount)))
+    {
+        CString currentName(pID->ProductName);
+        Logger::Log("Checking scanner [%d]: %s", scannerCount, (LPCTSTR)currentName);
+        
+        if (currentName.CompareNoCase(scannerName) == 0)
+        {
+            scannerIndex = scannerCount;
+            Logger::Log("Found matching scanner at index %d", scannerIndex);
+            break;
+        }
+        
+        scannerCount++;
+    }
+    
+    // 如果找到匹配的扫描仪
+    if (scannerIndex >= 0)
+    {
+        Logger::Log("Attempting to connect to scanner at index %d", scannerIndex);
+        
+        // 如果当前已连接扫描仪，先断开
+        if (_pTWAINApp->m_DSMState > 3)
+        {
+            Logger::Log("Disconnecting from current DS...");
+            _pTWAINApp->unloadDS();
+        }
+        
+        // 连接到选定的扫描仪
+        _pTWAINApp->loadDS((TW_INT16)scannerIndex);
+        
+        // 检查连接是否成功(loadDS成功会将状态设置为4)
+        if (_pTWAINApp->m_DSMState >= 4)
+        {
+            Logger::Log("Successfully connected to scanner: %s", (LPCTSTR)scannerName);
+            
+            // 更新UI显示
+            m_sStc_DS.Format(_T("Connected to scanner: %s"), scannerName);
+            UpdateData(FALSE);
+            
+            // 刷新界面状态
+            m_btn_Connect_DS.EnableWindow(FALSE);
+            
+            return 0; // 成功
+        }
+        else
+        {
+            Logger::Log("ERROR: Failed to connect to scanner at index %d", scannerIndex);
+            m_sStc_DS.Format(_T("Failed to connect to scanner: %s"), scannerName);
+            UpdateData(FALSE);
+        }
+    }
+    else
+    {
+        Logger::Log("ERROR: Scanner not found with name: %s", (LPCTSTR)scannerName);
+        m_sStc_DS.Format(_T("Scanner not found: %s"), scannerName);
+        UpdateData(FALSE);
+    }
+    
+    return 1; // 失败
 }
 

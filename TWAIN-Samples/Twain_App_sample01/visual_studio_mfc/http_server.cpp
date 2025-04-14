@@ -10,6 +10,7 @@
 // 自定义消息定义
 #define WM_HTTP_REQUEST (WM_USER + 100)
 #define WM_GET_SCANNER_LIST (WM_USER + 101)
+#define WM_CONNECT_SCANNER (WM_USER + 102)
 
 // 函数声明
 std::string buildJSON(const std::map<std::string, std::string>& params, const std::string& url = "", const std::string& requestType = "");
@@ -36,6 +37,7 @@ void SendMessageToMainWindow(HWND hMainWnd, const std::map<std::string, std::str
 std::string BuildHttpResponse(HttpServer* pHttpServer, HWND hMainWnd, bool scannerListRequested, 
                              bool containsScannersKeyword, const std::string& params, const std::string& request);
 std::string GetScannerListResponse(HttpServer* pHttpServer, HWND hMainWnd);
+std::string BuildScannerOptionsResponse(HttpServer* pHttpServer, HWND hMainWnd, const std::map<std::string, std::string>& paramsMap);
 
 bool HttpServer::Start(int port) {
     try {
@@ -286,14 +288,26 @@ UINT HttpServer::ProcessRequest(LPVOID pParam) {
                 requestType = "ScannerList";
                 Logger::Log("Scanner list explicitly requested via params");
             }
+            
+            // 检查请求是否是获取扫描仪选项请求
+            bool scannerOptionsRequested = (requestType == "GetScannerOptions");
+            Logger::Log("Scanner options requested: %s", scannerOptionsRequested ? "YES" : "NO");
 
             // 检查请求是否包含scanners关键词但不是扫描仪列表请求
-            bool containsScannersKeyword = (!scannerListRequested && request.find("scanners") != std::string::npos);
+            bool containsScannersKeyword = (!scannerListRequested && !scannerOptionsRequested && request.find("scanners") != std::string::npos);
             Logger::Log("Contains 'scanners' keyword: %s", containsScannersKeyword ? "YES" : "NO");
             
             // 构建并发送HTTP响应
-            std::string response = BuildHttpResponse(pHttpServer, hMainWnd, scannerListRequested, 
-                                                   containsScannersKeyword, params, request);
+            std::string response;
+            
+            if (scannerOptionsRequested) {
+                // 处理获取扫描仪选项请求
+                response = BuildScannerOptionsResponse(pHttpServer, hMainWnd, paramsMap);
+            } else {
+                // 处理其他类型的请求
+                response = BuildHttpResponse(pHttpServer, hMainWnd, scannerListRequested, 
+                                          containsScannersKeyword, params, request);
+            }
             
             send(clientSocket, response.c_str(), response.length(), 0);
             Logger::Log("Response sent to client");
@@ -395,10 +409,21 @@ void ParseHttpRequest(const std::string& request, std::string& url, std::string&
             ParseRequestBody(request, params, paramsMap, requestType);
         }
         
-        // 特殊处理：检查是否是扫描仪列表请求
+        // 特殊处理：检查请求类型
+        // 检查是否是扫描仪列表请求
         if ((url == "/scanners" || url == "/scanners/") || 
             (paramsMap.find("handle") != paramsMap.end() && paramsMap["handle"] == "scanners")) {
             requestType = "ScannerList";
+        }
+        // 检查是否是获取扫描仪选项请求
+        else if (paramsMap.find("handle") != paramsMap.end() && paramsMap["handle"] == "getScannerOptions") {
+            requestType = "GetScannerOptions";
+            Logger::Log("GetScannerOptions request detected");
+            
+            // 检查是否指定了扫描仪
+            if (paramsMap.find("scanner") != paramsMap.end()) {
+                Logger::Log("Target scanner specified: %s", paramsMap["scanner"].c_str());
+            }
         }
     }
     
@@ -804,4 +829,72 @@ std::string GetScannerListResponse(HttpServer* pHttpServer, HWND hMainWnd) {
     
     // 构建新格式的响应
     return "{\"errorCode\":0,\"msg\":\"Scanner list retrieved\",\"data\":{\"scanners\":" + scannersArray + "}}";
+}
+
+// 添加新函数：构建扫描仪选项请求的响应
+std::string BuildScannerOptionsResponse(HttpServer* pHttpServer, HWND hMainWnd, const std::map<std::string, std::string>& paramsMap) {
+    Logger::Log("Building scanner options response");
+    
+    std::string response;
+    
+    // 添加HTTP响应头
+    response = "HTTP/1.1 200 OK\r\n";
+    response += "Content-Type: application/json\r\n";
+    response += "Access-Control-Allow-Origin: *\r\n";  // 允许跨域请求
+    response += "Connection: close\r\n";
+    response += "\r\n";
+    
+    // 检查是否指定了扫描仪名称
+    if (paramsMap.find("scanner") == paramsMap.end()) {
+        // 未指定扫描仪名称，返回错误
+        response += "{\"errorCode\":1,\"msg\":\"Scanner name not specified\",\"data\":{}}";
+        return response;
+    }
+    
+    // 获取指定的扫描仪名称
+    std::string scannerName = paramsMap.at("scanner");
+    Logger::Log("Connecting to scanner: %s", scannerName.c_str());
+    
+    // 这里需要向主窗口发送消息来连接扫描仪
+    // 使用WM_CONNECT_SCANNER自定义消息
+    
+    // 分配内存并复制扫描仪名称
+    HGLOBAL hMem = ::GlobalAlloc(GMEM_MOVEABLE, scannerName.length() + 1);
+    if (!hMem) {
+        Logger::Log("Failed to allocate memory for scanner name");
+        response += "{\"errorCode\":1,\"msg\":\"Failed to allocate memory\",\"data\":{}}";
+        return response;
+    }
+    
+    char* pData = (char*)::GlobalLock(hMem);
+    if (!pData) {
+        ::GlobalFree(hMem);
+        Logger::Log("Failed to lock memory");
+        response += "{\"errorCode\":1,\"msg\":\"Failed to lock memory\",\"data\":{}}";
+        return response;
+    }
+    
+    strcpy_s(pData, scannerName.length() + 1, scannerName.c_str());
+    ::GlobalUnlock(hMem);
+    
+    // 发送消息到主窗口
+    if (hMainWnd && ::IsWindow(hMainWnd)) {
+        // 使用PostMessage异步发送消息
+        BOOL result = ::PostMessage(hMainWnd, WM_CONNECT_SCANNER, (WPARAM)hMem, 0);
+        
+        if (result) {
+            Logger::Log("Connect scanner message sent to main window successfully");
+            response += "{\"errorCode\":0,\"msg\":\"Connection request sent\",\"data\":{\"scanner\":\"" + scannerName + "\"}}";
+        } else {
+            Logger::Log("Failed to send connect scanner message: %d", GetLastError());
+            ::GlobalFree(hMem);
+            response += "{\"errorCode\":1,\"msg\":\"Failed to send connection request\",\"data\":{}}";
+        }
+    } else {
+        ::GlobalFree(hMem);
+        Logger::Log("Invalid main window handle");
+        response += "{\"errorCode\":1,\"msg\":\"Invalid main window handle\",\"data\":{}}";
+    }
+    
+    return response;
 }

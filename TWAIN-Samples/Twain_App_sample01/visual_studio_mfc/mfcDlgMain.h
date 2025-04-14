@@ -40,6 +40,7 @@
 
 // 定义自定义消息
 #define WM_RECEIVE_DATA (WM_USER + 100)
+#define WM_CONNECT_SCANNER (WM_USER + 102)
 
 // 声明全局的客户端线程函数
 UINT WINAPI ClientThread(LPVOID pParam);
@@ -100,6 +101,7 @@ protected:
   afx_msg void OnLbnDblclkDs();
   afx_msg void OnBnClickedDefaultDs();
   afx_msg LRESULT OnReceiveData(WPARAM wParam, LPARAM lParam);
+  afx_msg LRESULT OnConnectScanner(WPARAM wParam, LPARAM lParam);
 
 public:
   CString   m_sStc_DS;
