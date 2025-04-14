@@ -1,5 +1,5 @@
 /***************************************************************************
-* Copyright © 2007 TWAIN Working Group:  
+* Copyright ï¿½ 2007 TWAIN Working Group:  
 *   Adobe Systems Incorporated, AnyDoc Software Inc., Eastman Kodak Company, 
 *   Fujitsu Computer Products of America, JFL Peripheral Solutions Inc., 
 *   Ricoh Corporation, and Xerox Corporation.
@@ -42,6 +42,7 @@
 #include "CommonTWAIN.h"
 #include "DSMInterface.h"
 
+#include "Logger.h"
 #include <iostream>
 using namespace std;
 
@@ -87,6 +88,9 @@ TW_UINT16 _DSM_Entry( pTW_IDENTITY _pOrigin,
 
   if(0 != gpDSM_Entry)
   {
+
+    Logger::Log("DSM_Entry Parameters: Origin=0x%p, Dest=0x%p, DG=0x%x, DAT=0x%x, MSG=0x%x, Data=0x%p",
+              _pOrigin, _pDest, _DG, _DAT, _MSG, _pData);
     ret = gpDSM_Entry(_pOrigin, _pDest, _DG, _DAT, _MSG, _pData);
   }
 

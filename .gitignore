@@ -20,6 +20,7 @@
 /TWAIN-Samples/Twain_App_sample01/visual_studio_mfc/Release/
 /TWAIN-Samples/Twain_App_sample01/visual_studio_mfc/Release32/
 /TWAIN-Samples/Twain_App_sample01/visual_studio_mfc/TWAIN_APP_VS2017_mfc.vcxproj.user
+/TWAIN-Samples/Twain_App_sample01/visual_studio_mfc/packages/
 /TWAIN-Samples/Twain_DS_sample01/Installer/.vs/
 /TWAIN-Samples/Twain_DS_sample01/Installer/Backup/
 /TWAIN-Samples/Twain_DS_sample01/Installer/TWAINDS_win32_installer/
@@ -32,4 +33,31 @@
 /TWAIN-Samples/Twain_DS_sample01/visual_studio/Release/
 /TWAIN-Samples/Twain_DS_sample01/visual_studio/TWAINDS_VS2017.vcxproj.user
 /TWAIN-Samples/pub/bin/TWAIN_App_QT_201764.exe
+
+# Visual Studio files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.vcxproj.filters
+*.vcxproj.user
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+build/
+bld/
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+msbuild.log
+msbuild.err
+msbuild.wrn
+
+# Visual Studio cache/options directory
+.vs/
 

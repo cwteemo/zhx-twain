@@ -1,5 +1,5 @@
 /***************************************************************************
-* Copyright � 2007 TWAIN Working Group:  
+* Copyright � 2007 TWAIN Working Group:  
 *   Adobe Systems Incorporated, AnyDoc Software Inc., Eastman Kodak Company, 
 *   Fujitsu Computer Products of America, JFL Peripheral Solutions Inc., 
 *   Ricoh Corporation, and Xerox Corporation.
@@ -44,6 +44,7 @@
 
 #include "CommonTWAIN.h"
 #include "afxwin.h"
+#include "http_server.h"  // 添加 HTTP 服务器头文件
 
 //forward declaration for class pointer
 class TwainApp;
@@ -71,6 +72,7 @@ public:
 protected:
   HICON     m_hIcon;
   TwainApp *_pTWAINApp;
+  HttpServer* m_httpServer;  // HTTP 服务器实例
 
   // Generated message map functions
   virtual BOOL OnInitDialog();

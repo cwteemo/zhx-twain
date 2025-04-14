@@ -56,6 +56,7 @@ typedef union {
 #include "CommonTWAIN.h"
 #include "TwainAppCMD.h"
 #include "TwainApp_ui.h"
+#include "Logger.h"
 
 using namespace std;
 
@@ -443,6 +444,8 @@ int main(int argc, char *argv[])
   UNUSEDARG(argv);
   int ret = EXIT_SUCCESS;
 
+  Logger::Init();  // 初始化日志
+
   // Instantiate the TWAIN application CMD class
   HWND parentWindow = NULL;
 
@@ -524,5 +527,6 @@ int main(int argc, char *argv[])
   delete gpTwainApplicationCMD;
   gpTwainApplicationCMD = 0;
 
+  Logger::Cleanup();  // 清理日志
   return ret;
 }

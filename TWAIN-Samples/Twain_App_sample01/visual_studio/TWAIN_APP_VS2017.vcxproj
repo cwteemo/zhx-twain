@@ -23,7 +23,7 @@
     <ProjectGuid>{431AD693-726F-41AB-AA59-B81F5D2E5847}</ProjectGuid>
     <RootNamespace>Twain_App_sample01</RootNamespace>
     <Keyword>Win32Proj</Keyword>
-    <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
@@ -39,7 +39,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
@@ -155,7 +155,7 @@ if EXIST "$(ProjectDir)..\pub\bin\win64\$(TargetName).exe" del /q /f "$(ProjectD
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>.;..;..\..\pub\external\include\;..\..\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>L:\code\twain-samples-master\TWAIN-Samples\Twain_App_sample01\src;.;..;..\..\pub\external\include\;..\..\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;WIN64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>true</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -165,7 +165,6 @@ if EXIST "$(ProjectDir)..\pub\bin\win64\$(TargetName).exe" del /q /f "$(ProjectD
       <WarningLevel>Level4</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <AdditionalOptions> /utf-8 /Gm-</AdditionalOptions>
     </ClCompile>
     <Link>
       <AdditionalDependencies>libcmtd.lib;FreeImage.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -266,6 +265,7 @@ copy "$(ProjectDir)..\..\pub\external\bin\win64\FreeImage.dll" "$(ProjectDir)..\
     <ClCompile Include="..\..\common\CommonTWAIN.cpp" />
     <ClCompile Include="..\..\common\CTiffWriter.cpp" />
     <ClCompile Include="..\src\DSMInterface.cpp" />
+    <ClCompile Include="..\src\Logger.cpp" />
     <ClCompile Include="..\src\main.cpp" />
     <ClCompile Include="..\src\Twain_App_sample01.cpp" />
     <ClCompile Include="..\src\TwainApp.cpp" />

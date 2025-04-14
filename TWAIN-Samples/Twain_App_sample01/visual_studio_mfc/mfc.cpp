@@ -1,5 +1,5 @@
 /***************************************************************************
-* Copyright � 2007 TWAIN Working Group:  
+* Copyright � 2007 TWAIN Working Group:  
 *   Adobe Systems Incorporated, AnyDoc Software Inc., Eastman Kodak Company, 
 *   Fujitsu Computer Products of America, JFL Peripheral Solutions Inc., 
 *   Ricoh Corporation, and Xerox Corporation.
@@ -78,6 +78,12 @@ BOOL Cmfc32App::InitInstance()
   CWinApp::InitInstance();
 
   AfxEnableControlContainer();
+
+  // 启动HTTP服务器
+  if (!m_httpServer.Start(8080)) {
+    AfxMessageBox(_T("Failed to start HTTP server!"), MB_ICONERROR);
+    return FALSE;
+  }
 
   // Standard initialization
   // If you are not using these features and wish to reduce the size

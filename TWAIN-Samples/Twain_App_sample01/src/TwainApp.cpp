@@ -1,5 +1,5 @@
 /***************************************************************************
-* Copyright � 2007 TWAIN Working Group:  
+* Copyright � 2007 TWAIN Working Group:  
 *   Adobe Systems Incorporated, AnyDoc Software Inc., Eastman Kodak Company, 
 *   Fujitsu Computer Products of America, JFL Peripheral Solutions Inc., 
 *   Ricoh Corporation, and Xerox Corporation.
@@ -53,6 +53,7 @@
 #include "TwainApp.h"
 #include "CTiffWriter.h"
 #include "TwainString.h"
+#include "Logger.h"
 
 using namespace std;
 
@@ -174,6 +175,8 @@ void TwainApp::fillIdentity(TW_IDENTITY& _identity)
 
 TW_UINT16 TwainApp::DSM_Entry(TW_UINT32 _DG,TW_UINT16 _DAT, TW_UINT16 _MSG, TW_MEMREF _pData)
 {
+  Logger::Log("DSM_Entry Parameters: Origin=0x%p, Dest=0x%p, DG=0x%x, DAT=0x%x, MSG=0x%x, Data=0x%p",
+              &m_MyInfo, m_pDataSource, _DG, _DAT, _MSG, _pData);
   return _DSM_Entry(&m_MyInfo, m_pDataSource, _DG, _DAT, _MSG, _pData);
 }
 
@@ -215,91 +218,113 @@ void TwainApp::exit()
 //  - look into if we need to cleanup on failures
 void TwainApp::connectDSM()
 {
-  if(m_DSMState > 3)
-  {
-    PrintCMDMessage("The DSM has already been opened, close it first\n");
-    return;
-  }
+    Logger::Log("=== DSM Connection Process Started ===");
 
-  if(!LoadDSMLib(kTWAIN_DSM_DIR kTWAIN_DSM_DLL_NAME))
-  {
-    PrintCMDMessage("The DSM could not be opened. Please ensure that it is installed into a directory that is in the library path:");
-    PrintCMDMessage(kTWAIN_DSM_DIR kTWAIN_DSM_DLL_NAME);
-    return;
-  }
-  else
-  {
+    if(m_DSMState > 3)
+    {
+        Logger::Log("Error: The DSM has already been opened (State: %d)", m_DSMState);
+        PrintCMDMessage("The DSM has already been opened, close it first\n");
+        return;
+    }
+
+    Logger::Log("Attempting to load DSM from: %s", kTWAIN_DSM_DIR kTWAIN_DSM_DLL_NAME);
+    
+    if(!LoadDSMLib(kTWAIN_DSM_DIR kTWAIN_DSM_DLL_NAME))
+    {
+        Logger::Log("Failed to load DSM library");
+        PrintCMDMessage("The DSM could not be opened...");
+        return;
+    }
+
+    Logger::Log("DSM library loaded successfully, state set to 2");
     m_DSMState = 2;
-  }
 
-  TW_UINT16 ret = 0;
-
-  if(TWRC_SUCCESS != (ret = _DSM_Entry(
-    &(m_MyInfo),
-    0,
-    DG_CONTROL,
-    DAT_PARENT,
-    MSG_OPENDSM,
-    (TW_MEMREF)&m_Parent)))
-  {
-    PrintCMDMessage("DG_CONTROL / DAT_PARENT / MSG_OPENDSM Failed: %u\n", ret);
-    return;
-  }
-
-  // check for DSM2 support
-  if((m_MyInfo.SupportedGroups & DF_DSM2) == DF_DSM2)
-  {
-    g_DSM_Entry.Size = sizeof(TW_ENTRYPOINT);
-    // do a MSG_GET to fill our entrypoints
+    TW_UINT16 ret = 0;
+    
     if(TWRC_SUCCESS != (ret = _DSM_Entry(
+        &(m_MyInfo),
+        0,
+        DG_CONTROL,
+        DAT_PARENT,
+        MSG_OPENDSM,
+        (TW_MEMREF)&m_Parent)))
+    {
+        PrintCMDMessage("DG_CONTROL / DAT_PARENT / MSG_OPENDSM Failed: %u\n", ret);
+        return;
+    }
+
+    // check for DSM2 support
+    if((m_MyInfo.SupportedGroups & DF_DSM2) == DF_DSM2)
+    {
+        g_DSM_Entry.Size = sizeof(TW_ENTRYPOINT);
+        // do a MSG_GET to fill our entrypoints
+  
+        if(TWRC_SUCCESS != (ret = _DSM_Entry(
                                 &(m_MyInfo),
                                 0,
                                 DG_CONTROL,
                                 DAT_ENTRYPOINT,
                                 MSG_GET,
                                 (pTW_ENTRYPOINT)&g_DSM_Entry)))
-    {
-      PrintCMDMessage("DG_CONTROL / DAT_ENTRYPOINT / MSG_GET Failed: %d\n", ret);
-      return;
+        {
+            PrintCMDMessage("DG_CONTROL / DAT_ENTRYPOINT / MSG_GET Failed: %d\n", ret);
+            return;
+        }
     }
-  }
 
-  PrintCMDMessage("Successfully opened the DSM\n");
-  m_DSMState = 3;
+    PrintCMDMessage("Successfully opened the DSM\n");
+    m_DSMState = 3;
 
-  // get list of available sources
-  m_DataSources.erase(m_DataSources.begin(), m_DataSources.end());
-  getSources();
+    // get list of available sources
+    m_DataSources.erase(m_DataSources.begin(), m_DataSources.end());
+    getSources();
 
-  return;
+    Logger::Log("=== DSM Connection Process Completed ===");
+
+    return;
 }
 
 //////////////////////////////////////////////////////////////////////////////
 void TwainApp::disconnectDSM()
 {
+  Logger::Log("=== Starting DSM Disconnection Process ===");
+  Logger::Log("Current DSM State: %d", m_DSMState);
+
   if(m_DSMState < 3)
   {
-    PrintCMDMessage("The DSM has not been opened, open it first\n");
+    Logger::Log("Error: DSM not connected (State < 3), no need to disconnect");
+    PrintCMDMessage("The DSM is not connected\n");
+    return;
   }
 
-  TW_UINT16 ret = _DSM_Entry(
-    &(m_MyInfo),
+  TW_UINT16 ret = TWRC_SUCCESS;
+  
+  Logger::Log("Attempting to close DSM connection...");
+  if(TWRC_SUCCESS != (ret = _DSM_Entry(
+    &m_MyInfo,
     0,
     DG_CONTROL,
     DAT_PARENT,
     MSG_CLOSEDSM,
-    (TW_MEMREF)&m_Parent);
-
-  if(TWRC_SUCCESS == ret)
+    (TW_MEMREF)&m_Parent)))
   {
-    PrintCMDMessage("Successfully closed the DSM\n");
-    m_DSMState = 2;
+    Logger::Log("Error: Failed to close DSM. Return code: %u", ret);
+    PrintCMDMessage("DG_CONTROL / DAT_PARENT / MSG_CLOSEDSM Failed: %u\n", ret);
+    return;
   }
   else
   {
-    printError(0, "Failed to close the DSM");
+    Logger::Log("DSM closed successfully");
   }
 
+  Logger::Log("Unloading DSM library...");
+
+
+  m_DSMState = 2;
+  Logger::Log("DSM State set to 2");
+
+  Logger::Log("=== DSM Disconnection Process Completed ===");
+  PrintCMDMessage("Successfully closed the DSM\n");
   return;
 }
 
@@ -436,54 +461,61 @@ pTW_IDENTITY TwainApp::selectDefaultDataSource()
 //////////////////////////////////////////////////////////////////////////////
 void TwainApp::loadDS(const TW_INT32 _dsID)
 {
-  // The application must be in state 3 to open a Data Source.
+  Logger::Log("=== Starting Data Source Loading Process ===");
+  Logger::Log("Attempting to load DS with ID: %d", _dsID);
+  Logger::Log("Current DSM State: %d", m_DSMState);
+
   if(m_DSMState < 3)
   {
+    Logger::Log("Error: DSM not opened (State < 3)");
     PrintCMDMessage("The DSM needs to be opened first.\n");
     return;
   }
   else if(m_DSMState > 3)
   {
+    Logger::Log("Error: Source already opened (State > 3)");
     PrintCMDMessage("A source has already been opened, please close it first\n");
     return;
   }
 
-  // Reinitilize these 
-  m_nGetLableSupported  = TWCC_SUCCESS;
-  m_nGetHelpSupported   = TWCC_SUCCESS;
+  Logger::Log("Reinitializing support flags");
+  m_nGetLableSupported = TWCC_SUCCESS;
+  m_nGetHelpSupported = TWCC_SUCCESS;
 
   if(_dsID > 0)
   {
-    // first find the data source with id = _dsID
+    Logger::Log("Searching for data source with ID: %d", _dsID);
     m_pDataSource = 0;
     unsigned int x = 0;
     for(; x < m_DataSources.size(); ++x)
     {
+      Logger::Log("Checking source ID: %d", m_DataSources[x].Id);
       if(_dsID == (TW_INT32)m_DataSources[x].Id)
       {
         m_pDataSource = &(m_DataSources[x]);
+        Logger::Log("Found matching data source");
         break;
       }
     }
 
     if(0 == m_pDataSource)
     {
+      Logger::Log("Error: Data source with ID %d not found", _dsID);
       PrintCMDMessage("Data source with id: [%u] can not be found\n", _dsID);
       return;
     }
   }
   else
   {
-    //Open the default
-      memset(&_gSource, 0, sizeof(TW_IDENTITY));
-      m_pDataSource = &_gSource;
+    Logger::Log("Using default data source");
+    memset(&_gSource, 0, sizeof(TW_IDENTITY));
+    m_pDataSource = &_gSource;
   }
 
   TW_CALLBACK callback = {0};
+  Logger::Log("Attempting to open data source...");
 
-  // open the specific data source
-  TW_UINT16 twrc;
-  twrc = _DSM_Entry(
+  TW_UINT16 twrc = _DSM_Entry(
     &m_MyInfo,
     0,
     DG_CONTROL,
@@ -491,74 +523,80 @@ void TwainApp::loadDS(const TW_INT32 _dsID)
     MSG_OPENDS,
     (TW_MEMREF) m_pDataSource);
 
+  Logger::Log("DSM_Entry return code: %u", twrc);
+
   switch (twrc)
   {
   case TWRC_SUCCESS:
+    Logger::Log("Data source successfully opened");
     PrintCMDMessage("Data source successfully opened!\n");
-    // Transition application to state 4
     m_DSMState = 4;
+    Logger::Log("DSM State set to 4");
 
     callback.CallBackProc = (TW_MEMREF)DSMCallback;
-    /* RefCon, On 32bit Could be used to store a pointer to this class to help 
-       passing the message on to be processed.  But RefCon is too small to store
-       a pointer on 64bit.  For 64bit RefCon could storing an index to some 
-       global memory array.  But if there is only one instance of the Application 
-       Class connecting to the DSM then the single global pointer to the 
-       application class can be used, and the RefCon can be ignored as we do here. */
-    callback.RefCon       = 0; 
+    callback.RefCon = 0;
 
-	// Windows...
-	#if defined(TWNDS_OS_WIN)
-		if ((getAppIdentity()->SupportedGroups & DF_DSM2) && (m_pDataSource->SupportedGroups & DF_DS2))
-		{
-		  if(TWRC_SUCCESS != (twrc = DSM_Entry(DG_CONTROL, DAT_CALLBACK, MSG_REGISTER_CALLBACK, (TW_MEMREF)&callback)))
-		  {
-		    PrintCMDMessage("DG_CONTROL / DAT_CALLBACK / MSG_REGISTER_CALLBACK Failed: %u\n", twrc);
-		  }
-		  else
-		  {
-		    gUSE_CALLBACKS = true;
-		  }
-		}
-		else
-		{
-          PrintCMDMessage("DG_CONTROL / DAT_CALLBACK / MSG_REGISTER_CALLBACK not supported\n");
-		}
-
-	// Linux and Mac OS X (if we ever support it)...
-	#else
-		if(TWRC_SUCCESS != (twrc = DSM_Entry(DG_CONTROL, DAT_CALLBACK, MSG_REGISTER_CALLBACK, (TW_MEMREF)&callback)))
-		{
-		  PrintCMDMessage("DG_CONTROL / DAT_CALLBACK / MSG_REGISTER_CALLBACK Failed: %u\n", twrc);
-		}
-		else
-		{
-		  gUSE_CALLBACKS = true;
-		}
-	#endif
-
+    #if defined(TWNDS_OS_WIN)
+    Logger::Log("Checking callback support for Windows...");
+    if ((getAppIdentity()->SupportedGroups & DF_DSM2) && (m_pDataSource->SupportedGroups & DF_DS2))
+    {
+      Logger::Log("DSM2 and DS2 support detected, registering callback");
+      if(TWRC_SUCCESS != (twrc = DSM_Entry(DG_CONTROL, DAT_CALLBACK, MSG_REGISTER_CALLBACK, (TW_MEMREF)&callback)))
+      {
+        Logger::Log("Error: Callback registration failed with code: %u", twrc);
+        PrintCMDMessage("DG_CONTROL / DAT_CALLBACK / MSG_REGISTER_CALLBACK Failed: %u\n", twrc);
+      }
+      else
+      {
+        Logger::Log("Callback registered successfully");
+        gUSE_CALLBACKS = true;
+      }
+    }
+    else
+    {
+      Logger::Log("Callback not supported");
+      PrintCMDMessage("DG_CONTROL / DAT_CALLBACK / MSG_REGISTER_CALLBACK not supported\n");
+    }
+    #else
+    Logger::Log("Registering callback for non-Windows platform");
+    if(TWRC_SUCCESS != (twrc = DSM_Entry(DG_CONTROL, DAT_CALLBACK, MSG_REGISTER_CALLBACK, (TW_MEMREF)&callback)))
+    {
+      Logger::Log("Error: Callback registration failed with code: %u", twrc);
+      PrintCMDMessage("DG_CONTROL / DAT_CALLBACK / MSG_REGISTER_CALLBACK Failed: %u\n", twrc);
+    }
+    else
+    {
+      Logger::Log("Callback registered successfully");
+      gUSE_CALLBACKS = true;
+    }
+    #endif
     break;
 
   default:
+    Logger::Log("Error: Failed to open data source");
     printError(m_pDataSource, "Failed to open data source.");
     m_pDataSource = 0;
     break;
   }
 
+  Logger::Log("=== Data Source Loading Process Completed ===");
   return;
 }
 
-//////////////////////////////////////////////////////////////////////////////
 void TwainApp::unloadDS()
 {
+  Logger::Log("=== Starting Data Source Unloading Process ===");
+  Logger::Log("Current DSM State: %d", m_DSMState);
+
   if(m_DSMState < 4)
   {
+    Logger::Log("Error: No data source opened (State < 4)");
     PrintCMDMessage("You need to open a data source first.\n");
     return;
   }
 
-  TW_UINT16 twrc;
-  twrc = _DSM_Entry(
+  Logger::Log("Attempting to close data source...");
+  TW_UINT16 twrc = _DSM_Entry(
     &m_MyInfo,
     0,
     DG_CONTROL,
@@ -566,46 +604,49 @@ void TwainApp::unloadDS()
     MSG_CLOSEDS,
     (TW_MEMREF) m_pDataSource);
 
+  Logger::Log("DSM_Entry return code: %u", twrc);
+
   switch (twrc)
   {
   case TWRC_SUCCESS:
+    Logger::Log("Data source successfully closed");
     PrintCMDMessage("Data source successfully closed\n");
-
-    // Transition application to state 3
     m_DSMState = 3;
-
-    // reset the active source pointer
+    Logger::Log("DSM State set to 3");
     m_pDataSource = 0;
+    Logger::Log("Data source pointer reset");
     break;
 
   default:
+    Logger::Log("Error: Failed to close data source");
     printError(0, "Failed to close data source.");
     break;
   }
 
+  Logger::Log("=== Data Source Unloading Process Completed ===");
   return;
 }
 
-
-//////////////////////////////////////////////////////////////////////////////
 void TwainApp::getSources()
 {
+  Logger::Log("=== Starting Get Sources Process ===");
+  Logger::Log("Current DSM State: %d", m_DSMState);
+
   if(m_DSMState < 3)
   {
+    Logger::Log("Error: DSM not opened (State < 3)");
     PrintCMDMessage("You need to open the DSM first.\n");
     return;
   }
 
-  // the list should be empty if adding to it.
-  assert( true ==  m_DataSources.empty() );
+  Logger::Log("Verifying data sources list is empty");
+  assert(true == m_DataSources.empty());
 
-  // get first
   TW_IDENTITY Source;
   memset(&Source, 0, sizeof(TW_IDENTITY));
 
-  TW_UINT16 twrc;
-
-  twrc = _DSM_Entry(
+  Logger::Log("Getting first data source...");
+  TW_UINT16 twrc = _DSM_Entry(
     &m_MyInfo,
     0,
     DG_CONTROL,
@@ -613,22 +654,27 @@ void TwainApp::getSources()
     MSG_GETFIRST,
     (TW_MEMREF) &Source);
 
+  Logger::Log("First source query return code: %u", twrc);
+
   switch (twrc)
   {
   case TWRC_SUCCESS:
+    Logger::Log("First source found: %s", Source.ProductName);
     m_DataSources.push_back(Source);
     break;
 
   case TWRC_FAILURE:
+    Logger::Log("Error: Failed to get first data source");
     printError(0, "Failed to get the data source info!");
     break;
 
   case TWRC_ENDOFLIST:
+    Logger::Log("No sources found");
     return;
     break;
   }
 
-  // get the rest of the sources
+  Logger::Log("Getting remaining sources...");
   do
   {
     memset(&Source, 0, sizeof(TW_IDENTITY));
@@ -641,24 +687,30 @@ void TwainApp::getSources()
       MSG_GETNEXT,
       (TW_MEMREF) &Source);
 
+    Logger::Log("Next source query return code: %u", twrc);
+
     switch (twrc)
     {
     case TWRC_SUCCESS:
+      Logger::Log("Additional source found: %s", Source.ProductName);
       m_DataSources.push_back(Source);
       break;
 
     case TWRC_FAILURE:
+      Logger::Log("Error: Failed to get next data source");
       printError(0, "Failed to get the rest of the data source info!");
       return;
       break;
 
     case TWRC_ENDOFLIST:
-      return;
+      Logger::Log("Reached end of sources list");
       break;
     }
   }
   while (TWRC_SUCCESS == twrc);
 
+  Logger::Log("Total sources found: %d", m_DataSources.size());
+  Logger::Log("=== Get Sources Process Completed ===");
   return;
 }
 
@@ -735,36 +787,79 @@ TW_UINT16 TwainApp::getTWCC(pTW_IDENTITY _pdestID, TW_INT16& _cc)
 //////////////////////////////////////////////////////////////////////////////
 bool TwainApp::enableDS(TW_HANDLE hWnd, BOOL bShowUI)
 {
+  Logger::Log("=== Starting Enable Data Source Process ===");
+  Logger::Log("Input Parameters:");
+  Logger::Log("- Window Handle (hWnd): %p", (void*)hWnd);
+  Logger::Log("- Show UI Flag: %d", bShowUI);
+  Logger::Log("Current DSM State: %d", m_DSMState);
+
   bool bret = true;
 
   if(m_DSMState < 4)
   {
+    Logger::Log("Error: Data source not opened (State < 4)");
     PrintCMDMessage("You need to open the data source first.\n");
     return false;
   }
 
+  // 记录UI设置前的值
+  Logger::Log("Current UI Settings:");
+  Logger::Log("- ShowUI: %d", m_ui.ShowUI);
+  Logger::Log("- ModalUI: %d", m_ui.ModalUI);
+  Logger::Log("- hParent: %p", (void*)m_ui.hParent);
+
   m_ui.ShowUI = (TW_BOOL)bShowUI;
   m_ui.ModalUI = TRUE;
   m_ui.hParent = hWnd;
+
+  // 记录UI设置后的值
+  Logger::Log("New UI Settings:");
+  Logger::Log("- ShowUI: %d", m_ui.ShowUI);
+  Logger::Log("- ModalUI: %d", m_ui.ModalUI);
+  Logger::Log("- hParent: %p", (void*)m_ui.hParent);
+  
+  Logger::Log("Changing DSM State from %d to 5", m_DSMState);
   m_DSMState = 5;
 
-  TW_UINT16 twrc = DSM_Entry(DG_CONTROL, DAT_USERINTERFACE, MSG_ENABLEDS, (TW_MEMREF)&(m_ui));
+  Logger::Log("DSM_Entry Parameters:");
+  Logger::Log("- DG_CONTROL: %d", DG_CONTROL);
+  Logger::Log("- DAT_USERINTERFACE: %d", DAT_USERINTERFACE);
+  Logger::Log("- MSG_ENABLEDS: %d", MSG_ENABLEDS);
+  Logger::Log("Calling DSM_Entry...");
 
-  if( TWRC_SUCCESS != twrc &&
-      TWRC_CHECKSTATUS != twrc )
+  TW_UINT16 twrc = DSM_Entry(DG_CONTROL, DAT_USERINTERFACE, MSG_ENABLEDS, (TW_MEMREF)&(m_ui));
+  
+  Logger::Log("DSM_Entry Return Code: %u", twrc);
+
+  if(TWRC_SUCCESS != twrc && TWRC_CHECKSTATUS != twrc)
   {
+    Logger::Log("Error: Failed to enable source. Return code: %u", twrc);
+    Logger::Log("Reverting DSM State back to 4");
     m_DSMState = 4;
     printError(m_pDataSource, "Cannot enable source");
     bret = false;
   }
+  else
+  {
+    if(TWRC_SUCCESS == twrc)
+    {
+      Logger::Log("Data source enabled successfully (TWRC_SUCCESS)");
+    }
+    else if(TWRC_CHECKSTATUS == twrc)
+    {
+      Logger::Log("Data source enabled with check status (TWRC_CHECKSTATUS)");
+    }
 
-  // Usually at this point the application sits here and waits for the
-  // scan to start. We are notified that we can start a scan through
-  // the DSM's callback mechanism. The callback was registered when the DSM
-  // was opened.
-  // If callbacks are not being used, then the DSM will be polled to see
-  // when the DS is ready to start scanning.
+    Logger::Log("Callback Information:");
+    Logger::Log("- Using Callbacks: %s", gUSE_CALLBACKS ? "Yes" : "No");
+    if(!gUSE_CALLBACKS)
+    {
+      Logger::Log("Note: DSM will be polled for scan readiness");
+    }
+  }
 
+  Logger::Log("=== Enable Data Source Process Completed (Result: %s) ===", 
+              bret ? "Success" : "Failed");
   return bret;
 }
 

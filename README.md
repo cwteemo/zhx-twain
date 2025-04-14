@@ -1,6 +1,3 @@
-# zhx-twain
-扫描仪驱动
-
 # TWAIN Samples
 
 Use the TWAIN 2 sample data source and application, to test
