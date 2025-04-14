@@ -3,79 +3,39 @@
 #include <afxinet.h>
 #include <afxsock.h>
 #include <exception>
+#include <string>
+#include <map>
 #include "../src/logger.h"
 
-// 前向声明
-class CInternetServerContext;
+// 自定义消息定义
+#define WM_HTTP_REQUEST (WM_USER + 100)
+#define WM_GET_SCANNER_LIST (WM_USER + 101)
 
-// 自定义HTTP服务器类
-class CInternetServer : public CObject {
-public:
-    CInternetServer(CInternetSession* pSession) : m_pSession(pSession) {}
-    virtual ~CInternetServer() {}
-
-    bool Create(int port) {
-        // 创建服务器套接字
-        return m_socket.Create(port) && m_socket.Listen(5);
-    }
-
-    void Close() {
-        m_socket.Close();
-    }
-
-    CInternetServerContext* GetContext();
-
-protected:
-    CInternetSession* m_pSession;
-    CSocket m_socket;
-};
-
-// 自定义HTTP服务器上下文类
-class CInternetServerContext : public CObject {
-public:
-    CInternetServerContext(CInternetServer* pServer, CSocket& socket) 
-        : m_pServer(pServer), m_socket(socket) {}
-    virtual ~CInternetServerContext() {
-        m_socket.Close();
-    }
-
-    CString GetRequest() {
-        char buffer[1024];
-        int bytesRead = m_socket.Receive(buffer, sizeof(buffer) - 1);
-        if (bytesRead > 0) {
-            buffer[bytesRead] = '\0';
-            return CString(buffer);
-        }
-        return _T("");
-    }
-
-    void WriteString(const CString& str) {
-        m_socket.Send((LPCTSTR)str, str.GetLength() * sizeof(TCHAR));
-    }
-
-    void Close() {
-        m_socket.Close();
-    }
-
-protected:
-    CInternetServer* m_pServer;
-    CSocket& m_socket;
-};
-
-// 实现 GetContext 方法
-CInternetServerContext* CInternetServer::GetContext() {
-    CSocket clientSocket;
-    if (m_socket.Accept(clientSocket)) {
-        return new CInternetServerContext(this, clientSocket);
-    }
-    return nullptr;
-}
+// 函数声明
+std::string buildJSON(const std::map<std::string, std::string>& params, const std::string& url = "", const std::string& requestType = "");
 
 // Declare 'lastResponse' as a CString
 CString lastResponse;
 
 // Initialize 'lastResponse' with a default value or fetch from a relevant source
 // Example: lastResponse = GetLastResponse(); // Assuming GetLastResponse() is a function that retrieves the last response
+
+// 声明辅助方法
+void ParseHttpRequest(const std::string& request, std::string& url, std::string& params, 
+                     std::map<std::string, std::string>& paramsMap, std::string& requestType);
+void ParseUrlParameters(const std::string& fullURL, std::string& url, std::string& params, 
+                        std::map<std::string, std::string>& paramsMap);
+void ParseRequestBody(const std::string& request, const std::string& params, 
+                     std::map<std::string, std::string>& paramsMap, std::string& requestType);
+void ParseFormData(const std::string& request, const std::string& body, 
+                  std::map<std::string, std::string>& paramsMap, std::string& requestType);
+void ParseFormUrlEncoded(const std::string& body, 
+                        std::map<std::string, std::string>& paramsMap, std::string& requestType);
+void SendMessageToMainWindow(HWND hMainWnd, const std::map<std::string, std::string>& paramsMap, 
+                            const std::string& url, const std::string& requestType, bool& messageSent);
+std::string BuildHttpResponse(HttpServer* pHttpServer, HWND hMainWnd, bool scannerListRequested, 
+                             bool containsScannersKeyword, const std::string& params, const std::string& request);
+std::string GetScannerListResponse(HttpServer* pHttpServer, HWND hMainWnd);
 
 bool HttpServer::Start(int port) {
     try {
@@ -297,311 +257,43 @@ UINT HttpServer::ProcessRequest(LPVOID pParam) {
             
             Logger::Log("Received HTTP request: %s", request.c_str());
             
-            // 解析HTTP请求中的参数
+            // 解析HTTP请求
             std::string url = "/";
             std::string params = "";
+            std::map<std::string, std::string> paramsMap;
+            std::string requestType = "";
             
-            // 查找第一个空格（第一个空格之后到第二个空格之前是URL）
-            size_t firstSpacePos = request.find(" ");
-            if (firstSpacePos != std::string::npos) {
-                size_t secondSpacePos = request.find(" ", firstSpacePos + 1);
-                if (secondSpacePos != std::string::npos) {
-                    // 提取URL（不包括HTTP参数）
-                    std::string fullURL = request.substr(firstSpacePos + 1, secondSpacePos - firstSpacePos - 1);
-                    Logger::Log("Full URL from request: %s", fullURL.c_str());
-                    
-                    // 查找URL中的参数（以?开始）
-                    size_t paramPos = fullURL.find("?");
-                    if (paramPos != std::string::npos) {
-                        url = fullURL.substr(0, paramPos);
-                        params = fullURL.substr(paramPos + 1);
-                        Logger::Log("URL path: %s, Parameters: %s", url.c_str(), params.c_str());
-                    } else {
-                        url = fullURL;
-                        Logger::Log("URL path with no parameters: %s", url.c_str());
-                    }
-                }
-            }
-            
-            // 同时从POST请求体中解析参数
-            size_t bodyPos = request.find("\r\n\r\n");
-            if (bodyPos != std::string::npos && bodyPos + 4 < request.length()) {
-                std::string body = request.substr(bodyPos + 4);
-                if (!body.empty()) {
-                    Logger::Log("Request body: %s", body.c_str());
-                    
-                    // 检查是否为 form-data 格式
-                    if (request.find("Content-Type: multipart/form-data") != std::string::npos) {
-                        Logger::Log("Detected multipart/form-data request");
-                        
-                        // 解析 form-data 格式
-                        std::string boundary;
-                        size_t boundaryPos = request.find("boundary=");
-                        if (boundaryPos != std::string::npos) {
-                            size_t boundaryEnd = request.find("\r\n", boundaryPos);
-                            if (boundaryEnd != std::string::npos) {
-                                boundary = request.substr(boundaryPos + 9, boundaryEnd - boundaryPos - 9);
-                                Logger::Log("Form boundary: %s", boundary.c_str());
-                                
-                                // 寻找 "handle" 字段
-                                std::string searchName = "name=\"handle\"";
-                                size_t handlePos = body.find(searchName);
-                                if (handlePos != std::string::npos) {
-                                    // 找到值的开始位置
-                                    size_t valueStart = body.find("\r\n\r\n", handlePos);
-                                    if (valueStart != std::string::npos) {
-                                        valueStart += 4; // 跳过 \r\n\r\n
-                                        
-                                        // 找到值的结束位置
-                                        size_t valueEnd = body.find(boundary, valueStart);
-                                        if (valueEnd != std::string::npos && valueEnd > valueStart) {
-                                            // 提取值
-                                            std::string value = body.substr(valueStart, valueEnd - valueStart - 2); // -2 去掉末尾的 \r\n
-                                            Logger::Log("Found handle value: %s", value.c_str());
-                                            
-                                            // 将提取的值添加到params
-                                            if (params.empty()) {
-                                                params = "handle=" + value;
-                                            } else {
-                                                params += "&handle=" + value;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } else if (request.find("Content-Type: application/x-www-form-urlencoded") != std::string::npos) {
-                        // 标准表单编码
-                        if (params.empty()) {
-                            params = body;
-                        } else {
-                            params += "&" + body;
-                        }
-                    } else {
-                        // 其他格式，默认添加
-                        if (params.empty()) {
-                            params = body;
-                        } else {
-                            params += "&" + body;
-                        }
-                    }
-                    
-                    Logger::Log("Combined parameters (URL + body): %s", params.c_str());
-                }
-            }
+            // 解析HTTP请求，提取URL、参数和请求类型
+            ParseHttpRequest(request, url, params, paramsMap, requestType);
             
             bool messageSent = false;
             
-            // 发送消息到主窗口 - 再次验证窗口有效性
+            // 发送消息到主窗口
             if (hMainWnd && ::IsWindow(hMainWnd)) {
-                Logger::Log("Posting WM_HTTP_REQUEST message to main window (handle: %p)", hMainWnd);
-                
-                try {
-                    // 创建包含URL和参数的格式化消息
-                    CString messageContent;
-                    if (!params.empty()) {
-                        messageContent.Format(_T("URL: %s\r\nParams: %s"), 
-                                            url.c_str(), 
-                                            params.c_str());
-                        
-                        // 检查是否包含handle=scanners参数，特别标记这种请求
-                        if (params.find("handle=scanners") != std::string::npos) {
-                            messageContent += _T("\r\nRequestType: ScannerList");
-                            Logger::Log("Adding ScannerList request type marker to message");
-                        }
-                        // 检查 form-data 中是否包含 handle=scanners
-                        else if (request.find("name=\"handle\"") != std::string::npos && 
-                                request.find("scanners") != std::string::npos) {
-                            messageContent += _T("\r\nRequestType: ScannerList");
-                            Logger::Log("Adding ScannerList request type marker for form-data");
-                        }
-                    } else {
-                        messageContent.Format(_T("URL: %s\r\nNo parameters"), 
-                                            url.c_str());
-                    }
-                    
-                    CString* pRequest = new CString(messageContent);
-                    if (!pRequest) {
-                        Logger::Log("Failed to allocate memory for request");
-                    } else {
-                        // 检查是否包含scanners关键词
-                        bool containsScanners = (pRequest->Find(_T("scanners")) != -1);
-                        
-                        BOOL result = ::PostMessage(hMainWnd, WM_HTTP_REQUEST, (WPARAM)pRequest, 0);
-                        if (!result) {
-                            Logger::Log("PostMessage failed. Error: %d", GetLastError());
-                            delete pRequest;  // 确保内存被释放
-                            pRequest = nullptr;
-                        } else {
-                            Logger::Log("PostMessage succeeded");
-                            messageSent = true;
-                            
-                            // 等待一小段时间，让主窗口有机会处理消息
-                            Sleep(100);
-                        }
-                        
-                        // 保存是否包含scanners关键词的结果，用于构建响应
-                        if (containsScanners) {
-                            Logger::Log("Request contains 'scanners' keyword");
-                        }
-                    }
-                } catch (std::exception& e) {
-                    Logger::Log("Exception while posting message: %s", e.what());
-                } catch (...) {
-                    Logger::Log("Unknown exception while posting message");
-                }
+                SendMessageToMainWindow(hMainWnd, paramsMap, url, requestType, messageSent);
             } else {
                 Logger::Log("No valid main window handle available (handle: %p, IsWindow: %d)", 
                         hMainWnd, hMainWnd ? ::IsWindow(hMainWnd) : 0);
             }
             
-            // 无论主窗口是否处理了消息，都发送HTTP响应
-            std::string response;
+            // 检查请求是否是扫描仪列表请求
+            bool scannerListRequested = (requestType == "ScannerList");
+            Logger::Log("Scanner list requested: %s", scannerListRequested ? "YES" : "NO");
 
-            // 检查请求是否包含handle=scanners参数
-            bool scannerListRequested = false;
-
-            // 优先检查参数中的handle=scanners
-            if (params.find("handle=scanners") != std::string::npos) {
+            // 检查参数中是否包含handle=scanners
+            if (!scannerListRequested && paramsMap.find("handle") != paramsMap.end() && paramsMap["handle"] == "scanners") {
                 scannerListRequested = true;
+                requestType = "ScannerList";
                 Logger::Log("Scanner list explicitly requested via params");
             }
 
-            // 检查是否在 form-data 中传递了 handle=scanners
-            if (!scannerListRequested && 
-                request.find("name=\"handle\"") != std::string::npos && 
-                request.find("scanners") != std::string::npos) {
-                scannerListRequested = true;
-                Logger::Log("Scanner list requested via form-data");
-            }
-
-            // 如果参数中没有找到，检查整个请求
-            if (!scannerListRequested && request.find("handle=scanners") != std::string::npos) {
-                scannerListRequested = true;
-                Logger::Log("Scanner list requested detected in full request");
-            }
-
-            Logger::Log("Scanner list requested: %s", scannerListRequested ? "YES" : "NO");
-
-            // 检查请求是否包含scanners关键词但不是handle=scanners参数
-            bool containsScannersKeyword = (!scannerListRequested && (request.find("scanners") != std::string::npos));
+            // 检查请求是否包含scanners关键词但不是扫描仪列表请求
+            bool containsScannersKeyword = (!scannerListRequested && request.find("scanners") != std::string::npos);
             Logger::Log("Contains 'scanners' keyword: %s", containsScannersKeyword ? "YES" : "NO");
             
-            if (scannerListRequested) {
-                // 处理handle=scanners请求
-                std::string scannerResponse;
-                
-                // 使用传递给函数的HttpServer实例
-                Logger::Log("Using HttpServer instance from parameters: %p", pHttpServer);
-                
-                // 验证HttpServer实例
-                CString lastResponse;
-                if (pHttpServer) {
-                    // 直接从HttpServer实例获取最后的响应
-                    lastResponse = pHttpServer->GetLastResponse();
-                    Logger::Log("Retrieved last response directly from HttpServer instance: %s", (LPCTSTR)lastResponse);
-                } else {
-                    Logger::Log("Invalid HttpServer instance");
-                    
-                    // 尝试从窗口用户数据获取HttpServer实例（备用方法）
-                    if (hMainWnd && ::IsWindow(hMainWnd)) {
-                        HttpServer* pBackupServer = (HttpServer*)::GetWindowLongPtr(hMainWnd, GWLP_USERDATA);
-                        if (pBackupServer) {
-                            lastResponse = pBackupServer->GetLastResponse();
-                            Logger::Log("Retrieved last response from window user data backup: %s", (LPCTSTR)lastResponse);
-                        } else {
-                            Logger::Log("Failed to get HttpServer instance from window user data");
-                        }
-                    } else {
-                        Logger::Log("Invalid main window handle, cannot get HttpServer instance");
-                    }
-                }
-                
-                if (!lastResponse.IsEmpty()) {
-                    // 将CString转换为std::string - 处理UNICODE/MBCS差异
-                    #ifdef _UNICODE
-                    // 如果是Unicode版本，需要转换
-                    int len = lastResponse.GetLength();
-                    char* buffer = new char[len*2 + 1]; // 为安全起见乘以2
-                    // 转换宽字符到多字节字符
-                    int size = WideCharToMultiByte(CP_ACP, 0, lastResponse.GetBuffer(), -1,
-                                                    buffer, len*2 + 1, NULL, NULL);
-                    lastResponse.ReleaseBuffer();
-                    if (size > 0) {
-                        scannerResponse = buffer;
-                    } else {
-                        scannerResponse = "SCANNERS:Conversion error";
-                        Logger::Log("Error converting Unicode to ASCII");
-                    }
-                    delete[] buffer; // 移动到这里确保无论如何都会释放
-                    #else
-                    // 非Unicode版本可以直接转换
-                    scannerResponse = (LPCSTR)lastResponse;
-                    #endif
-                    
-                    Logger::Log("Returning scanner list: %s", scannerResponse.c_str());
-                } else {
-                    // 尝试从应用程序配置文件中获取备份扫描仪列表
-                    CString backupList = AfxGetApp()->GetProfileString(_T("Settings"), _T("LastScannerList"), _T(""));
-                    if (!backupList.IsEmpty()) {
-                        Logger::Log("Using backup scanner list from app profile: %s", (LPCTSTR)backupList);
-                        
-                        #ifdef _UNICODE
-                        // 转换备份列表
-                        int len = backupList.GetLength();
-                        char* buffer = new char[len*2 + 1]; // 为安全起见乘以2
-                        int size = WideCharToMultiByte(CP_ACP, 0, backupList.GetBuffer(), -1,
-                                                       buffer, len*2 + 1, NULL, NULL);
-                        backupList.ReleaseBuffer();
-                        if (size > 0) {
-                            scannerResponse = buffer;
-                        } else {
-                            scannerResponse = "SCANNERS:Backup conversion error";
-                        }
-                        delete[] buffer;
-                        #else
-                        scannerResponse = (LPCSTR)backupList;
-                        #endif
-                    } else {
-                        scannerResponse = "SCANNERS:No data available";
-                        Logger::Log("No scanner list available, returning default message");
-                    }
-                }
-                
-                response = "HTTP/1.1 200 OK\r\n"
-                          "Content-Type: text/plain\r\n"
-                          "Connection: close\r\n"
-                          "\r\n" + scannerResponse;
-            }
-            else if (containsScannersKeyword) {
-                // 特殊响应
-                response = "HTTP/1.1 200 OK\r\n"
-                          "Content-Type: text/plain\r\n"
-                          "Connection: close\r\n"
-                          "\r\n"
-                          "123456";
-            } else if (!params.empty()) {
-                // 包含其他参数的响应
-                std::string paramResponse = "HTTP/1.1 200 OK\r\n"
-                                          "Content-Type: text/html\r\n"
-                                          "Connection: close\r\n"
-                                          "\r\n"
-                                          "<html><body>"
-                                          "<h1>TWAIN HTTP Server</h1>"
-                                          "<p>Received parameters: " + params + "</p>"
-                                          "</body></html>";
-                response = paramResponse;
-            } else {
-                // 普通响应
-                response = "HTTP/1.1 200 OK\r\n"
-                          "Content-Type: text/html\r\n"
-                          "Connection: close\r\n"
-                          "\r\n"
-                          "<html><body>"
-                          "<h1>TWAIN HTTP Server</h1>"
-                          "<p>Request received and processed by main window.</p>"
-                          "</body></html>";
-            }
+            // 构建并发送HTTP响应
+            std::string response = BuildHttpResponse(pHttpServer, hMainWnd, scannerListRequested, 
+                                                   containsScannersKeyword, params, request);
             
             send(clientSocket, response.c_str(), response.length(), 0);
             Logger::Log("Response sent to client");
@@ -640,4 +332,476 @@ void HttpServer::PostMessageToMain(UINT message, WPARAM wParam, LPARAM lParam)
     {
         ::PostMessage(hMainWnd, message, wParam, lParam);
     }
+}
+
+// 简单JSON构建函数
+std::string buildJSON(const std::map<std::string, std::string>& params, const std::string& url, const std::string& requestType) {
+    std::string json = "{";
+    
+    // 添加URL字段
+    if (!url.empty()) {
+        json += "\"url\":\"" + url + "\",";
+    }
+    
+    // 添加requestType字段
+    if (!requestType.empty()) {
+        json += "\"requestType\":\"" + requestType + "\",";
+    }
+    
+    // 添加params对象
+    json += "\"params\":{";
+    bool first = true;
+    for (const auto& param : params) {
+        if (!first) {
+            json += ",";
+        }
+        json += "\"" + param.first + "\":\"" + param.second + "\"";
+        first = false;
+    }
+    json += "}}";
+    
+    return json;
+}
+
+// 实现辅助方法
+void ParseHttpRequest(const std::string& request, std::string& url, std::string& params, 
+                     std::map<std::string, std::string>& paramsMap, std::string& requestType) {
+    Logger::Log("Parsing HTTP request");
+    
+    // 检查HTTP请求类型
+    if (request.find("GET") == 0) {
+        requestType = "GET";
+    } else if (request.find("POST") == 0) {
+        requestType = "POST";
+    } else {
+        // 默认为GET
+        requestType = "GET";
+    }
+    
+    Logger::Log("Request type: %s", requestType.c_str());
+    
+    // 解析URL和参数
+    size_t urlStart = request.find(' ') + 1;
+    size_t urlEnd = request.find(' ', urlStart);
+    
+    if (urlStart != std::string::npos && urlEnd != std::string::npos) {
+        std::string fullURL = request.substr(urlStart, urlEnd - urlStart);
+        
+        // 解析URL参数
+        ParseUrlParameters(fullURL, url, params, paramsMap);
+        
+        // 如果是POST请求，还需要解析请求体
+        if (requestType == "POST") {
+            ParseRequestBody(request, params, paramsMap, requestType);
+        }
+        
+        // 特殊处理：检查是否是扫描仪列表请求
+        if ((url == "/scanners" || url == "/scanners/") || 
+            (paramsMap.find("handle") != paramsMap.end() && paramsMap["handle"] == "scanners")) {
+            requestType = "ScannerList";
+        }
+    }
+    
+    Logger::Log("Parsed URL: %s", url.c_str());
+    Logger::Log("Parsed params: %s", params.c_str());
+}
+
+void ParseUrlParameters(const std::string& fullURL, std::string& url, std::string& params, 
+                        std::map<std::string, std::string>& paramsMap) {
+    Logger::Log("Parsing URL parameters from: %s", fullURL.c_str());
+    
+    // 查找参数分隔符'?'
+    size_t paramPos = fullURL.find('?');
+    
+    if (paramPos != std::string::npos) {
+        // 有参数
+        url = fullURL.substr(0, paramPos);
+        params = fullURL.substr(paramPos + 1);
+        
+        // 解析参数
+        size_t pos = 0;
+        std::string param;
+        while ((pos = params.find('&')) != std::string::npos || !params.empty()) {
+            param = (pos == std::string::npos) ? params : params.substr(0, pos);
+            
+            size_t equalPos = param.find('=');
+            if (equalPos != std::string::npos) {
+                std::string key = param.substr(0, equalPos);
+                std::string value = param.substr(equalPos + 1);
+                paramsMap[key] = value;
+                Logger::Log("Parsed parameter: %s = %s", key.c_str(), value.c_str());
+            }
+            
+            if (pos == std::string::npos) {
+                break;
+            }
+            params = params.substr(pos + 1);
+        }
+    } else {
+        // 没有参数
+        url = fullURL;
+        params = "";
+    }
+}
+
+void ParseRequestBody(const std::string& request, const std::string& params, 
+                     std::map<std::string, std::string>& paramsMap, std::string& requestType) {
+    Logger::Log("Parsing request body");
+    
+    // 查找请求头结束标记
+    size_t bodyStart = request.find("\r\n\r\n");
+    if (bodyStart == std::string::npos) {
+        Logger::Log("No request body found");
+        return;
+    }
+    
+    bodyStart += 4; // 跳过"\r\n\r\n"
+    std::string body = request.substr(bodyStart);
+    
+    // 检查Content-Type
+    size_t contentTypePos = request.find("Content-Type:");
+    if (contentTypePos != std::string::npos) {
+        size_t contentTypeEnd = request.find("\r\n", contentTypePos);
+        std::string contentType = request.substr(contentTypePos + 14, contentTypeEnd - (contentTypePos + 14));
+        
+        // 去除前后空格
+        contentType.erase(0, contentType.find_first_not_of(" \t"));
+        contentType.erase(contentType.find_last_not_of(" \t") + 1);
+        
+        Logger::Log("Content-Type: %s", contentType.c_str());
+        
+        if (contentType.find("multipart/form-data") != std::string::npos) {
+            // 处理multipart/form-data
+            ParseFormData(request, body, paramsMap, requestType);
+        } else if (contentType.find("application/x-www-form-urlencoded") != std::string::npos) {
+            // 处理application/x-www-form-urlencoded
+            ParseFormUrlEncoded(body, paramsMap, requestType);
+        } else if (contentType.find("application/json") != std::string::npos) {
+            // 处理JSON请求
+            // 这里简化处理，假设为JSON格式
+            requestType = "JSON";
+            
+            // 实际项目中应该使用JSON解析库，这里简化处理
+            Logger::Log("JSON body found: %s", body.c_str());
+            
+            // 假设JSON格式为 {"key1":"value1","key2":"value2"}
+            // 简单解析，无法处理嵌套JSON，实际项目中应使用JSON库
+            size_t pos = 0;
+            while ((pos = body.find("\":\"", pos)) != std::string::npos) {
+                // 向前查找键名开始位置
+                size_t keyStart = body.rfind("\"", pos - 1);
+                if (keyStart == std::string::npos) continue;
+                
+                std::string key = body.substr(keyStart + 1, pos - keyStart - 1);
+                
+                // 向后查找值结束位置
+                size_t valueStart = pos + 3;
+                size_t valueEnd = body.find("\"", valueStart);
+                if (valueEnd == std::string::npos) continue;
+                
+                std::string value = body.substr(valueStart, valueEnd - valueStart);
+                
+                paramsMap[key] = value;
+                Logger::Log("Parsed JSON parameter: %s = %s", key.c_str(), value.c_str());
+                
+                pos = valueEnd + 1;
+            }
+        }
+    }
+}
+
+void ParseFormData(const std::string& request, const std::string& body, 
+                  std::map<std::string, std::string>& paramsMap, std::string& requestType) {
+    Logger::Log("Parsing multipart/form-data");
+    
+    // 获取boundary
+    size_t boundaryPos = request.find("boundary=");
+    if (boundaryPos == std::string::npos) {
+        Logger::Log("No boundary found in multipart/form-data");
+        return;
+    }
+    
+    size_t boundaryEnd = request.find("\r\n", boundaryPos);
+    std::string boundary = request.substr(boundaryPos + 9, boundaryEnd - (boundaryPos + 9));
+    
+    // 去除引号（如果有）
+    if (!boundary.empty() && boundary.front() == '"' && boundary.back() == '"') {
+        boundary = boundary.substr(1, boundary.length() - 2);
+    }
+    
+    Logger::Log("Found boundary: %s", boundary.c_str());
+    
+    // 完整的boundary格式为 --boundary\r\n
+    std::string fullBoundary = "--" + boundary + "\r\n";
+    std::string endBoundary = "--" + boundary + "--";
+    
+    // 解析多部分数据
+    size_t pos = 0;
+    while ((pos = body.find(fullBoundary, pos)) != std::string::npos) {
+        pos += fullBoundary.length();
+        
+        // 查找表单项头部结束位置
+        size_t headerEnd = body.find("\r\n\r\n", pos);
+        if (headerEnd == std::string::npos) break;
+        
+        // 解析表单项头部
+        std::string header = body.substr(pos, headerEnd - pos);
+        
+        // 查找名称
+        size_t namePos = header.find("name=\"");
+        if (namePos == std::string::npos) continue;
+        
+        size_t nameEnd = header.find("\"", namePos + 6);
+        if (nameEnd == std::string::npos) continue;
+        
+        std::string name = header.substr(namePos + 6, nameEnd - (namePos + 6));
+        
+        // 查找表单项内容
+        size_t contentStart = headerEnd + 4;
+        size_t contentEnd = body.find("\r\n--" + boundary, contentStart);
+        if (contentEnd == std::string::npos) break;
+        
+        std::string content = body.substr(contentStart, contentEnd - contentStart);
+        
+        // 存储表单项
+        paramsMap[name] = content;
+        Logger::Log("Parsed form-data: %s = %s", name.c_str(), content.c_str());
+        
+        pos = contentEnd;
+    }
+}
+
+void ParseFormUrlEncoded(const std::string& body, 
+                        std::map<std::string, std::string>& paramsMap, std::string& requestType) {
+    Logger::Log("Parsing application/x-www-form-urlencoded");
+    
+    // 解析类似URL参数的格式：key1=value1&key2=value2
+    std::string params = body;
+    size_t pos = 0;
+    std::string param;
+    
+    while ((pos = params.find('&')) != std::string::npos || !params.empty()) {
+        param = (pos == std::string::npos) ? params : params.substr(0, pos);
+        
+        size_t equalPos = param.find('=');
+        if (equalPos != std::string::npos) {
+            std::string key = param.substr(0, equalPos);
+            std::string value = param.substr(equalPos + 1);
+            
+            // URL解码（简化版）
+            // TODO: 实现完整的URL解码
+            
+            paramsMap[key] = value;
+            Logger::Log("Parsed form parameter: %s = %s", key.c_str(), value.c_str());
+        }
+        
+        if (pos == std::string::npos) {
+            break;
+        }
+        params = params.substr(pos + 1);
+    }
+}
+
+void SendMessageToMainWindow(HWND hMainWnd, const std::map<std::string, std::string>& paramsMap, 
+                            const std::string& url, const std::string& requestType, bool& messageSent) {
+    Logger::Log("Sending message to main window");
+    
+    if (!hMainWnd || !::IsWindow(hMainWnd)) {
+        Logger::Log("Invalid main window handle: %p", hMainWnd);
+        messageSent = false;
+        return;
+    }
+    
+    // 构建JSON参数
+    std::string jsonParams = buildJSON(paramsMap, url, requestType);
+    Logger::Log("Built JSON params: %s", jsonParams.c_str());
+    
+    // 分配内存并复制JSON数据
+    HGLOBAL hMem = ::GlobalAlloc(GMEM_MOVEABLE, jsonParams.length() + 1);
+    if (!hMem) {
+        Logger::Log("Failed to allocate memory for params");
+        messageSent = false;
+        return;
+    }
+    
+    char* pData = (char*)::GlobalLock(hMem);
+    if (!pData) {
+        ::GlobalFree(hMem);
+        Logger::Log("Failed to lock memory");
+        messageSent = false;
+        return;
+    }
+    
+    strcpy_s(pData, jsonParams.length() + 1, jsonParams.c_str());
+    ::GlobalUnlock(hMem);
+    
+    // 使用PostMessage异步发送消息
+    BOOL result = ::PostMessage(hMainWnd, WM_HTTP_REQUEST, (WPARAM)hMem, 0);
+    
+    if (result) {
+        Logger::Log("Message sent to main window successfully");
+        messageSent = true;
+    } else {
+        Logger::Log("Failed to send message to main window: %d", GetLastError());
+        ::GlobalFree(hMem);
+        messageSent = false;
+    }
+}
+
+std::string BuildHttpResponse(HttpServer* pHttpServer, HWND hMainWnd, bool scannerListRequested, 
+                             bool containsScannersKeyword, const std::string& params, const std::string& request) {
+    Logger::Log("Building HTTP response");
+    
+    std::string response;
+    
+    // 添加HTTP响应头
+    response = "HTTP/1.1 200 OK\r\n";
+    response += "Content-Type: application/json\r\n";
+    response += "Access-Control-Allow-Origin: *\r\n";  // 允许跨域请求
+    response += "Connection: close\r\n";
+    response += "\r\n";
+    
+    // 构建响应内容
+    if (scannerListRequested) {
+        // 获取扫描仪列表
+        std::string scannerList = GetScannerListResponse(pHttpServer, hMainWnd);
+        response += scannerList;
+    } else if (containsScannersKeyword) {
+        // 尝试通过备用方式获取扫描仪列表
+        std::string scannerList = GetScannerListResponse(pHttpServer, hMainWnd);
+        response += scannerList;
+    } else {
+        // 默认响应
+        response += "{\"errorCode\":0,\"msg\":\"Request processed\",\"data\":{}}";
+    }
+    
+    Logger::Log("Response built: %s", response.c_str());
+    return response;
+}
+
+std::string GetScannerListResponse(HttpServer* pHttpServer, HWND hMainWnd) {
+    Logger::Log("Getting scanner list response");
+    
+    // 先检查是否有缓存的扫描仪列表（全局变量lastResponse）
+    if (!lastResponse.IsEmpty()) {
+        Logger::Log("Using cached scanner list");
+        
+        try {
+            // 获取缓存的扫描仪列表字符串
+            std::string cachedResponse;
+#ifdef _UNICODE
+            // Unicode版本 - 将CString (wchar_t*) 转换为UTF-8的std::string
+            // 使用安全的方式进行字符转换
+            CStringA cstrA(lastResponse);
+            cachedResponse = cstrA.GetString();
+#else
+            // ANSI版本 - 直接从CString获取char*
+            cachedResponse = lastResponse.GetString();
+#endif
+            
+            // 检查缓存的响应格式，如果已经是新格式则直接返回
+            if (cachedResponse.find("\"errorCode\"") != std::string::npos) {
+                return cachedResponse;
+            }
+            
+            // 如果是旧格式的JSON字符串，需要转换为新格式
+            // 提取scanners数组部分
+            size_t scannersPos = cachedResponse.find("\"scanners\"");
+            if (scannersPos != std::string::npos) {
+                size_t arrayStart = cachedResponse.find("[", scannersPos);
+                size_t arrayEnd = cachedResponse.find_last_of("]");
+                
+                if (arrayStart != std::string::npos && arrayEnd != std::string::npos && arrayStart < arrayEnd) {
+                    std::string scannersArray = cachedResponse.substr(arrayStart, arrayEnd - arrayStart + 1);
+                    return "{\"errorCode\":0,\"msg\":\"Scanner list retrieved\",\"data\":{\"scanners\":" + scannersArray + "}}";
+                }
+            }
+            
+            // 如果无法解析，返回一个基本的成功响应
+            return "{\"errorCode\":0,\"msg\":\"Scanner list retrieved\",\"data\":{\"scanners\":[]}}";
+        }
+        catch (std::exception& e) {
+            Logger::Log("Exception during string conversion: %s", e.what());
+            return "{\"errorCode\":1,\"msg\":\"String conversion failed\",\"data\":{}}";
+        }
+        catch (...) {
+            Logger::Log("Unknown exception during string conversion");
+            return "{\"errorCode\":1,\"msg\":\"Unknown string conversion error\",\"data\":{}}";
+        }
+    }
+    
+    // 构建一个固定的JSON响应作为备用方案
+    std::string scannersArray = "[";
+    
+    // 从主窗口获取扫描仪列表可能导致死锁，我们使用一种非阻塞的方式
+    if (hMainWnd && ::IsWindow(hMainWnd)) {
+        Logger::Log("Attempting to get scanner list from main window - using async approach");
+        
+        // 首先尝试从应用程序中直接获取扫描仪信息
+        try {
+            if (pHttpServer && AfxGetApp()) {
+                CString backupScannerList;
+                // 从应用程序配置文件中获取备份的扫描仪列表
+                backupScannerList = AfxGetApp()->GetProfileString(_T("Settings"), _T("LastScannerList"), _T(""));
+                
+                if (!backupScannerList.IsEmpty()) {
+                    // 使用安全方式转换字符串
+                    CStringA scannerListA(backupScannerList);
+                    std::string scannerListStr = scannerListA.GetString();
+                    
+                    Logger::Log("Using backup scanner list from app profile: %s", scannerListStr.c_str());
+                    
+                    // 检查前缀
+                    if (scannerListStr.find("SCANNERS:") == 0) {
+                        scannerListStr = scannerListStr.substr(9); // 去掉 "SCANNERS:" 前缀
+                        
+                        // 将旧格式转换为JSON格式
+                        bool first = true;
+                        size_t pos = 0;
+                        size_t nextPos = 0;
+                        
+                        while ((nextPos = scannerListStr.find(";", pos)) != std::string::npos) {
+                            if (nextPos > pos) {  // 确保我们有有效的字符串
+                                std::string scanner = scannerListStr.substr(pos, nextPos - pos);
+                                
+                                // 提取扫描仪名称，格式为 "[index]name"
+                                size_t nameStart = scanner.find("]");
+                                if (nameStart != std::string::npos && nameStart + 1 < scanner.length()) {
+                                    std::string scannerName = scanner.substr(nameStart + 1);
+                                    
+                                    if (!first) {
+                                        scannersArray += ",";
+                                    }
+                                    
+                                    scannersArray += "{\"name\":\"" + scannerName + "\"}";
+                                    first = false;
+                                }
+                            }
+                            
+                            pos = nextPos + 1;
+                            if (pos >= scannerListStr.length()) {
+                                break;  // 避免越界
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (std::exception& e) {
+            Logger::Log("Exception in scanner list processing: %s", e.what());
+            return "{\"errorCode\":1,\"msg\":\"Exception in scanner list processing\",\"data\":{}}";
+        }
+        catch (...) {
+            Logger::Log("Unknown exception in scanner list processing");
+            return "{\"errorCode\":1,\"msg\":\"Unknown error in scanner list processing\",\"data\":{}}";
+        }
+    } else {
+        Logger::Log("Main window handle invalid, cannot get scanner list");
+    }
+    
+    // 完成JSON响应
+    scannersArray += "]";
+    
+    // 构建新格式的响应
+    return "{\"errorCode\":0,\"msg\":\"Scanner list retrieved\",\"data\":{\"scanners\":" + scannersArray + "}}";
 }

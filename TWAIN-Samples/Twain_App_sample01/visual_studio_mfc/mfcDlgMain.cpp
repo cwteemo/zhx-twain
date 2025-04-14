@@ -510,43 +510,103 @@ LRESULT CmfcDlgMain::OnReceiveData(WPARAM wParam, LPARAM lParam)
     return 0;
 }
 
+// 简单的JSON解析函数，从JSON字符串中提取字段值
+CString ExtractJsonValue(const CString& json, const CString& field) {
+    int pos = json.Find(_T("\"") + field + _T("\":"));
+    if (pos == -1) return _T("");
+    
+    pos += field.GetLength() + 3; // 跳过 "field":
+    
+    // 检查下一个字符
+    TCHAR nextChar = json[pos];
+    if (nextChar == _T('{')) {
+        // 是一个对象，找到匹配的'}'
+        int braceCount = 1;
+        int startPos = pos;
+        pos++;
+        while (pos < json.GetLength() && braceCount > 0) {
+            if (json[pos] == _T('{')) braceCount++;
+            else if (json[pos] == _T('}')) braceCount--;
+            pos++;
+        }
+        return json.Mid(startPos, pos - startPos);
+    } else if (nextChar == _T('[')) {
+        // 是一个数组，找到匹配的']'
+        int bracketCount = 1;
+        int startPos = pos;
+        pos++;
+        while (pos < json.GetLength() && bracketCount > 0) {
+            if (json[pos] == _T('[')) bracketCount++;
+            else if (json[pos] == _T(']')) bracketCount--;
+            pos++;
+        }
+        return json.Mid(startPos, pos - startPos);
+    } else if (nextChar == _T('"')) {
+        // 是一个字符串，找到下一个非转义的引号
+        pos++; // 跳过开始的引号
+        int startPos = pos;
+        bool escaped = false;
+        while (pos < json.GetLength()) {
+            if (json[pos] == _T('\\')) {
+                escaped = !escaped;
+            } else if (json[pos] == _T('"') && !escaped) {
+                break;
+            } else {
+                escaped = false;
+            }
+            pos++;
+        }
+        return json.Mid(startPos, pos - startPos);
+    } else {
+        // 其他类型（数字、布尔值等），找到下一个逗号或大括号结束
+        int startPos = pos;
+        while (pos < json.GetLength() && json[pos] != _T(',') && json[pos] != _T('}')) {
+            pos++;
+        }
+        return json.Mid(startPos, pos - startPos);
+    }
+}
+
+// 从JSON对象中提取参数值
+CString ExtractJsonParam(const CString& paramsJson, const CString& paramName) {
+    CString searchKey = _T("\"") + paramName + _T("\":\"");
+    int pos = paramsJson.Find(searchKey);
+    if (pos == -1) return _T("");
+    
+    pos += searchKey.GetLength();
+    int endPos = paramsJson.Find(_T("\""), pos);
+    if (endPos == -1) return _T("");
+    
+    return paramsJson.Mid(pos, endPos - pos);
+}
+
 LRESULT CmfcDlgMain::OnHttpRequest(WPARAM wParam, LPARAM lParam)
 {
     Logger::Log("OnHttpRequest: Main window received HTTP request message!");
 
-    CString* pRequest = (CString*)wParam;
-    if (pRequest)
+    CString* pJsonRequest = (CString*)wParam;
+    if (pJsonRequest)
     {
-        // 提取URL和参数
-        CString urlValue = _T("(no URL)");
-        CString paramsValue = _T("(no parameters)");
-
-        // 检查是否包含"URL:"
-        int urlPos = pRequest->Find(_T("URL:"));
-        if (urlPos != -1) {
-            // 查找URL行的结束
-            int urlEndPos = pRequest->Find(_T("\r\n"), urlPos);
-            if (urlEndPos != -1) {
-                // 提取URL（跳过"URL: "前缀）
-                urlValue = pRequest->Mid(urlPos + 5, urlEndPos - urlPos - 5);
-            }
-        }
-
-        // 检查是否包含"Params:"
-        int paramsPos = pRequest->Find(_T("Params:"));
-        if (paramsPos != -1) {
-            // 提取参数（跳过"Params: "前缀）
-            paramsValue = pRequest->Mid(paramsPos + 8);
-        }
-
-        // 检查是否包含"RequestType: ScannerList"标记
-        bool isScannerListRequest = (pRequest->Find(_T("RequestType: ScannerList")) != -1);
-
-        // 检查参数中是否包含"handle=scanners"
-        bool handleScannersRequested = (paramsValue.Find(_T("handle=scanners")) != -1);
-
+        Logger::Log("Received JSON request: %s", (LPCTSTR)*pJsonRequest);
+        
+        // 从JSON中提取URL、请求类型和参数
+        CString url = ExtractJsonValue(*pJsonRequest, _T("url"));
+        CString requestType = ExtractJsonValue(*pJsonRequest, _T("requestType"));
+        CString paramsJson = ExtractJsonValue(*pJsonRequest, _T("params"));
+        
+        Logger::Log("Extracted URL: %s", (LPCTSTR)url);
+        Logger::Log("Extracted RequestType: %s", (LPCTSTR)requestType);
+        Logger::Log("Extracted Params: %s", (LPCTSTR)paramsJson);
+        
+        // 提取特定参数
+        CString handleParam = ExtractJsonParam(paramsJson, _T("handle"));
+        Logger::Log("Handle parameter: %s", (LPCTSTR)handleParam);
+        
         // 处理请求
-        if (isScannerListRequest || handleScannersRequested || pRequest->Find(_T("handle=scanners")) != -1) {
+        bool isScannerListRequest = (requestType.CompareNoCase(_T("ScannerList")) == 0);
+        bool handleScannersRequested = (handleParam.CompareNoCase(_T("scanners")) == 0);
+        
+        if (isScannerListRequest || handleScannersRequested) {
             Logger::Log("Detected scanner list request, returning scanner list");
             
             // 构建扫描仪列表
@@ -604,27 +664,22 @@ LRESULT CmfcDlgMain::OnHttpRequest(WPARAM wParam, LPARAM lParam)
                 Logger::Log("ERROR: m_httpServer is NULL, cannot set last response");
             }
         } else {
-            // 如果没有scanners关键词，显示提取的参数
-            if (paramsValue != _T("(no parameters)")) {
-                m_sStc_DS.Format(_T("Request parameters: %s"), paramsValue);
-            } else {
-                // 没有参数，显示完整请求
-                m_sStc_DS = *pRequest;
-            }
+            // 显示JSON请求内容
+            m_sStc_DS = *pJsonRequest;
         }
         
         UpdateData(FALSE);  // 更新UI显示
 
         // 记录日志
         CString strLog;
-        strLog.Format(_T("Received HTTP request content: %s"), *pRequest);
+        strLog.Format(_T("Received HTTP request content: %s"), *pJsonRequest);
         Logger::Log((LPCTSTR)strLog);
 
         // 记录到文件日志
         Logger::Log("HTTP request successfully processed by main window");
 
         // 清理数据
-        delete pRequest;
+        delete pJsonRequest;
         Logger::Log("HTTP request processing completed");
     }
     else
