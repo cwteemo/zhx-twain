@@ -9,12 +9,29 @@
 #include <condition_variable>
 #include <atomic>
 #include "../src/logger.h"
+#include <windows.h>
+#include <process.h>
+#include <afx.h>
+#include <map>
+
 // 在CYourMainDlg类的头文件中，定义一个消息宏
 #define WM_RECEIVE_DATA (WM_USER + 100)
 
 // 定义消息ID - 确保不与WM_RECEIVE_DATA冲突
 #define WM_HTTP_REQUEST (WM_USER + 101)
-#define WM_TCP_DATA_RECEIVED (WM_USER + 102)
+#define WM_TCP_DATA_RECEIVED (WM_USER + 103)
+#define WM_CONNECT_SCANNER (WM_USER + 102)
+#define WM_START_SCAN (WM_USER + 104)
+
+
+// 定义扫描参数结构体
+struct ScanParams
+{
+    char scannerName[256];
+    char extension[32];
+    bool showSettings;
+    char savePath[MAX_PATH]; // 添加保存路径字段
+};
 
 class HttpServer {
 public:
@@ -97,4 +114,16 @@ private:
     std::condition_variable m_cv;
     bool m_wsaInitialized;  // 标记WSA是否已初始化
     CString m_lastResponse;  // 保存最后的HTTP响应内容
-}; 
+};
+
+// 函数声明
+void ProcessRequest(HttpServer* pHttpServer, SOCKET clientSocket, const std::string& request);
+void ParseHttpRequest(const std::string& request, std::string& url, std::string& params, 
+                      std::map<std::string, std::string>& paramsMap, std::string& requestType);
+std::string BuildHttpResponse(HttpServer* pHttpServer, HWND hMainWnd, bool scannerListRequested, 
+                             bool containsScannersKeyword, const std::string& params, const std::string& request);
+std::string GetScannerListResponse(HttpServer* pHttpServer, HWND hMainWnd);
+std::string BuildScannerOptionsResponse(HttpServer* pHttpServer, HWND hMainWnd, const std::map<std::string, std::string>& paramsMap);
+std::string BuildScanResponse(HttpServer* pHttpServer, HWND hMainWnd, const std::string& scannerName, 
+                             const std::string& extension, const std::string& showSetting,
+                             const std::map<std::string, std::string>& paramsMap); 
