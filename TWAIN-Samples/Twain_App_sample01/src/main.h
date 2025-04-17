@@ -65,4 +65,6 @@
 
 // 导出函数声明
 extern "C" void __declspec(dllexport) zhx_twain_test();
+
+extern "C" void __declspec(dllexport) zhx_twain();
 #endif //__MAIN_H__

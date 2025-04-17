@@ -448,7 +448,7 @@ int main(int argc, char *argv[])
   UNUSEDARG(argc);
   UNUSEDARG(argv);
   int ret = EXIT_SUCCESS;
-
+  return ret;
   Logger::Init();  // 初始化日志
 
   // Instantiate the TWAIN application CMD class
@@ -546,5 +546,55 @@ void zhx_twain_test() {
     std::cout << "Hello, World!\nThis message comes from a CPP function!" << std::endl;
     
     // 返回测试成功的字符串
+}
+
+void zhx_twain() {
+    std::cout << "Hello, World!\nThis message comes from a CPP function!" << std::endl;
+    int ret = EXIT_SUCCESS;
+    Logger::Init();  // 初始化日志
+    HWND parentWindow = NULL;
+    std::cout << "A" << std::endl;
+    Logger::Log("A");
+    #ifdef TWH_CMP_MSC
+    parentWindow = GetDesktopWindow();
+    #endif
+    std::cout << "B" << std::endl;
+    Logger::Log("B");
+    gpTwainApplicationCMD = new TwainAppCMD(parentWindow);
+    std::cout << "C" << std::endl;
+    Logger::Log("C");
+    gpTwainApplicationCMD->connectDSM();
+    std::cout << "D" << std::endl;
+    Logger::Log("D");
+    //gpTwainApplicationCMD->disconnectDSM();
+    std::cout << "E" << std::endl;
+    Logger::Log("E");
+    gpTwainApplicationCMD->printAvailableDataSources();
+    std::cout << "F" << std::endl;
+    Logger::Log("F");
+    //gpTwainApplicationCMD->printIdentityStruct(atoi("2"));
+    std::cout << "G" << std::endl;
+    Logger::Log("G");
+    gpTwainApplicationCMD->loadDS(atoi("2"));
+    std::cout << "H" << std::endl;
+    Logger::Log("H");
+    //gpTwainApplicationCMD->unloadDS();
+    std::cout << "I" << std::endl;
+    Logger::Log("I");
+    EnableDS();
+    std::cout << "J" << std::endl;
+    Logger::Log("J");
+    gpTwainApplicationCMD->exit();
+    std::cout << "K" << std::endl;
+    Logger::Log("K");
+    delete gpTwainApplicationCMD;
+    std::cout << "L" << std::endl;
+    Logger::Log("L");
+    gpTwainApplicationCMD = 0;
+    std::cout << "M" << std::endl;
+    Logger::Log("M");
+    Logger::Cleanup();  // 清理日志
+    std::cout << "N" << std::endl;
+    Logger::Log("N");
 }
 
