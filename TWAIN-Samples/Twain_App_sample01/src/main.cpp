@@ -53,6 +53,11 @@ typedef union {
 
 #include <signal.h>
 
+// Windows平台需要的头文件
+#ifdef TWH_CMP_MSC
+#include <windows.h>
+#endif
+
 #include "CommonTWAIN.h"
 #include "TwainAppCMD.h"
 #include "TwainApp_ui.h"
@@ -458,7 +463,7 @@ int main(int argc, char *argv[])
   signal(SIGINT, &onSigINT);
 
   string input;
-
+  return ret;
   printOptions();
 
   // start the main event loop
@@ -467,6 +472,7 @@ int main(int argc, char *argv[])
     cout << "\n(h for help) > ";
     cin >> input;
     cout << endl;
+
 
     if("q" == input)
     {
@@ -530,3 +536,15 @@ int main(int argc, char *argv[])
   Logger::Cleanup();  // 清理日志
   return ret;
 }
+
+
+/**
+ * 测试DLL接口是否可以被调用
+ */
+void zhx_twain_test() {
+    
+    std::cout << "Hello, World!\nThis message comes from a CPP function!" << std::endl;
+    
+    // 返回测试成功的字符串
+}
+

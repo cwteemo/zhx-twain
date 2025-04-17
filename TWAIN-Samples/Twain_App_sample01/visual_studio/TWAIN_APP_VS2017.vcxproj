@@ -27,22 +27,22 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>v141_xp</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>v141_xp</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>v141</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
@@ -156,7 +156,7 @@ if EXIST "$(ProjectDir)..\pub\bin\win64\$(TargetName).exe" del /q /f "$(ProjectD
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <AdditionalIncludeDirectories>L:\code\twain-samples-master\TWAIN-Samples\Twain_App_sample01\src;.;..;..\..\pub\external\include\;..\..\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;WIN64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;TWAIN_EXPORTS;ZHX_TWAIN_EXPORTS;_DEBUG;_CONSOLE;WIN64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>true</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
@@ -179,6 +179,7 @@ if EXIST "$(ProjectDir)..\pub\bin\win64\$(TargetName).exe" del /q /f "$(ProjectD
       <DataExecutionPrevention>
       </DataExecutionPrevention>
       <TargetMachine>MachineX64</TargetMachine>
+      <ModuleDefinitionFile>L:\code\twain\zhx-twain\TWAIN-Samples\Twain_App_sample01\visual_studio\Debug\exports.def</ModuleDefinitionFile>
     </Link>
     <PostBuildEvent>
       <Message>Copy Application to pub\bin directory</Message>
@@ -233,7 +234,7 @@ if EXIST "$(ProjectDir)..\pub\bin\win64\$(TargetName).exe" del /q /f "$(ProjectD
     </Midl>
     <ClCompile>
       <AdditionalIncludeDirectories>.;..;..\..\pub\external\include\;..\..\Common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;WIN64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;TWAIN_EXPORTS;ZHX_TWAIN_EXPORTS;NDEBUG;_CONSOLE;WIN64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <PrecompiledHeader>
       </PrecompiledHeader>
@@ -254,6 +255,7 @@ if EXIST "$(ProjectDir)..\pub\bin\win64\$(TargetName).exe" del /q /f "$(ProjectD
       <DataExecutionPrevention>
       </DataExecutionPrevention>
       <TargetMachine>MachineX64</TargetMachine>
+      <ModuleDefinitionFile>L:\code\twain\zhx-twain\TWAIN-Samples\Twain_App_sample01\visual_studio\Debug\exports.def</ModuleDefinitionFile>
     </Link>
     <PostBuildEvent>
       <Message>Copy Application to pub\bin directory</Message>

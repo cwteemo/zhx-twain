@@ -1,5 +1,5 @@
 /***************************************************************************
-* Copyright � 2007 TWAIN Working Group:  
+* Copyright � 2007 TWAIN Working Group:  
 *   Adobe Systems Incorporated, AnyDoc Software Inc., Eastman Kodak Company, 
 *   Fujitsu Computer Products of America, JFL Peripheral Solutions Inc., 
 *   Ricoh Corporation, and Xerox Corporation.
@@ -42,6 +42,13 @@
 #include "Common.h"
 #include "CommonTWAIN.h"
 
+// DLL 导出宏定义
+#ifdef ZHX_TWAIN_EXPORTS
+#define ZHX_TWAIN_API __declspec(dllexport)
+#else
+#define ZHX_TWAIN_API __declspec(dllimport)
+#endif
+
 #ifdef TWH_CMP_MSC
   #include <tchar.h>
 
@@ -56,4 +63,6 @@
 
 #endif // TWH_CMP_MSC
 
+// 导出函数声明
+extern "C" void __declspec(dllexport) zhx_twain_test();
 #endif //__MAIN_H__
