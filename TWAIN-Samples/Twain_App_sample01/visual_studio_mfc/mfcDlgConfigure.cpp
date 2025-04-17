@@ -1,5 +1,5 @@
 /***************************************************************************
-* Copyright © 2007 TWAIN Working Group:  
+* Copyright ï¿½ 2007 TWAIN Working Group:  
 *   Adobe Systems Incorporated, AnyDoc Software Inc., Eastman Kodak Company, 
 *   Fujitsu Computer Products of America, JFL Peripheral Solutions Inc., 
 *   Ricoh Corporation, and Xerox Corporation.
@@ -836,14 +836,18 @@ void CmfcDlgConfigure::OnNMDblclkCaps(NMHDR *pNMHDR, LRESULT *pResult)
 
 void CmfcDlgConfigure::OnBnClickedScan()
 {
+  Logger::Log("OnBnClickedScan AAAAAAAA");
   if(m_DSMState > 4)
+  {
+    Logger::Log("OnBnClickedScan BBBBBBBB");
     return; // Already Enabled
-
-  UpdateData(true);
-
+  }
+  Logger::Log("OnBnClickedScan CCCCCCCCC");
+  //UpdateData(true);
+  Logger::Log("OnBnClickedScan DDDDDDDD");
   m_bBusy = true;
-  UpdateButtons();
-
+  //UpdateButtons();
+  Logger::Log("OnBnClickedScan EEEEEEEEEE");
   m_DSMessage = (TW_UINT16)-1;
 
   // -Enable the data source. This puts us in state 5 which means that we
@@ -855,17 +859,17 @@ void CmfcDlgConfigure::OnBnClickedScan()
   if( !enableDS(GetSafeHwnd(), m_bShowUI) )
   {
     m_bBusy = false;
-    UpdateButtons();
-    return;
+    //UpdateButtons();
+    //return;
   }
 
-  do // If showing UI and KeepUIOpen is Enabled then we will loop here until cancle
-  {
-
-    // now we have to wait until we hear something back from the DS.
-    while((TW_UINT16)-1 == m_DSMessage)
-    {
-
+  // do // If showing UI and KeepUIOpen is Enabled then we will loop here until cancle
+  // {
+  //   Logger::Log("OnBnClickedScan FFFFFFFFFF");
+  //   // now we have to wait until we hear something back from the DS.
+  //   while((TW_UINT16)-1 == m_DSMessage)
+  //   {
+  //     Logger::Log("OnBnClickedScan GGGGGGGGG");
       // If we are using callbacks, there is nothing to do here except sleep
       // and wait for our callback from the DS.  If we are not using them, 
       // then we have to poll the DSM.
@@ -873,7 +877,7 @@ void CmfcDlgConfigure::OnBnClickedScan()
 
 	    if(!GetMessage((LPMSG)&Msg, NULL, 0, 0))
       {
-        break;//WM_QUIT
+        //break;//WM_QUIT
       }
       TW_EVENT twEvent = {0};
       twEvent.pEvent = (TW_MEMREF)&Msg;
@@ -911,13 +915,14 @@ void CmfcDlgConfigure::OnBnClickedScan()
 		    TranslateMessage ((LPMSG)&Msg);
 		    DispatchMessage ((LPMSG)&Msg);
 	    }
-    }
+    //}
 
     // At this point the source has sent us a callback saying that it is ready to
     // transfer the image.
-
+    Logger::Log("OnBnClickedScan HHHHHHHHH");
     if(m_DSMessage == MSG_XFERREADY)
     {
+      Logger::Log("OnBnClickedScan IIIIIIIII");
       // move to state 6 as a result of the data source. We can start a scan now.
       m_DSMState = 6;
       updateIMAGEINFO();
@@ -925,8 +930,8 @@ void CmfcDlgConfigure::OnBnClickedScan()
       StartScan();
       m_DSMessage = (TW_UINT16)-1;
     }
-  }while(m_bShowUI && m_bKeepEnabled && m_DSMessage != MSG_CLOSEDSREQ);
-
+  //}while(m_bShowUI && m_bKeepEnabled && m_DSMessage != MSG_CLOSEDSREQ);
+  Logger::Log("OnBnClickedScan JJJJJJJJJ");  
   // Scan is done, disable the ds, thus moving us back to state 4 where we
   // can negotiate caps again.
   disableDS();

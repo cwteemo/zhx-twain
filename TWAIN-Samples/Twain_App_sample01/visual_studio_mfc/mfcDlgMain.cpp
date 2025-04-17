@@ -88,9 +88,7 @@ void CAboutDlg::DoDataExchange(CDataExchange* pDX)
   CDialog::DoDataExchange(pDX);
 }
 
-BEGIN_MESSAGE_MAP(CmfcDlgMain, CDialog)
-    // ... 现有映射 ...
-    ON_MESSAGE(WM_TWAIN_EVENT, &CmfcDlgMain::OnTwainEvent)
+BEGIN_MESSAGE_MAP(CAboutDlg, CDialog)
 END_MESSAGE_MAP()
 
 
@@ -98,12 +96,13 @@ END_MESSAGE_MAP()
 
 
 
-CmfcDlgMain::CmfcDlgMain(CWnd* pParent /*=nullptr*/)
-    : CDialog(IDD_MFCDLGMAIN_DIALOG, pParent)
+CmfcDlgMain::CmfcDlgMain(CWnd* pParent /*=NULL*/)
+  : CDialog(CmfcDlgMain::IDD, pParent)
+  , _pTWAINApp(NULL)
+  , m_sStc_DS(_T(""))
+  , m_httpServer(nullptr)  // 不再创建新的HTTP服务器实例
 {
   m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
-  m_transferMech = TWSX_FILE;  // 默认使用文件传输
-  m_fileFormat = TWFF_BMP;     // 默认使用BMP格式
 }
 
 void CmfcDlgMain::DoDataExchange(CDataExchange* pDX)
@@ -770,7 +769,7 @@ LRESULT CmfcDlgMain::OnConnectScanner(WPARAM wParam, LPARAM lParam)
         }
         
         // 如果找到匹配的扫描仪
-        if (scannerIndex >= 1)
+        if (scannerIndex >= 0)
         {
             Logger::Log("Attempting to connect to scanner at index %d", scannerIndex);
             
@@ -782,7 +781,7 @@ LRESULT CmfcDlgMain::OnConnectScanner(WPARAM wParam, LPARAM lParam)
             }
             
             // 连接到选定的扫描仪
-            _pTWAINApp->loadDS((TW_INT16)(scannerIndex + 1));
+            _pTWAINApp->loadDS((TW_INT16)scannerIndex);
             
             // 检查连接是否成功(loadDS成功会将状态设置为4)
             if (_pTWAINApp->m_DSMState >= 4)
@@ -824,10 +823,12 @@ LRESULT CmfcDlgMain::OnConnectScanner(WPARAM wParam, LPARAM lParam)
 
 LRESULT CmfcDlgMain::OnStartScan(WPARAM wParam, LPARAM lParam)
 {
+    // 添加try-catch块来捕获所有可能的异常
     try
     {
         Logger::Log("OnStartScan: Received request to start scanning");
         
+        // 从wParam参数中获取扫描参数 - 现在是直接ScanParams指针
         ScanParams* pScanParams = (ScanParams*)wParam;
         if (!pScanParams)
         {
@@ -856,73 +857,141 @@ LRESULT CmfcDlgMain::OnStartScan(WPARAM wParam, LPARAM lParam)
             Logger::Log("ERROR: TWAIN application instance is NULL");
             return 1;
         }
-
+        
+        // 设置保存路径 - 优先使用自定义路径
+        CString strSavePath;
+        
+        if (!savePath.IsEmpty() && GetFileAttributes(savePath) != INVALID_FILE_ATTRIBUTES)
+        {
+            // 用户指定了有效的路径
+            strSavePath = savePath;
+            Logger::Log("Using user-specified path: %s", (LPCTSTR)strSavePath);
+        }
+        else
+        {
+            // 创建temp目录用于保存扫描图像
+            TCHAR szModulePath[MAX_PATH] = {0};
+            GetModuleFileName(NULL, szModulePath, MAX_PATH);
+            CString strModulePath = szModulePath;
+            int nPos = strModulePath.ReverseFind('\\');
+            if (nPos > 0)
+            {
+                strModulePath = strModulePath.Left(nPos + 1);
+            }
+            
+            // 构建temp目录路径
+            strSavePath = strModulePath + _T("temp");
+            Logger::Log("Using default temp directory: %s", (LPCTSTR)strSavePath);
+            
+            // 检查temp目录是否存在，不存在则创建
+            if (GetFileAttributes(strSavePath) == INVALID_FILE_ATTRIBUTES)
+            {
+                Logger::Log("Temp directory does not exist, creating it");
+                if (!CreateDirectory(strSavePath, NULL))
+                {
+                    Logger::Log("ERROR: Failed to create temp directory: %d", GetLastError());
+                }
+                else
+                {
+                    Logger::Log("Temp directory created successfully");
+                }
+            }
+        }
+        
+        // 设置TWAIN应用的图像保存目录
+#ifdef _UNICODE
+        // Unicode版本需要转换
+        CT2CA pszASCII(strSavePath);
+        //_pTWAINApp->SetImageSavePath(pszASCII);
+#else
+        // ANSI版本直接获取字符串指针
+        //_pTWAINApp->SetImageSavePath(strSavePath.GetString());
+#endif
+        
         // 确保DSM已连接
         if (_pTWAINApp->m_DSMState < 3)
         {
             Logger::Log("Connecting to DSM...");
-            if (!_pTWAINApp->connectDSM())
+            _pTWAINApp->connectDSM();
+            
+            // 检查连接后的状态
+            if (_pTWAINApp->m_DSMState < 3)
             {
                 Logger::Log("ERROR: Failed to connect to DSM");
                 return 1;
             }
         }
-
-        // 重新获取扫描仪列表，确保状态是最新的
-        Logger::Log("Refreshing scanner list...");
-        int scannerCount = 0;
-        pTW_IDENTITY pID = NULL;
-        int targetScannerIndex = -1;
-        
-        while (NULL != (pID = _pTWAINApp->getDataSource((TW_INT16)scannerCount)))
+        Logger::Log("OnBnClickedScan m_DSMState");
+        // 确保已连接扫描仪
+        if (_pTWAINApp->m_DSMState < 4)
         {
-            CString currentName(pID->ProductName);
-            Logger::Log("Found scanner [%d]: %s", scannerCount + 1, (LPCTSTR)currentName);
+            // 查找扫描仪
+            int scannerIndex = -1;
+            pTW_IDENTITY pID = NULL;
+            int scannerCount = 0;
             
-            if (currentName.CompareNoCase(scannerName) == 0)
+            while (NULL != (pID = _pTWAINApp->getDataSource((TW_INT16)scannerCount)))
             {
-                targetScannerIndex = scannerCount;
-                Logger::Log("Target scanner found at position: %d", targetScannerIndex + 1);
+                CString currentName(pID->ProductName);
+                
+                if (currentName.CompareNoCase(scannerName) == 0)
+                {
+                    scannerIndex = scannerCount;
+                    break;
+                }
+                
+                scannerCount++;
             }
-            scannerCount++;
-        }
-
-        if (targetScannerIndex == -1)
-        {
-            Logger::Log("ERROR: Scanner not found: %s", (LPCTSTR)scannerName);
-            return 1;
-        }
-
-        // 尝试连接扫描仪
-        Logger::Log("Attempting to connect to scanner at position %d", targetScannerIndex + 1);
-        if (!_pTWAINApp->loadDS((TW_INT16)(targetScannerIndex + 1)))
-        {
-            Logger::Log("ERROR: Failed to connect to scanner at position %d", targetScannerIndex + 1);
-            return 1;
+            Logger::Log("OnBnClickedScan start");
+            int           sel   = 1;
+            TW_INT16      index = (TW_INT16)m_lst_DS.GetItemData(sel);
+            Logger::Log("Found scanner at index %d, connecting...", index);
+            if(NULL != (pID = _pTWAINApp->getDataSource(index)) )
+            {
+                CmfcDlgConfigure dlg(this, pID->Id);
+                dlg.DoModal();
+                Sleep(5000);
+                Logger::Log("OnBnClickedScan start");
+                dlg.OnBnClickedScan();
+                Logger::Log("OnBnClickedScan end");
+            }
+            return 0;
+            // 如果找到扫描仪，连接到它
+            if (scannerIndex >= 0)
+            {
+                Logger::Log("Found scanner at index %d, connecting...", scannerIndex);
+                _pTWAINApp->loadDS((TW_INT16)scannerIndex);
+                
+                // 检查连接是否成功
+                if (_pTWAINApp->m_DSMState < 4)
+                {
+                    Logger::Log("ERROR: Failed to connect to scanner");
+                    return 1;
+                }
+                
+                Logger::Log("Successfully connected to scanner");
+            }
+            else
+            {
+                Logger::Log("ERROR: Scanner not found with name: %s", (LPCTSTR)scannerName);
+                return 1;
+            }
         }
         
-        // 设置文件保存路径
-        if (!savePath.IsEmpty() && GetFileAttributes(savePath) != INVALID_FILE_ATTRIBUTES)
-        {
-            // 用户指定了有效的路径
-            Logger::Log("Using user-specified path: %s", (LPCTSTR)savePath);
-            
-#ifdef _UNICODE
-            // Unicode版本需要转换
-            CT2CA pszASCII(savePath);
-            _pTWAINApp->SetImageSavePath(pszASCII);
-#else
-            // ANSI版本直接获取字符串指针
-            _pTWAINApp->SetImageSavePath(savePath.GetString());
-#endif
-        }
-        
-        // 确定文件格式（根据扩展名）
-        TW_UINT16 fileFormat = 0; // 默认为0，让函数自动检测
+        // 设置文件格式 (如果需要)
         if (!extension.IsEmpty())
         {
-            if (extension.CompareNoCase(_T("jpg")) == 0 || 
-                extension.CompareNoCase(_T("jpeg")) == 0)
+            Logger::Log("Setting file format based on extension: %s", (LPCTSTR)extension);
+            
+            TW_UINT16 fileFormat = TWFF_PNG; // 默认使用PNG而不是TIFF
+            
+            // 根据扩展名设置文件格式
+            if (extension.CompareNoCase(_T("pdf")) == 0)
+            {
+                fileFormat = TWFF_PDF;
+            }
+            else if (extension.CompareNoCase(_T("jpg")) == 0 || 
+                     extension.CompareNoCase(_T("jpeg")) == 0)
             {
                 fileFormat = TWFF_JFIF;
             }
@@ -931,93 +1000,56 @@ LRESULT CmfcDlgMain::OnStartScan(WPARAM wParam, LPARAM lParam)
             {
                 fileFormat = TWFF_TIFF;
             }
-            else if (extension.CompareNoCase(_T("pdf")) == 0)
-            {
-                fileFormat = TWFF_PDF;
-            }
             else if (extension.CompareNoCase(_T("bmp")) == 0)
             {
                 fileFormat = TWFF_BMP;
             }
+            
+            // 可以在这里添加其他文件格式的处理
+            
+            // 启动文件传输
+            Logger::Log("Initiating file transfer with format: %d", fileFormat);
+            _pTWAINApp->initiateTransfer_File(fileFormat);
+        }
+        else
+        {
+            // 无扩展名，使用本机传输并设置为PNG格式
+            Logger::Log("No extension specified, using PNG format by default");
+            _pTWAINApp->initiateTransfer_File(TWFF_PNG);
         }
         
-        CmfcDlgConfigure::OnBnClickedScan()
-        // 调用全局函数模拟OnBnClickedScan的行为
-        Logger::Log("Simulating scan...");
-        // if (!SimulateScan(_pTWAINApp, GetSafeHwnd(), showSettings, false, fileFormat))
-        // {
-        //     Logger::Log("ERROR: Scan failed");
-        //     return 1;
-        // }
+        // 启动扫描
+        if (showSettings)
+        {
+            // 显示UI并扫描
+            Logger::Log("Starting scan with UI...");
+            _pTWAINApp->enableDSUIOnly(GetSafeHwnd());
+        }
+        else
+        {
+            // 不显示UI直接扫描
+            Logger::Log("Starting scan without UI...");
+            _pTWAINApp->enableDS(GetSafeHwnd(), FALSE);
+        }
         
-        Logger::Log("Scan completed successfully");
+        // 更新UI显示
+        m_sStc_DS.Format(_T("Scanning with: %s"), scannerName);
+        UpdateData(FALSE);
+        
+        Logger::Log("Scan initiated successfully");
         return 0;
     }
     catch (const std::exception& e)
     {
+        // 捕获并记录标准异常
         Logger::Log("EXCEPTION in OnStartScan: %s", e.what());
         return 1;
     }
     catch (...)
     {
+        // 捕获并记录未知异常
         Logger::Log("UNKNOWN EXCEPTION in OnStartScan");
         return 1;
     }
 }
 
-LRESULT CmfcDlgMain::OnTwainEvent(WPARAM wParam, LPARAM lParam)
-{
-    TW_EVENT* pEvent = (TW_EVENT*)lParam;
-    if (!pEvent)
-        return 0;
-
-    Logger::Log("OnTwainEvent: Received TWAIN message: %d", pEvent->TWMessage);
-
-    switch (pEvent->TWMessage)
-    {
-    case MSG_XFERREADY:
-        Logger::Log("Received MSG_XFERREADY, starting transfer...");
-        
-        // 根据传输机制启动相应的传输
-        if (m_transferMech == TWSX_NATIVE)
-        {
-            Logger::Log("Using Native transfer mechanism");
-            _pTWAINApp->initiateTransfer_Native();
-        }
-        else if (m_transferMech == TWSX_FILE)
-        {
-            Logger::Log("Using File transfer mechanism with format: %d", m_fileFormat);
-            _pTWAINApp->initiateTransfer_File(m_fileFormat);
-        }
-        else if (m_transferMech == TWSX_MEMORY)
-        {
-            Logger::Log("Using Memory transfer mechanism");
-            _pTWAINApp->initiateTransfer_Memory();
-        }
-        else
-        {
-            Logger::Log("ERROR: Unknown transfer mechanism: %d", m_transferMech);
-        }
-        break;
-
-    case MSG_CLOSEDSREQ:
-        Logger::Log("Received MSG_CLOSEDSREQ");
-        // 使用正确的方法关闭数据源
-        _pTWAINApp->disconnectDS();
-        break;
-
-    case MSG_CLOSEDSOK:
-        Logger::Log("Received MSG_CLOSEDSOK");
-        break;
-
-    case MSG_DEVICEEVENT:
-        Logger::Log("Received MSG_DEVICEEVENT");
-        break;
-
-    default:
-        Logger::Log("Received unknown TWAIN message: %d", pEvent->TWMessage);
-        break;
-    }
-
-    return 0;
-}

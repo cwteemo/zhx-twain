@@ -23,7 +23,6 @@
 #define WM_CONNECT_SCANNER (WM_USER + 102)
 #define WM_START_SCAN (WM_USER + 104)
 
-
 // 定义扫描参数结构体
 struct ScanParams
 {

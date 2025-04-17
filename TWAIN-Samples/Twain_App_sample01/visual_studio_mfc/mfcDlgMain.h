@@ -76,7 +76,7 @@ public:
 
   protected:
   virtual void DoDataExchange(CDataExchange* pDX);// DDX/DDV support
-  afx_msg LRESULT OnTwainEvent(WPARAM wParam, LPARAM lParam);
+
 
 // Implementation
 protected:
@@ -103,17 +103,10 @@ protected:
   afx_msg LRESULT OnReceiveData(WPARAM wParam, LPARAM lParam);
   afx_msg LRESULT OnConnectScanner(WPARAM wParam, LPARAM lParam);
   afx_msg LRESULT OnStartScan(WPARAM wParam, LPARAM lParam);
-  afx_msg LRESULT OnTwainEvent(WPARAM wParam, LPARAM lParam);
 
 public:
   CString   m_sStc_DS;
   CListBox  m_lst_DS;
   CButton   m_btn_Connect_DS;
   CButton   m_btn_Default_DS;
-
-private:
-    TW_UINT16 m_transferMech;  // 传输机制
-    TW_UINT16 m_fileFormat;    // 文件格式
 };
-
-#define WM_TWAIN_EVENT (WM_USER + 101)
