@@ -1,5 +1,5 @@
 /***************************************************************************
-* Copyright � 2007 TWAIN Working Group:  
+* Copyright � 2007 TWAIN Working Group:  
 *   Adobe Systems Incorporated, AnyDoc Software Inc., Eastman Kodak Company, 
 *   Fujitsu Computer Products of America, JFL Peripheral Solutions Inc., 
 *   Ricoh Corporation, and Xerox Corporation.
@@ -107,6 +107,12 @@ public:
 * Data Sources the app knows about.
 */
   void printAvailableDataSources();
+
+  /**
+* Print a list of Data Sources.  Prints to stdout a quick list of the 
+* Data Sources the app knows about.
+*/
+const char* getAvailableDataSources(); // 返回const char*，表示调用者不应修改此内存
 
 /**
 * Prints an identity structure that uniquely identifies an Application 

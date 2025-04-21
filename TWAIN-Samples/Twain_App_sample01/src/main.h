@@ -64,7 +64,20 @@
 #endif // TWH_CMP_MSC
 
 // 导出函数声明
-extern "C" void __declspec(dllexport) zhx_twain_test();
+typedef int (*ScanCallback)(char *filename);
 
-extern "C" void __declspec(dllexport) zhx_twain();
+extern "C" __declspec(dllexport) void  zhx_twain_test();
+
+extern "C" __declspec(dllexport) void  zhx_twain();
+
+extern "C" __declspec(dllexport) void  zhx_Init();
+// int zhx_ApproveLicenseA(char *license);
+extern "C"  __declspec(dllexport)  char*  zhx_GetDevicesList();
+//extern "C" char* __declspec(dllexport)  zhx_GetDevCapability_JSON(char *device);
+//extern "C" int __declspec(dllexport)  zhx_SetCapability_STR(char *nCap, char *value);
+extern "C" __declspec(dllexport) int  zhx_OpenDevice(char *device);
+extern "C" __declspec(dllexport) int  zhx_Scan(char *path, ScanCallback cb, int count);
+extern "C" __declspec(dllexport) void  zhx_EndScan();
+extern "C" __declspec(dllexport) void  zhx_CloseDevice();
+extern "C" __declspec(dllexport) void  zhx_Exit();
 #endif //__MAIN_H__

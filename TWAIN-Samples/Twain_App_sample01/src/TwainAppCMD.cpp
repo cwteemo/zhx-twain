@@ -136,6 +136,44 @@ void TwainAppCMD::printAvailableDataSources()
   return;
 }
 
+// 在TwainAppCMD.cpp中实现
+const char* TwainAppCMD::getAvailableDataSources()
+{
+  static char strBuffer[4096]; // 使用静态变量，确保返回的指针有效
+  const size_t BUFFER_SIZE = 4096; // 设置缓冲区大小常量
+  size_t currentPos = 0;
+
+  // 清空缓冲区
+  strBuffer[0] = '\0';
+
+  for(unsigned int x = 0; x < m_DataSources.size(); ++x)
+  {
+      // 计算当前项需要的空间（产品名 + 分号 + 可能的结束符）
+      size_t nameLen = strlen(m_DataSources[x].ProductName);
+      
+      // 检查是否有足够空间
+      if(currentPos + nameLen + 2 > BUFFER_SIZE) // +2是为分号和结束符
+      {
+          // 缓冲区不足，记录错误或截断
+          break;
+      }
+      
+      // 安全地追加产品名
+      strcpy_s(strBuffer + currentPos, BUFFER_SIZE - currentPos, m_DataSources[x].ProductName);
+      currentPos += nameLen;
+      
+      // 追加分号（如果不是最后一个项目）
+      if(x < m_DataSources.size() - 1)
+      {
+          strBuffer[currentPos++] = ';';
+          strBuffer[currentPos] = '\0'; // 确保字符串正确终止
+      }
+  }
+
+  return strBuffer;
+}
+
+
 //////////////////////////////////////////////////////////////////////////////
 void TwainAppCMD::loadDS(const TW_INT32 _dsID)
 {

@@ -81,6 +81,9 @@ void onSigINT(int _sig)
   cout << "\nGoodbye!" << endl;
   exit(0);
 }
+bool checkIfMorePagesAvailable();
+// 新增辅助函数：确保目录存在，如果不存在则创建
+bool EnsureDirectoryExists(const char* path);
 
 //////////////////////////////////////////////////////////////////////////////
 /** 
@@ -561,6 +564,7 @@ void zhx_twain() {
     std::cout << "B" << std::endl;
     Logger::Log("B");
     gpTwainApplicationCMD = new TwainAppCMD(parentWindow);
+    signal(SIGINT, &onSigINT);
     std::cout << "C" << std::endl;
     Logger::Log("C");
     gpTwainApplicationCMD->connectDSM();
@@ -569,7 +573,9 @@ void zhx_twain() {
     //gpTwainApplicationCMD->disconnectDSM();
     std::cout << "E" << std::endl;
     Logger::Log("E");
-    gpTwainApplicationCMD->printAvailableDataSources();
+    //gpTwainApplicationCMD->printAvailableDataSources();
+    const char* dataSource = gpTwainApplicationCMD->getAvailableDataSources();
+    printf("[DLL INFO] dataSource Called, dataSource: %s\n", dataSource ? dataSource : "NULL");
     std::cout << "F" << std::endl;
     Logger::Log("F");
     //gpTwainApplicationCMD->printIdentityStruct(atoi("2"));
@@ -593,8 +599,733 @@ void zhx_twain() {
     gpTwainApplicationCMD = 0;
     std::cout << "M" << std::endl;
     Logger::Log("M");
-    Logger::Cleanup();  // 清理日志
-    std::cout << "N" << std::endl;
-    Logger::Log("N");
+     std::cout << "N" << std::endl;
+     Logger::Log("N");
+     Logger::Cleanup();  // 清理日志
 }
 
+
+/**
+ * @brief 初始化TWAIN环境
+ * 
+ * 此函数负责创建TWAIN应用实例并连接到数据源管理器(DSM)。
+ * 如果TWAIN环境已经初始化，会先清理现有资源再重新初始化。
+ * 
+ * 初始化流程包括：
+ * 1. 检查并清理现有环境（如果存在）
+ * 2. 创建新的TwainAppCMD实例
+ * 3. 连接到数据源管理器(DSM)
+ * 
+ * @return 无返回值，通过日志记录初始化结果
+ */
+void zhx_Init() {
+    // 记录函数调用
+    Logger::Init();
+    Logger::Log("@INFO zhx_Init called");
+
+    try {
+        // 检查是否已经初始化
+        if (gpTwainApplicationCMD) {
+            Logger::Log("@INFO TWAIN The environment has been initialized, re-initialized");
+            
+            // 清理现有资源
+            if (gpTwainApplicationCMD->m_DSMState >= 5) {
+                gpTwainApplicationCMD->disableDS();
+            }
+            if (gpTwainApplicationCMD->m_DSMState >= 4) {
+                gpTwainApplicationCMD->unloadDS();
+            }
+            if (gpTwainApplicationCMD->m_DSMState >= 3) {
+                gpTwainApplicationCMD->disconnectDSM();
+            }
+            delete gpTwainApplicationCMD;
+            gpTwainApplicationCMD = NULL;
+        }
+
+        // 获取桌面窗口作为父窗口
+        HWND parentWindow = NULL;
+        #ifdef TWH_CMP_MSC
+        parentWindow = GetDesktopWindow();
+        #endif
+        
+        // 创建 TWAIN 应用实例
+        gpTwainApplicationCMD = new TwainAppCMD(parentWindow);
+        if (!gpTwainApplicationCMD) {
+            Logger::Log("@ERROR Failed to create a TwainAppCMD instance");
+            return; // 初始化失败
+        }
+        
+        // 连接到 DSM
+        gpTwainApplicationCMD->connectDSM();
+        if (gpTwainApplicationCMD->m_DSMState < 3) {
+            Logger::Log("@ERROR Failed to connect to DSM");
+            delete gpTwainApplicationCMD;
+            gpTwainApplicationCMD = NULL;
+            return; // 初始化失败
+        }
+        //zhx_GetDevicesList();
+        Logger::Log("@INFO TWAIN The environment is initialized successfully and the DSM is connected");
+        Logger::Cleanup();
+    }
+    catch (std::exception& e) {
+        Logger::Log("@ERROR zhx_Init An exception has occurred: %s", e.what());
+        Logger::Cleanup();
+        // 清理资源
+        if (gpTwainApplicationCMD) {
+            delete gpTwainApplicationCMD;
+            gpTwainApplicationCMD = NULL;
+        }
+    }
+    catch (...) {
+        Logger::Log("@ERROR zhx_Init An unknown anomaly has occurred");
+        Logger::Cleanup();
+        // 清理资源
+        if (gpTwainApplicationCMD) {
+            delete gpTwainApplicationCMD;
+            gpTwainApplicationCMD = NULL;
+        }
+    }
+}
+
+
+/**
+ * @brief 获取可用的TWAIN扫描仪列表
+ * 
+ * 此函数返回JSON格式的扫描仪列表，包含各扫描仪的ID、名称和制造商信息。
+ * 如果TWAIN环境未初始化或获取失败，将返回空JSON数组。
+ * 
+ * JSON格式示例：
+ * [
+ *   {"id":1,"name":"Scanner1","manufacturer":"Manufacturer1"},
+ *   {"id":2,"name":"Scanner2","manufacturer":"Manufacturer2"}
+ * ]
+ * 
+ * @return 返回JSON格式的扫描仪列表字符串，调用者负责使用free()释放返回的内存
+ */
+   char* zhx_GetDevicesList() {
+       Logger::Init();
+       Logger::Log("@INFO zhx_GetDevicesList called");
+       
+       // 检查TWAIN环境初始化状态
+       if (!gpTwainApplicationCMD) {
+           Logger::Log("@ERROR TWAIN not init");
+           Logger::Cleanup();
+           return _strdup("[]");
+       }
+       
+       // 检查DSM连接状态
+       if (gpTwainApplicationCMD->m_DSMState < 3) {
+           Logger::Log("@ERROR DSM disconnect");
+           Logger::Cleanup();
+           return _strdup("[]");
+       }
+       
+       // 确保扫描仪列表为空，避免断言错误
+       // 这可能需要根据TwainApp的实现来调整
+       // gpTwainApplicationCMD->refreshDataSources(); // 如果有这样的方法刷新数据源列表
+       
+       // 获取扫描仪列表
+       char* result = _strdup(gpTwainApplicationCMD->getAvailableDataSources());
+       Logger::Log("@INFO return list");
+       Logger::Cleanup();
+       return result;
+   }
+
+/**
+ * @brief 根据扫描仪名称打开对应的数据源
+ * 
+ * 此函数通过扫描仪名称查找并打开相应的TWAIN数据源。
+ * 扫描仪名称应与zhx_GetDevicesList()返回的JSON中的"name"字段匹配。
+ * 
+ * 操作流程：
+ * 1. 解析当前可用扫描仪列表
+ * 2. 查找匹配名称的扫描仪
+ * 3. 加载找到的扫描仪数据源
+ * 
+ * @param device 扫描仪名称，从zhx_GetDevicesList返回的JSON中获取
+ * @return 成功返回1，失败返回0
+ */
+int zhx_OpenDevice(char *device) {
+    Logger::Init();
+    Logger::Log("@INFO zhx_OpenDevice called with device: %s", device ? device : "NULL");
+    printf("[DLL INFO] zhx_OpenDevice Called, scanner name: %s\n", device ? device : "NULL");
+    
+    // 检查参数
+    if (!device || !*device) {
+        Logger::Log("@ERROR The device name is empty");
+        printf("[DLL ERROR] The device name is empty\n");
+        Logger::Cleanup();
+        return 0;
+    }
+    
+    // 检查TWAIN环境是否初始化
+    if (!gpTwainApplicationCMD) {
+        Logger::Log("@ERROR The TWAIN environment is not initialized");
+        printf("[DLL ERROR] The TWAIN environment is not initialized\n");
+        Logger::Cleanup();
+        return 0;
+    }
+    
+    // 检查DSM是否已连接
+    if (gpTwainApplicationCMD->m_DSMState < 3) {
+        Logger::Log("@ERROR DSM is not connected");
+        printf("[DLL ERROR] DSM is not connected\n");
+        Logger::Cleanup();
+        return 0;
+    }
+    
+    try {
+        // Get scanner list (semicolon-separated string)
+        const char* scannerList = gpTwainApplicationCMD->getAvailableDataSources();
+        Logger::Log("@INFO Retrieved scanner list: %s", scannerList);
+
+        // Find scanner name and get index
+        int deviceIndex = -1;
+        int currentIndex = 0;
+
+        // Create a copy of the scanner list for parsing
+        char* scannerListCopy = _strdup(scannerList);
+        if (!scannerListCopy) {
+            Logger::Log("@ERROR Memory allocation failed");
+            printf("[DLL ERROR] Memory allocation failed\n");
+            return 0;
+        }
+
+        // Use strtok to split the string
+        char* scanner = strtok(scannerListCopy, ";");
+        while (scanner != NULL) {
+            // Compare scanner name
+            if (strcmp(device, scanner) == 0) {
+                deviceIndex = currentIndex;
+                break;
+            }
+            
+            // Move to next scanner
+            scanner = strtok(NULL, ";");
+            currentIndex++;
+        }
+
+        // Free temporary string copy
+        free(scannerListCopy);
+
+        // If matching scanner not found
+        if (deviceIndex == -1) {
+            Logger::Log("@ERROR Could not find scanner named '%s'", device);
+            printf("[DLL ERROR] Could not find scanner named '%s'\n", device);
+            return 0;
+        }
+
+        // Convert zero-based index to one-based device number
+        int deviceNumber = deviceIndex + 1;
+        Logger::Log("@INFO Found device at index %d, using device number %d", deviceIndex, deviceNumber);
+
+        // Load the found scanner using device number (not index)
+        gpTwainApplicationCMD->loadDS(deviceNumber);
+
+        // Verify scanner loaded successfully (should be in state 4)
+        if (gpTwainApplicationCMD->m_DSMState != 4) {
+            Logger::Log("@ERROR Failed to load scanner, current state: %d", gpTwainApplicationCMD->m_DSMState);
+            printf("[DLL ERROR] Failed to load scanner\n");
+            return 0;
+        }
+
+        Logger::Log("@INFO Successfully loaded scanner '%s', index: %d", device, deviceIndex);
+        printf("[DLL INFO] Successfully loaded scanner '%s', index: %d\n", device, deviceIndex);
+        Logger::Cleanup();
+        return 1; // Success
+    }
+    catch (std::exception& e) {
+        Logger::Log("@ERROR zhx_OpenDevice An exception has occurred: %s", e.what());
+        printf("[DLL ERROR] open scanner An exception has occurred: %s\n", e.what());
+        Logger::Cleanup();
+        return 0;
+    }
+    catch (...) {
+        Logger::Log("@ERROR zhx_OpenDevice An unknown anomaly has occurred");
+        printf("[DLL ERROR] open scanner error\n");
+        Logger::Cleanup();
+        return 0;
+    }
+}
+
+
+
+ /**
+ * @brief 执行扫描操作并保存图像
+ * 
+ * 此函数设置保存路径并启动扫描过程，支持多页扫描和回调处理。
+ * 
+ * @param path 图像保存路径，如果为NULL则使用默认路径
+ * @param cb 扫描回调函数，每扫描完成一页时调用，可为NULL
+ * @param count 要扫描的页数，0表示不限制数量(扫描直到无纸或用户取消)，
+ *              负数将被视为1，正数表示指定的页数
+ * @return 成功返回实际扫描的页数，失败返回0
+ */
+int zhx_Scan(char *path, ScanCallback cb, int count) {
+    // 记录函数调用
+    Logger::Init();
+    Logger::Log("@INFO zhx_Scan is called, path: %s, pages: %d", path ? path : "default", count);
+    
+    // 检查TWAIN环境是否初始化
+    if (!gpTwainApplicationCMD) {
+        Logger::Log("@ERROR The TWAIN environment is not initialized");
+        Logger::Cleanup();
+        return 0;
+    }
+    
+    // 检查数据源是否已连接
+    if (gpTwainApplicationCMD->m_DSMState < 4) {
+        Logger::Log("@ERROR Not connected to the scanning device, current state: %d", gpTwainApplicationCMD->m_DSMState);
+        Logger::Cleanup();
+        return 0;
+    }
+    
+    // 处理count参数
+    bool unlimitedScan = false;
+    if (count == 0) {
+        unlimitedScan = true;
+        Logger::Log("@INFO Set to unlimited scan page mode");
+    } else if (count < 0) {
+        count = 1; // 将负数视为1
+        Logger::Log("@INFO Negative pages are treated as 1 page");
+    }
+    
+    // 设置并检查保存路径
+    if (path && *path) {
+        // 检查保存路径是否存在，如果不存在则创建
+        if (!EnsureDirectoryExists(path)) {
+            Logger::Log("@ERROR Failed to create save directory: %s", path);
+            Logger::Cleanup();
+            return 0;
+        }
+        
+        gpTwainApplicationCMD->setSavePath(path);
+        Logger::Log("@INFO Set the scan save path: %s", path);
+    } else {
+        Logger::Log("@INFO Using default save path");
+    }
+    
+    int scannedPages = 0;
+    
+    try {
+        // 多页扫描循环
+        while (unlimitedScan || scannedPages < count) {
+            Logger::Log("@INFO Start scanning page %d %s", 
+                        scannedPages + 1, 
+                        unlimitedScan ? "(Unrestricted mode)" : "");
+            Logger::Log("@INFO zhx_Scan is called, scannedPages: %d", scannedPages);
+            Logger::Log("@INFO zhx_Scan is called, scannedPages: %d", count);
+            // 启动单次扫描过程
+            // 启动单次扫描过程
+            EnableDS();
+            
+            // 一次扫描成功，增加计数
+            scannedPages++;
+            
+            // 处理回调（如果有）
+            if (cb) {
+                // 构建可能的文件名
+                char fileNameBuffer[100];
+                std::string estimatedFileName;
+                
+                if (path) {
+                    std::string basePath = path;
+                    if (basePath.back() != '/' && basePath.back() != '\\') {
+                        basePath += '/';
+                    }
+                    // 假设TWAIN使用这种格式命名文件
+                    sprintf(fileNameBuffer, "FROM_SCANNER_%06dN.bmp", scannedPages);
+                    estimatedFileName = basePath + fileNameBuffer;
+                } else {
+                    // 如果没有设置路径，使用简化的文件名
+                    sprintf(fileNameBuffer, "FROM_SCANNER_%06dN.bmp", scannedPages);
+                    estimatedFileName = fileNameBuffer;
+                }
+                
+                // 调用回调函数
+                int callbackResult = cb(const_cast<char*>(estimatedFileName.c_str()));
+                Logger::Log("@INFO Page %d callback function returned: %d", scannedPages, callbackResult);
+                
+                // 如果回调返回值小于等于0，视为用户请求取消
+                if (callbackResult <= 0) {
+                    Logger::Log("@INFO Callback returned value <= 0, user requested to cancel scan");
+                    //break;
+                }
+            }
+            
+            // 检查设备状态，判断是否还有更多页可扫描
+            bool hasMorePages = checkIfMorePagesAvailable();
+            
+            if (!hasMorePages) {
+                Logger::Log("@INFO No more pages to scan, scan ended");
+                break;
+            }
+            
+            // 如果是无限模式，可以添加一个小延迟避免CPU占用过高
+            if (unlimitedScan) {
+                Sleep(100);
+            }
+        }
+        
+        Logger::Log("@INFO Scan complete, scanned %d pages", scannedPages);
+        Logger::Cleanup();
+        return scannedPages;
+    }
+    catch(std::exception& e) {
+        Logger::Log("@ERROR Exception during scan: %s", e.what());
+        Logger::Cleanup();
+        return scannedPages;
+    }
+    catch(...) {
+        Logger::Log("@ERROR Unknown exception during scan");
+        Logger::Cleanup();
+        return scannedPages;
+    }
+}
+
+
+
+// 新增辅助函数：确保目录存在，如果不存在则创建
+bool EnsureDirectoryExists(const char* path) {
+    if (!path || !*path) {
+        return false;
+    }
+    
+    // 检查目录是否存在
+    DWORD attributes = GetFileAttributesA(path);
+    if (attributes != INVALID_FILE_ATTRIBUTES && 
+        (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        // 目录已存在
+        return true;
+    }
+    
+    // 创建完整的目录路径（支持多级目录）
+    char tempPath[MAX_PATH];
+    char* pszPath = NULL;
+    strcpy_s(tempPath, MAX_PATH, path);
+    size_t len = strlen(tempPath);
+    
+    // 如果路径末尾有斜杠，移除
+    if (tempPath[len - 1] == '\\' || tempPath[len - 1] == '/') {
+        tempPath[len - 1] = 0;
+    }
+    
+    // 创建目录层次
+    for (pszPath = tempPath; *pszPath; pszPath++) {
+        if (*pszPath == '\\' || *pszPath == '/') {
+            char savedChar = *pszPath;
+            *pszPath = 0;  // 暂时终止字符串
+            
+            // 尝试创建当前级别目录
+            if (GetFileAttributesA(tempPath) == INVALID_FILE_ATTRIBUTES) {
+                if (!CreateDirectoryA(tempPath, NULL) && 
+                    GetLastError() != ERROR_ALREADY_EXISTS) {
+                    Logger::Log("@ERROR Failed to create directory: %s", tempPath);
+                    return false;
+                }
+            }
+            
+            *pszPath = savedChar;  // 恢复字符
+        }
+    }
+    
+    // 创建最终目录
+    if (GetFileAttributesA(tempPath) == INVALID_FILE_ATTRIBUTES) {
+        if (!CreateDirectoryA(tempPath, NULL) && 
+            GetLastError() != ERROR_ALREADY_EXISTS) {
+            Logger::Log("@ERROR Failed to create directory: %s", tempPath);
+            return false;
+        }
+    }
+    
+    Logger::Log("@INFO Directory exists or was created successfully: %s", path);
+    return true;
+}
+
+
+
+/**
+ * @brief 检查扫描设备是否还有更多页可扫描
+ * 
+ * 此函数需要根据TWAIN API实现，检查扫描设备状态
+ * 特别是自动进纸器(ADF)中是否还有纸张
+ * 
+ * @return 有更多页返回true，否则返回false
+ */
+bool checkIfMorePagesAvailable() {
+    // 这个函数需要根据TWAIN API实现
+    // 可能需要查询CAP_FEEDERLOADED等能力
+    // 简化示例，总是返回false表示没有更多页
+    return true;
+    
+    // 实际实现可能类似:
+    /*
+    TW_CAPABILITY cap;
+    cap.Cap = CAP_FEEDERLOADED;
+    cap.ConType = TWON_ONEVALUE;
+    
+    if (gpTwainApplicationCMD->getScannerCapability(&cap) == TWRC_SUCCESS) {
+        TW_ONEVALUE* val = (TW_ONEVALUE*)_DSM_LockMemory(cap.hContainer);
+        bool hasMorePages = (val->Item != 0);
+        _DSM_UnlockMemory(cap.hContainer);
+        _DSM_Free(cap.hContainer);
+        return hasMorePages;
+    }
+    
+    return false; // 查询失败，假设没有更多页
+    */
+}
+
+
+
+
+
+/**
+ * @brief 结束扫描并卸载数据源
+ * 
+ * 此函数在完成扫描操作后调用，用于卸载当前加载的数据源。
+ * 它会检查当前状态，确保以正确的顺序进行清理：
+ * 1. 如果扫描仪处于已启用状态，先禁用它
+ * 2. 然后卸载数据源
+ * 
+ * 此函数不会断开与DSM的连接，仅卸载数据源。
+ * 
+ * @return 无返回值
+ */
+void zhx_EndScan() {
+    Logger::Init();
+    Logger::Log("@INFO zhx_EndScan caller");
+    printf("[DLL INFO] zhx_EndScan caller\n");
+    
+    try {
+        // 检查TWAIN环境是否已初始化
+        if (!gpTwainApplicationCMD) {
+            Logger::Log("@WARN zhx_EndScan - The TWAIN environment is not initialized and does not need to be uninstalled");
+            printf("[DLL WARN] The TWAIN environment is not initialized and does not need to be uninstalled\n");
+            Logger::Cleanup();
+            return;
+        }
+        
+        // 检查当前状态
+        if (gpTwainApplicationCMD->m_DSMState >= 5) {
+            // 如果扫描仪处于已启用状态，先禁用它
+            Logger::Log("@INFO The scanner is enabled, disable it first");
+            printf("[DLL INFO] The scanner is enabled, disable it first\n");
+            gpTwainApplicationCMD->disableDS();
+        }
+        
+        // 检查是否有源可卸载
+        if (gpTwainApplicationCMD->m_DSMState >= 4) {
+            // 卸载数据源
+            Logger::Log("@INFO Uninstall the data source");
+            printf("[DLL INFO] Uninstall the data source\n");
+            gpTwainApplicationCMD->unloadDS();
+            
+            // 验证卸载结果
+            if (gpTwainApplicationCMD->m_DSMState == 3) {
+                Logger::Log("@INFO The data source was successfully unmounted");
+                printf("[DLL INFO] The data source was successfully unmounted\n");
+            } else {
+                Logger::Log("@WARN The data source is successfully uninstalled, and the status of the data source is abnormal after it is unmounted: %d", gpTwainApplicationCMD->m_DSMState);
+                printf("[DLL WARN] The data source is successfully uninstalled, and the status of the data source is abnormal after it is unmounted: %d\n", gpTwainApplicationCMD->m_DSMState);
+            }
+        } else {
+            Logger::Log("@INFO Currently, no data source needs to be uninstalled: %d", gpTwainApplicationCMD->m_DSMState);
+            printf("[DLL INFO] Currently, no data source needs to be uninstalled: %d\n", gpTwainApplicationCMD->m_DSMState);
+        }
+    }
+    catch (std::exception& e) {
+        Logger::Log("@ERROR zhx_EndScan An exception has occurred: %s", e.what());
+        printf("[DLL ERROR] An exception occurred while ending the scan: %s\n", e.what());
+    }
+    catch (...) {
+        Logger::Log("@ERROR zhx_EndScan An unknown anomaly has occurred");
+        printf("[DLL ERROR] An unknown exception occurred while ending the scan\n");
+    }
+    Logger::Cleanup();
+}
+
+/**
+ * @brief 关闭当前连接的TWAIN环境并断开与DSM的连接
+ * 
+ * 此函数执行完整的TWAIN清理过程，包括：
+ * 1. 禁用扫描仪（如果已启用）
+ * 2. 卸载数据源（如果已加载）
+ * 3. 断开与DSM的连接
+ * 
+ * 但不会删除TwainApp实例，如果需要完全清理，请使用zhx_Exit()。
+ * 
+ * @return 无返回值
+ */
+void zhx_CloseDevice() {
+    Logger::Init();
+    Logger::Log("@INFO zhx_CloseDevice called");
+    printf("[DLL INFO] zhx_CloseDevice called\n");
+    
+    try {
+        // 检查TWAIN环境是否已初始化
+        if (!gpTwainApplicationCMD) {
+            Logger::Log("@WARN zhx_CloseDevice - The TWAIN environment is not initialized and does not need to be disconnected");
+            printf("[DLL WARN] The WAIN environment is not initialized and does not need to be disconnected\n");
+            Logger::Cleanup();
+            return;
+        }
+        
+        // 检查当前状态并执行适当的清理
+        if (gpTwainApplicationCMD->m_DSMState >= 5) {
+            // 如果扫描仪处于已启用状态，先禁用它
+            Logger::Log("@INFO The WAIN environment is not initialized and there is no need to disconnect the scanner when it is enabled, disable it first");
+            printf("[DLL INFO] The WAIN environment is not initialized and there is no need to disconnect the scanner when it is enabled, disable it first\n");
+            gpTwainApplicationCMD->disableDS();
+        }
+        
+        if (gpTwainApplicationCMD->m_DSMState >= 4) {
+            // 如果数据源已加载，先卸载它
+            Logger::Log("@INFO The data source is loaded, uninstall it first");
+            printf("[DLL INFO] The data source is loaded, uninstall it first\n");
+            gpTwainApplicationCMD->unloadDS();
+        }
+        
+        if (gpTwainApplicationCMD->m_DSMState >= 3) {
+            // 断开与DSM的连接
+            int prevState = gpTwainApplicationCMD->m_DSMState;
+            Logger::Log("@INFO Disconnect from DSM, current state: %d", prevState);
+            printf("[DLL INFO] Disconnect from DSM, current state: %d\n", prevState);
+            
+            gpTwainApplicationCMD->disconnectDSM();
+            
+            // 验证断开连接的结果
+            if (gpTwainApplicationCMD->m_DSMState < 3) {
+                Logger::Log("@INFO Successfully disconnected from DSM, new status: %d", gpTwainApplicationCMD->m_DSMState);
+                printf("[DLL INFO] Successfully disconnected from DSM, new status: %d\n", gpTwainApplicationCMD->m_DSMState);
+            } else {
+                Logger::Log("@WARN The connection to the DSM is successfully disconnected, and the status is abnormal after the DSM connection is disconnected in the new state: %d", gpTwainApplicationCMD->m_DSMState);
+                printf("[DLL WARN] The connection to the DSM is successfully disconnected, and the status is abnormal after the DSM connection is disconnected in the new state: %d\n", gpTwainApplicationCMD->m_DSMState);
+            }
+        } else {
+            Logger::Log("@INFO Not currently connected to DSM, status: %d", gpTwainApplicationCMD->m_DSMState);
+            printf("[DLL INFO] Not currently connected to DSM, status: %d\n", gpTwainApplicationCMD->m_DSMState);
+        }
+    }
+    catch (std::exception& e) {
+        Logger::Log("@ERROR zhx_CloseDevice An exception has occurred: %s", e.what());
+        printf("[DLL ERROR] An exception occurred while turning off the device: %s\n", e.what());
+    }
+    catch (...) {
+        Logger::Log("@ERROR zhx_CloseDevice An exception has occurredBBB");
+        printf("[DLL ERROR] An exception occurred while turning off the deviceBBB\n");
+    }
+    Logger::Cleanup();
+}
+
+/**
+ * @brief 完全退出TWAIN环境，释放所有资源
+ * 
+ * 此函数执行最终的清理工作，应在应用程序退出前调用：
+ * 1. 禁用所有已启用的数据源
+ * 2. 卸载所有已加载的数据源
+ * 3. 断开与DSM的连接
+ * 4. 调用TwainApp的exit()方法
+ * 5. 删除TwainApp实例并释放内存
+ * 
+ * 调用此函数后，必须再次调用zhx_Init()才能使用TWAIN功能。
+ * 
+ * @return 无返回值
+ */
+void zhx_Exit() {
+    Logger::Init();
+    Logger::Log("@INFO zhx_Exit called");
+    printf("[DLL INFO] zhx_Exit called\n");
+    
+    try {
+        // 检查TWAIN环境是否已初始化
+        if (!gpTwainApplicationCMD) {
+            Logger::Log("@WARN zhx_Exit - The TWAIN environment is not initialized or cleaned up");
+            printf("[DLL WARN] The TWAIN environment is not initialized or cleaned up\n");
+            Logger::Cleanup();
+            return;
+        }
+        
+        // 记录当前状态
+        int currentState = gpTwainApplicationCMD->m_DSMState;
+        Logger::Log("@INFO Started cleaning up the TWAIN environment, as it is: %d", currentState);
+        printf("[DLL INFO] Started cleaning up the TWAIN environment, as it is: %d\n", currentState);
+        
+        // 按TWAIN状态顺序执行完整清理
+        if (currentState >= 5) {
+            // 先禁用数据源
+            Logger::Log("@INFO Disable the data source");
+            printf("[DLL INFO] Disable the data source\n");
+            gpTwainApplicationCMD->disableDS();
+        }
+        
+        if (gpTwainApplicationCMD->m_DSMState >= 4) {
+            // 卸载数据源
+            Logger::Log("@INFO Uninstall the data source");
+            printf("[DLL INFO] Uninstall the data source\n");
+            gpTwainApplicationCMD->unloadDS();
+        }
+        
+        if (gpTwainApplicationCMD->m_DSMState >= 3) {
+            // 断开DSM连接
+            Logger::Log("@INFO Disconnect the DSM");
+            printf("[DLL INFO] Disconnect the DSM\n");
+            gpTwainApplicationCMD->disconnectDSM();
+        }
+        
+        // 调用TwainApp的exit方法进行最终清理
+        Logger::Log("@INFO Call the exit method to release resources");
+        printf("[DLL INFO] Call the exit method to release resources\n");
+        gpTwainApplicationCMD->exit();
+        
+        // 释放TwainApp对象
+        Logger::Log("@INFO Delete the TwainApp instance");
+        printf("[DLL INFO] Delete the TwainApp instance\n");
+        delete gpTwainApplicationCMD;
+        gpTwainApplicationCMD = NULL; // 使用NULL而不是0，更符合C++风格
+        
+        Logger::Log("@INFO The TWAIN environment is cleaned up");
+        printf("[DLL INFO] The TWAIN environment is cleaned up\n");
+    }
+    catch (std::exception& e) {
+        Logger::Log("@ERROR zhx_Exit An exception has occurred: %s", e.what());
+        printf("[DLL ERROR] An exception occurred while exiting the TWAIN environment: %s\n", e.what());
+        
+        // 即使发生异常，也尝试释放资源
+        if (gpTwainApplicationCMD) {
+            try {
+                delete gpTwainApplicationCMD;
+                gpTwainApplicationCMD = NULL;
+                Logger::Log("@INFO An exception has occurred, the TwainApp resource has been released");
+                printf("[DLL INFO] An exception has occurred, the TwainApp resource has been released\n");
+            }
+            catch (...) {
+                Logger::Log("@ERROR An exception occurred while releasing the TwainApp resource");
+                printf("[DLL ERROR] An exception occurred while releasing the TwainApp resource\n");
+            }
+        }
+    }
+    catch (...) {
+        Logger::Log("@ERROR zhx_Exit An unknown anomaly occurred");
+        printf("[DLL ERROR] An unknown anomaly occurred while exiting the TWAIN environment\n");
+        
+        // 同样尝试释放资源
+        if (gpTwainApplicationCMD) {
+            try {
+                delete gpTwainApplicationCMD;
+                gpTwainApplicationCMD = NULL;
+                Logger::Log("@INFO An unknown anomaly occurred, the TwainApp resource has been released");
+                printf("[DLL INFO] An unknown anomaly occurred, the TwainApp resource has been released\n");
+            }
+            catch (...) {
+                Logger::Log("@ERROR An exception occurred while releasing the TwainApp resource");
+                printf("[DLL ERROR] An exception occurred while releasing the TwainApp resource\n");
+            }
+        }
+    }
+    
+    // 在完全退出前，记录最终状态
+    Logger::Log("@INFO zhx_Exit completed, the TWAIN environment has been exited");
+    printf("[DLL INFO] zhx_Exit completed, the TWAIN environment has been exited\n");
+    Logger::Cleanup();
+}

@@ -1,5 +1,5 @@
 /***************************************************************************
-* Copyright © 2007 TWAIN Working Group:  
+* Copyright ï¿½ 2007 TWAIN Working Group:  
 *   Adobe Systems Incorporated, AnyDoc Software Inc., Eastman Kodak Company, 
 *   Fujitsu Computer Products of America, JFL Peripheral Solutions Inc., 
 *   Ricoh Corporation, and Xerox Corporation.
@@ -55,7 +55,7 @@
  *
  *
  *
- * Copyright © 2007 TWAIN Working Group:  Adobe Systems Incorporated,
+ * Copyright ï¿½ 2007 TWAIN Working Group:  Adobe Systems Incorporated,
  * AnyDoc Software Inc., Eastman Kodak Company, 
  * Fujitsu Computer Products of America, JFL Peripheral Solutions Inc., 
  * Ricoh Corporation, and Xerox Corporation.
@@ -361,6 +361,9 @@ public:
 
   int             m_DSMState;             /**< The current TWAIN state of the dsm (2-7) */
   TW_UINT16       m_DSMessage;            /**< Statis to indicate if we are waiting for DS */
+
+  void setSavePath(const string &path) { m_strSavePath = path; }
+  const string& getSavePath() const { return m_strSavePath; }
 
 protected:
 /**
