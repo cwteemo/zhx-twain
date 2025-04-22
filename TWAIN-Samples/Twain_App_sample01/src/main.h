@@ -63,6 +63,13 @@
 
 #endif // TWH_CMP_MSC
 
+
+TW_UINT16 CALLBACK ImageCallback(pTW_IDENTITY pOrigin, 
+                                 pTW_IDENTITY pDest, 
+                                 TW_UINT32 DG,
+                                 TW_UINT16 DAT,
+                                 TW_UINT16 MSG,
+                                 TW_MEMREF pData);
 // 导出函数声明
 typedef int (*ScanCallback)(char *filename);
 

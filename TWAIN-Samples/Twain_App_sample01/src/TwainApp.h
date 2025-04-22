@@ -195,7 +195,7 @@ public:
 * @param[in] bShowUI true to show UI false to enable without UI
 * @return true if successfully enabled DS.
 */
-  virtual bool enableDS(TW_HANDLE hWnd, BOOL bShowUI);
+  virtual bool enableDS(TW_HANDLE hWnd, BOOL bShowUI, pTW_CALLBACK callbackFunc);
 
 /**
 * Show the DS GUI so the user can modify current settings.

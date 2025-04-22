@@ -62,6 +62,11 @@ typedef union {
 #include "TwainAppCMD.h"
 #include "TwainApp_ui.h"
 #include "Logger.h"
+#include <time.h>  // 时间相关函数
+#include <vector>
+#include <string>
+#include <algorithm>
+#include <windows.h>
 
 using namespace std;
 
@@ -84,6 +89,7 @@ void onSigINT(int _sig)
 bool checkIfMorePagesAvailable();
 // 新增辅助函数：确保目录存在，如果不存在则创建
 bool EnsureDirectoryExists(const char* path);
+
 
 //////////////////////////////////////////////////////////////////////////////
 /** 
@@ -273,6 +279,8 @@ void negotiateCaps()
 void EnableDS()
 {
   gpTwainApplicationCMD->m_DSMessage = 0;
+  // 设置回调函数
+	pTW_CALLBACK callbackFunc=(pTW_CALLBACK)ImageCallback;
   #ifdef TWNDS_OS_LINUX
 
     int test;
@@ -296,9 +304,9 @@ void EnableDS()
   // -The scan will not start until the source calls the callback function
   // that was registered earlier.
 #ifdef TWNDS_OS_WIN
-  if(!gpTwainApplicationCMD->enableDS(GetDesktopWindow(), FALSE))
+  if(!gpTwainApplicationCMD->enableDS(GetDesktopWindow(), FALSE,callbackFunc))
 #else
-  if(!gpTwainApplicationCMD->enableDS(0, TRUE))
+  if(!gpTwainApplicationCMD->enableDS(0, TRUE,callbackFunc))
 #endif
   {
     return;
@@ -849,11 +857,38 @@ int zhx_OpenDevice(char *device) {
 }
 
 
+// 在启动扫描前获取目录文件列表
+std::vector<std::string> GetDirectoryFiles(const std::string& path) {
+    std::vector<std::string> files;
+    std::string searchPath = path;
+    
+    if (searchPath.back() != '/' && searchPath.back() != '\\') {
+        searchPath += '/';
+    }
+    searchPath += "*.*";
+    
+    WIN32_FIND_DATAA findData;
+    HANDLE hFind = FindFirstFileA(searchPath.c_str(), &findData);
+    
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            // 忽略目录
+            if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                files.push_back(findData.cFileName);
+            }
+        } while (FindNextFileA(hFind, &findData));
+        FindClose(hFind);
+    }
+    
+    return files;
+}
+
+
 
  /**
  * @brief 执行扫描操作并保存图像
  * 
- * 此函数设置保存路径并启动扫描过程，支持多页扫描和回调处理。
+ * 此函数设置保存路径，启动扫描过程，并通过文件系统监控获取实际生成的文件。
  * 
  * @param path 图像保存路径，如果为NULL则使用默认路径
  * @param cb 扫描回调函数，每扫描完成一页时调用，可为NULL
@@ -890,19 +925,27 @@ int zhx_Scan(char *path, ScanCallback cb, int count) {
         Logger::Log("@INFO Negative pages are treated as 1 page");
     }
     
-    // 设置并检查保存路径
+    // 设置并确保保存路径存在
+    std::string basePath = ".";
     if (path && *path) {
-        // 检查保存路径是否存在，如果不存在则创建
+        // 确保目录存在
         if (!EnsureDirectoryExists(path)) {
             Logger::Log("@ERROR Failed to create save directory: %s", path);
             Logger::Cleanup();
             return 0;
         }
         
+        basePath = path;
         gpTwainApplicationCMD->setSavePath(path);
-        Logger::Log("@INFO Set the scan save path: %s", path);
+        Logger::Log("@INFO Set scan save path to: %s", path);
     } else {
         Logger::Log("@INFO Using default save path");
+    }
+    
+    // 标准化路径格式
+    std::replace(basePath.begin(), basePath.end(), '\\', '/');
+    if (basePath.back() != '/') {
+        basePath += '/';
     }
     
     int scannedPages = 0;
@@ -910,82 +953,123 @@ int zhx_Scan(char *path, ScanCallback cb, int count) {
     try {
         // 多页扫描循环
         while (unlimitedScan || scannedPages < count) {
-            Logger::Log("@INFO Start scanning page %d %s", 
+            Logger::Log("@INFO Starting scan for page %d %s", 
                         scannedPages + 1, 
-                        unlimitedScan ? "(Unrestricted mode)" : "");
-            Logger::Log("@INFO zhx_Scan is called, scannedPages: %d", scannedPages);
-            Logger::Log("@INFO zhx_Scan is called, scannedPages: %d", count);
-            // 启动单次扫描过程
-            // 启动单次扫描过程
+                        unlimitedScan ? "(unlimited mode)" : "");
+            
+            // 获取扫描前的文件列表
+            std::vector<std::string> filesBefore;
+            WIN32_FIND_DATAA findData;
+            std::string searchPattern = basePath + "*.bmp";
+            HANDLE hFind = FindFirstFileA(searchPattern.c_str(), &findData);
+            
+            if (hFind != INVALID_HANDLE_VALUE) {
+                do {
+                    if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                        filesBefore.push_back(findData.cFileName);
+                    }
+                } while (FindNextFileA(hFind, &findData));
+                FindClose(hFind);
+            }
+            
+            // 启动扫描
             EnableDS();
             
-            // 一次扫描成功，增加计数
-            scannedPages++;
+            // 获取扫描后的文件列表
+            std::vector<std::string> filesAfter;
+            hFind = FindFirstFileA(searchPattern.c_str(), &findData);
             
-            // 处理回调（如果有）
-            if (cb) {
-                // 构建可能的文件名
-                char fileNameBuffer[100];
-                std::string estimatedFileName;
-                
-                if (path) {
-                    std::string basePath = path;
-                    if (basePath.back() != '/' && basePath.back() != '\\') {
-                        basePath += '/';
+            if (hFind != INVALID_HANDLE_VALUE) {
+                do {
+                    if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                        filesAfter.push_back(findData.cFileName);
                     }
-                    // 假设TWAIN使用这种格式命名文件
-                    sprintf(fileNameBuffer, "FROM_SCANNER_%06dN.bmp", scannedPages);
-                    estimatedFileName = basePath + fileNameBuffer;
-                } else {
-                    // 如果没有设置路径，使用简化的文件名
-                    sprintf(fileNameBuffer, "FROM_SCANNER_%06dN.bmp", scannedPages);
-                    estimatedFileName = fileNameBuffer;
-                }
-                
-                // 调用回调函数
-                int callbackResult = cb(const_cast<char*>(estimatedFileName.c_str()));
-                Logger::Log("@INFO Page %d callback function returned: %d", scannedPages, callbackResult);
-                
-                // 如果回调返回值小于等于0，视为用户请求取消
-                if (callbackResult <= 0) {
-                    Logger::Log("@INFO Callback returned value <= 0, user requested to cancel scan");
-                    //break;
+                } while (FindNextFileA(hFind, &findData));
+                FindClose(hFind);
+            }
+            
+            // 找出新增的文件
+            std::vector<std::string> newFiles;
+            for (const auto& file : filesAfter) {
+                if (std::find(filesBefore.begin(), filesBefore.end(), file) == filesBefore.end()) {
+                    newFiles.push_back(file);
                 }
             }
             
-            // 检查设备状态，判断是否还有更多页可扫描
-            bool hasMorePages = checkIfMorePagesAvailable();
+            // 记录扫描到的新文件数量
+            if (newFiles.empty()) {
+                Logger::Log("@WARN No new files were found after scan");
+            } else {
+                Logger::Log("@INFO Found %d new file(s) after scan", newFiles.size());
+            }
             
-            if (!hasMorePages) {
-                Logger::Log("@INFO No more pages to scan, scan ended");
+            // 对每个新文件调用回调
+            bool cancelScan = false;
+            if (cb && !newFiles.empty()) {
+                for (const auto& newFile : newFiles) {
+                    std::string fullPath = basePath + newFile;
+                    Logger::Log("@INFO Processing scanned file: %s", fullPath.c_str());
+                    
+                    int callbackResult = cb(const_cast<char*>(fullPath.c_str()));
+                    Logger::Log("@INFO Callback for file %s returned: %d", newFile.c_str(), callbackResult);
+                    
+                    // 如果回调返回值小于等于0，视为用户请求取消
+                    if (callbackResult <= 0) {
+                        Logger::Log("@INFO Callback requested to cancel scanning");
+                        cancelScan = true;
+                        //break;
+                    }
+                }
+            }
+            
+            // 更新扫描页数
+            if (!newFiles.empty()) {
+                scannedPages += (int)newFiles.size();
+                Logger::Log("@INFO Total pages scanned so far: %d", scannedPages);
+            } else {
+                // 如果没有新文件但已执行扫描，增加计数并记录警告
+                scannedPages++;
+                Logger::Log("@WARN No new files detected, but counting page %d as scanned", scannedPages);
+            }
+            
+            // 检查是否需要取消扫描
+            if (cancelScan) {
                 break;
             }
             
-            // 如果是无限模式，可以添加一个小延迟避免CPU占用过高
-            if (unlimitedScan) {
-                Sleep(100);
+            // 检查是否还有更多页可扫描（对于无限模式或剩余页数）
+            if (unlimitedScan || scannedPages < count) {
+                bool hasMorePages = checkIfMorePagesAvailable();
+                
+                if (!hasMorePages) {
+                    Logger::Log("@INFO No more pages to scan, ending scan process");
+                    break;
+                }
+                
+                // 如果是无限模式，添加小延迟避免CPU占用过高
+                if (unlimitedScan) {
+                    Sleep(100);
+                }
             }
         }
         
-        Logger::Log("@INFO Scan complete, scanned %d pages", scannedPages);
+        Logger::Log("@INFO Scan completed successfully, total pages scanned: %d", scannedPages);
         Logger::Cleanup();
         return scannedPages;
     }
-    catch(std::exception& e) {
+    catch (std::exception& e) {
         Logger::Log("@ERROR Exception during scan: %s", e.what());
         Logger::Cleanup();
-        return scannedPages;
+        return scannedPages; // 返回已成功扫描的页数
     }
-    catch(...) {
+    catch (...) {
         Logger::Log("@ERROR Unknown exception during scan");
         Logger::Cleanup();
-        return scannedPages;
+        return scannedPages; // 返回已成功扫描的页数
     }
 }
 
-
-
-// 新增辅助函数：确保目录存在，如果不存在则创建
+// 确保目录存在，如果不存在则创建
 bool EnsureDirectoryExists(const char* path) {
     if (!path || !*path) {
         return false;
@@ -1077,7 +1161,71 @@ bool checkIfMorePagesAvailable() {
 }
 
 
-
+// 修正后的回调函数实现
+TW_UINT16 CALLBACK ImageCallback(pTW_IDENTITY pOrigin, 
+                                 pTW_IDENTITY pDest, 
+                                 TW_UINT32 DG,
+                                 TW_UINT16 DAT,
+                                 TW_UINT16 MSG,
+                                 TW_MEMREF pData)
+{
+    UNUSEDARG(pDest);  // 未使用的参数标记
+    UNUSEDARG(DG);     // 未使用的参数标记
+    UNUSEDARG(DAT);    // 未使用的参数标记
+    
+    // 确保来源是我们的数据源
+    if (0 == pOrigin || pOrigin->Id != gpTwainApplicationCMD->getDataSource()->Id)
+    {
+        return TWRC_FAILURE;
+    }
+    
+    // 处理不同的消息类型
+    switch (MSG)
+    {
+        case MSG_XFERREADY:
+            // 图像传输准备就绪
+            PrintCMDMessage("ImageCallback: Transfer is ready\n");
+            
+            // 如果pData包含图像数据，可以在这里处理
+            if (pData != NULL)
+            {
+                // 转换为正确的指针类型
+                LPBITMAPINFOHEADER bmpInfoHeader = reinterpret_cast<LPBITMAPINFOHEADER>(pData);
+                
+                // 获取图像数据
+                BYTE* imageData = reinterpret_cast<BYTE*>(bmpInfoHeader + 1);
+                
+                // 输出图像宽度和高度信息
+                PrintCMDMessage("Image Width: %d\n", bmpInfoHeader->biWidth);
+                PrintCMDMessage("Image Height: %d\n", bmpInfoHeader->biHeight);
+            }
+            
+            // 设置消息状态
+            gpTwainApplicationCMD->m_DSMessage = MSG;
+            break;
+            
+        case MSG_CLOSEDSREQ:
+        case MSG_CLOSEDSOK:
+        case MSG_NULL:
+            // 设置对应消息状态
+            gpTwainApplicationCMD->m_DSMessage = MSG;
+            break;
+            
+        default:
+            // 未知消息
+            PrintCMDMessage("ImageCallback: Unknown message received: %d\n", MSG);
+            return TWRC_FAILURE;
+    }
+    
+    // Linux下需要发送信号量
+#ifdef TWNDS_OS_LINUX
+    {
+        sem_post(&(gpTwainApplicationCMD->m_TwainEvent)); // Event semaphore Handle
+    }
+#endif
+    
+    return TWRC_SUCCESS;
+}
 
 
 /**

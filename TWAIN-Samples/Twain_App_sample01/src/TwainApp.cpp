@@ -785,7 +785,7 @@ TW_UINT16 TwainApp::getTWCC(pTW_IDENTITY _pdestID, TW_INT16& _cc)
 }
 
 //////////////////////////////////////////////////////////////////////////////
-bool TwainApp::enableDS(TW_HANDLE hWnd, BOOL bShowUI)
+bool TwainApp::enableDS(TW_HANDLE hWnd, BOOL bShowUI, pTW_CALLBACK callbackFunc)
 {
   Logger::Log("=== Starting Enable Data Source Process ===");
   Logger::Log("Input Parameters:");
@@ -950,13 +950,47 @@ void TwainApp::initiateTransfer_Native()
   TW_UINT16   twrc          = TWRC_SUCCESS;
   string      strPath       = m_strSavePath;
 
-  if( strlen(strPath.c_str()) )
+  if(strlen(strPath.c_str()))
   {
     if(strPath[strlen(strPath.c_str())-1] != PATH_SEPERATOR)
     {
       strPath += PATH_SEPERATOR;
     }
   }
+
+  // 查找目录中现有的最大文件序号
+  int nMaxFileNum = 0;
+  WIN32_FIND_DATAA findFileData;
+  char szSearchPath[MAX_PATH];
+  sprintf_s(szSearchPath, sizeof(szSearchPath), "%sFROM_SCANNER_*N.bmp", strPath.c_str());
+  
+  HANDLE hFind = FindFirstFileA(szSearchPath, &findFileData);
+  if(hFind != INVALID_HANDLE_VALUE)
+  {
+    do
+    {
+      // 提取文件名中的序号部分
+      const char* pFileName = findFileData.cFileName;
+      if(strncmp(pFileName, "FROM_SCANNER_", 13) == 0)
+      {
+        // 尝试从文件名中提取数字部分
+        int nFileNum = 0;
+        if(sscanf_s(pFileName + 13, "%06d", &nFileNum) == 1)
+        {
+          if(nFileNum > nMaxFileNum)
+          {
+            nMaxFileNum = nFileNum;
+          }
+        }
+      }
+    } while(FindNextFileA(hFind, &findFileData));
+    
+    FindClose(hFind);
+    PrintCMDMessage("app: Found existing files, max sequence number: %06d\n", nMaxFileNum);
+  }
+  
+  // 设置起始文件序号为最大序号+1
+  m_nXferNum = nMaxFileNum;
 
   while(bPendingXfers)
   {
@@ -974,7 +1008,7 @@ void TwainApp::initiateTransfer_Native()
     TW_MEMREF hImg = 0;
 
     PrintCMDMessage("app: Starting the transfer...\n");
-    twrc = DSM_Entry( DG_IMAGE, DAT_IMAGENATIVEXFER, MSG_GET, (TW_MEMREF)&hImg);
+    twrc = DSM_Entry(DG_IMAGE, DAT_IMAGENATIVEXFER, MSG_GET, (TW_MEMREF)&hImg);
 
     if(TWRC_XFERDONE == twrc)
     {
@@ -989,8 +1023,25 @@ void TwainApp::initiateTransfer_Native()
         break;
       }
 
-      // Set the filename to save to
+      // 设置文件名 - 使用递增的序号
       SSNPRINTF(szOutFileName, sizeof(szOutFileName), sizeof(szOutFileName), "%sFROM_SCANNER_%06dN.bmp", strPath.c_str(), m_nXferNum);
+
+      // 检查文件是否已存在 - 如果存在，则继续增加序号直到找到未使用的文件名
+      while(true)
+      {
+        FILE *pTestFile;
+        FOPEN(pTestFile, szOutFileName, "rb");
+        if(pTestFile == 0)
+        {
+          // 文件不存在，可以使用这个名称
+          break;
+        }
+        fclose(pTestFile);
+        
+        // 增加序号并生成新的文件名
+        m_nXferNum++;
+        SSNPRINTF(szOutFileName, sizeof(szOutFileName), sizeof(szOutFileName), "%sFROM_SCANNER_%06dN.bmp", strPath.c_str(), m_nXferNum);
+      }
 
       // Save the image to disk
       FILE *pFile;
@@ -1020,13 +1071,13 @@ void TwainApp::initiateTransfer_Native()
 
         // If the driver did not fill in the biSizeImage field, then compute it
         // Each scan line of the image is aligned on a DWORD (32bit) boundary
-        if( pDIB->biSizeImage == 0 )
+        if(pDIB->biSizeImage == 0)
         {
           pDIB->biSizeImage = ((((pDIB->biWidth * pDIB->biBitCount) + 31) & ~31) / 8) * pDIB->biHeight;
 
           // If a compression scheme is used the result may infact be larger
           // Increase the size to account for this.
-          if (pDIB->biCompression != 0)
+          if(pDIB->biCompression != 0)
           {
             pDIB->biSizeImage = (pDIB->biSizeImage * 3) / 2;
           }
@@ -1035,7 +1086,7 @@ void TwainApp::initiateTransfer_Native()
         int nImageSize = pDIB->biSizeImage + (sizeof(RGBQUAD)*dwPaletteSize)+sizeof(BITMAPINFOHEADER);
 
         BITMAPFILEHEADER bmpFIH = {0};
-        bmpFIH.bfType = ( (WORD) ('M' << 8) | 'B');
+        bmpFIH.bfType = ((WORD)('M' << 8) | 'B');
         bmpFIH.bfSize = nImageSize + sizeof(BITMAPFILEHEADER);
         bmpFIH.bfOffBits = sizeof(BITMAPFILEHEADER)+sizeof(BITMAPINFOHEADER)+(sizeof(RGBQUAD)*dwPaletteSize);
   
@@ -1059,9 +1110,9 @@ void TwainApp::initiateTransfer_Native()
       // see if there are any more transfers to do
       PrintCMDMessage("app: Checking to see if there are more images to transfer...\n");
       TW_PENDINGXFERS pendxfers;
-      memset( &pendxfers, 0, sizeof(pendxfers) );
+      memset(&pendxfers, 0, sizeof(pendxfers));
 
-      twrc = DSM_Entry( DG_CONTROL, DAT_PENDINGXFERS, MSG_ENDXFER, (TW_MEMREF)&pendxfers);
+      twrc = DSM_Entry(DG_CONTROL, DAT_PENDINGXFERS, MSG_ENDXFER, (TW_MEMREF)&pendxfers);
 
       if(TWRC_SUCCESS == twrc)
       {
