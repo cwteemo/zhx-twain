@@ -345,7 +345,9 @@ void TwainAppCMD::startScan()
       {
         // Default back to TIFF
         fileformat = TWFF_TIFF;
+        PrintCMDMessage("Capability successfully1 set! fileformat: %d", fileformat);
       }
+      PrintCMDMessage("Capability successfully2 set! fileformat: %d", fileformat);
       initiateTransfer_File(fileformat);
     }
     break;

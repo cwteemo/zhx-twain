@@ -73,6 +73,7 @@ TW_UINT16 CALLBACK ImageCallback(pTW_IDENTITY pOrigin,
 // 导出函数声明
 typedef int (*ScanCallback)(char *filename);
 
+void checkSupportedFormats();
 extern "C" __declspec(dllexport) void  zhx_twain_test();
 
 extern "C" __declspec(dllexport) void  zhx_twain();
@@ -87,4 +88,6 @@ extern "C" __declspec(dllexport) int  zhx_Scan(char *path, ScanCallback cb, int 
 extern "C" __declspec(dllexport) void  zhx_EndScan();
 extern "C" __declspec(dllexport) void  zhx_CloseDevice();
 extern "C" __declspec(dllexport) void  zhx_Exit();
+extern "C" __declspec(dllexport) int zhx_SetTransferMechanism(int mechanism);
+extern "C" __declspec(dllexport) int zhx_SetImageFileFormat(int format);
 #endif //__MAIN_H__

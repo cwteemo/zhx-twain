@@ -41,7 +41,7 @@
 #endif
 
 #include "main.h"
-
+#include "TwainString.h"
 // I found that compiling using the sunfreeware.com stuff on Solaris 9
 // required this typedef. This is related to the inclusion of signal.h
 #if defined (__SVR4) && defined (__sun)
@@ -1034,7 +1034,7 @@ int zhx_Scan(char *path, ScanCallback cb, int count) {
             
             // 检查是否需要取消扫描
             if (cancelScan) {
-                break;
+                //break;
             }
             
             // 检查是否还有更多页可扫描（对于无限模式或剩余页数）
@@ -1476,4 +1476,160 @@ void zhx_Exit() {
     Logger::Log("@INFO zhx_Exit completed, the TWAIN environment has been exited");
     printf("[DLL INFO] zhx_Exit completed, the TWAIN environment has been exited\n");
     Logger::Cleanup();
+}
+
+
+/**
+ * TWSX_NATIVE (0) - 原生传输模式
+ * TWSX_FILE (1) - 文件传输模式
+ * TWSX_MEMORY (2) - 内存缓冲传输模式
+ * TWSX_MEMFILE (4) - 内存文件传输模式
+ * 设置扫描模式
+ */
+int zhx_SetTransferMechanism(int mechanism) {
+    Logger::Init();
+    Logger::Log("@INFO Setting transfer mechanism to %d", mechanism);
+    
+    // 检查TWAIN环境是否初始化
+    if (!gpTwainApplicationCMD) {
+        Logger::Log("@ERROR The TWAIN environment is not initialized");
+        Logger::Cleanup();
+        return 0;
+    }
+    
+    // 检查传入的机制值是否有效
+    if (mechanism != TWSX_NATIVE && 
+        mechanism != TWSX_FILE && 
+        mechanism != TWSX_MEMORY) {
+        Logger::Log("@ERROR Invalid transfer mechanism: %d", mechanism);
+        Logger::Cleanup();
+        return 0;
+    }
+    
+    // 设置传输机制
+    gpTwainApplicationCMD->set_ICAP_XFERMECH((TW_UINT16)mechanism);
+    Logger::Log("@INFO Transfer mechanism set successfully");
+    Logger::Cleanup();
+    return 1;
+}
+
+/**
+ * 设置文件格式
+ * 
+ * 此函数用于设置扫描仪的文件格式。
+ * 
+ * @param format 文件格式，可以是以下值之一：
+ * TWFF_TIFF (0) - TIFF单页格式
+ * TWFF_PICT (1) - Macintosh PICT格式
+ * TWFF_BMP (2) - Windows位图格式
+ * TWFF_XBM (3) - X Windows位图格式
+ * TWFF_JFIF (4) - JPEG图像格式
+ * TWFF_FPX (5) - FlashPix格式
+ * TWFF_TIFFMULTI (6) - 多页TIFF格式
+ * TWFF_PNG (7) - PNG图像格式
+ * TWFF_SPIFF (8) - SPIFF图像格式
+ * TWFF_EXIF (9) - EXIF图像格式
+ * TWFF_PDF (10) - PDF文档格式
+ * TWFF_JP2 (11) - JPEG 2000格式
+ * TWFF_JPX (13) - JPX格式(JPEG 2000扩展)
+ * TWFF_DEJAVU (14) - DejaVu格式
+ * TWFF_PDFA (15) - PDF/A格式(用于归档)
+ * TWFF_PDFA2 (16) - PDF/A-2格式
+ * TWFF_PDFRASTER (17) - PDF/Raster格式
+ */
+// 创建一个设置文件格式的函数
+int zhx_SetImageFileFormat(int format) {
+    Logger::Init();
+    Logger::Log("@INFO start set image file format: %d", format);
+    
+    if (!gpTwainApplicationCMD) {
+        Logger::Log("@ERROR TWAIN not initialized");
+        Logger::Cleanup();
+        return 0;
+    }
+    
+    // 首先检查支持的格式
+    checkSupportedFormats();
+    
+    // 设置为文件传输模式
+    gpTwainApplicationCMD->set_ICAP_XFERMECH(TWSX_FILE);
+    Logger::Log("@INFO set transfer mode to file mode");
+    
+    // 设置文件格式
+    Logger::Log("@INFO try to set image file format to: %d", format);
+    gpTwainApplicationCMD->set_ICAP_IMAGEFILEFORMAT((TW_UINT16)format);
+    
+    // 验证设置
+    TW_UINT16 currentFormat;
+    if (gpTwainApplicationCMD->getICAP_IMAGEFILEFORMAT(currentFormat)) {
+        if (currentFormat == format) {
+            Logger::Log("@INFO successfully set image file format to: %d", format);
+            return 1;
+        } else {
+            Logger::Log("@WARNING request to set format to %d, but the scanner selected format %d", 
+                       format, currentFormat);
+            
+            // 决定是接受扫描仪的选择还是尝试其他格式
+            // 如果您要严格要求特定格式，可以在这里处理
+            
+            // 返回0表示未设置为请求的格式
+            return 0;
+        }
+    } else {
+        Logger::Log("@ERROR failed to get current format setting");
+        return 0;
+    }
+    Logger::Cleanup();
+}
+
+
+void checkSupportedFormats() {
+    Logger::Log("@INFO check supported formats of scanner...");
+    
+    TW_CAPABILITY cap;
+    cap.Cap = ICAP_IMAGEFILEFORMAT;
+    cap.ConType = TWON_DONTCARE16;
+    cap.hContainer = NULL;
+
+    TW_UINT16 rc = gpTwainApplicationCMD->DSM_Entry(
+        DG_CONTROL, DAT_CAPABILITY, MSG_GET, (TW_MEMREF)&cap);
+
+    if (rc == TWRC_SUCCESS) {
+        pTW_ENUMERATION pValues = (pTW_ENUMERATION)_DSM_LockMemory(cap.hContainer);
+        if (pValues) {
+            Logger::Log("@INFO scanner supports %d file formats:", pValues->NumItems);
+            
+            for (TW_UINT32 i = 0; i < pValues->NumItems; i++) {
+                TW_UINT16 format = ((pTW_UINT16)(&pValues->ItemList))[i];
+                const char* ext = convertICAP_IMAGEFILEFORMAT_toExt(format);
+                Logger::Log("@INFO    format %d: %s", format, ext);
+            }
+            
+            // 检查当前设置的格式
+            TW_UINT16 currentFormat = ((pTW_UINT16)(&pValues->ItemList))[pValues->CurrentIndex];
+            Logger::Log("@INFO current default format: %d (%s)", 
+                       currentFormat, 
+                       convertICAP_IMAGEFILEFORMAT_toExt(currentFormat));
+            
+            // 特别检查是否支持PNG
+            bool supportsPNG = false;
+            for (TW_UINT32 i = 0; i < pValues->NumItems; i++) {
+                if (((pTW_UINT16)(&pValues->ItemList))[i] == TWFF_PNG) {
+                    supportsPNG = true;
+                    break;
+                }
+            }
+            
+            if (supportsPNG) {
+                Logger::Log("@INFO scanner supports PNG format");
+            } else {
+                Logger::Log("@WARNING scanner does not support PNG format!");
+            }
+            
+            _DSM_UnlockMemory(cap.hContainer);
+        }
+        _DSM_Free(cap.hContainer);
+    } else {
+        Logger::Log("@ERROR failed to query scanner supported formats, error code: %d", rc);
+    }
 }

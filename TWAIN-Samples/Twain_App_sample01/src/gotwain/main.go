@@ -13,6 +13,8 @@ void goFuncForScanCallBack(char *);
 void zhx_twain_test();
 void zhx_twain();
 void zhx_Init();
+int zhx_SetTransferMechanism(int mechanism);
+int zhx_SetImageFileFormat(int format);
 // int zhx_ApproveLicenseA(char *license);
 char *zhx_GetDevicesList();
 // char *zhx_GetDevCapability_JSON(char *device);
@@ -114,9 +116,20 @@ func zhx_twain() {
 	} else {
 		fmt.Println("没有找到第二个扫描仪")
 	}
+	C.zhx_SetTransferMechanism(C.int(1))
+	C.zhx_SetImageFileFormat(0)
 	//C.goFuncForScanCallBack(C.CString("temp"))
-	code := int(C.zhx_Scan(C.CString("L:/code/twain/zhx-twain/TWAIN-Samples/Twain_App_sample01/src/gotwain/temp"), C.ScanCallback(C.goFuncForScanCallBack), C.int(3)))
+	code := int(C.zhx_Scan(C.CString("L:/code/twain/zhx-twain/TWAIN-Samples/Twain_App_sample01/src/gotwain/temp1"), C.ScanCallback(C.goFuncForScanCallBack), C.int(6)))
 	fmt.Printf("\n扫描完成，错误码%d\n", code)
+
+	code1 := int(C.zhx_Scan(C.CString("L:/code/twain/zhx-twain/TWAIN-Samples/Twain_App_sample01/src/gotwain/temp1"), C.ScanCallback(C.goFuncForScanCallBack), C.int(6)))
+	fmt.Printf("\n扫描完成，错误码%d\n", code1)
+
+	code2 := int(C.zhx_Scan(C.CString("L:/code/twain/zhx-twain/TWAIN-Samples/Twain_App_sample01/src/gotwain/temp2"), C.ScanCallback(C.goFuncForScanCallBack), C.int(6)))
+	fmt.Printf("\n扫描完成，错误码%d\n", code2)
+	C.zhx_EndScan()
+	C.zhx_CloseDevice()
+	C.zhx_Exit()
 	//C.zhx_twain()
 	// 测试初始化TWAIN环境
 	//fmt.Println("\n测试2: 初始化TWAIN环境")
