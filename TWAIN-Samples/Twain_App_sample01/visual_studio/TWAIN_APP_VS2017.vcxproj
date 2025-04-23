@@ -274,6 +274,7 @@ copy "$(ProjectDir)..\..\pub\external\bin\win64\FreeImage.dll" "$(ProjectDir)..\
     <ClCompile Include="..\src\TwainApp_ui.cpp" />
     <ClCompile Include="..\src\TwainAppCMD.cpp" />
     <ClCompile Include="..\..\common\TwainString.cpp" />
+    <ClCompile Include="..\src\utilities.cpp" />
     <ClCompile Include="..\src\VerifySignature.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -287,6 +288,7 @@ copy "$(ProjectDir)..\..\pub\external\bin\win64\FreeImage.dll" "$(ProjectDir)..\
     <ClInclude Include="..\src\TwainApp_ui.h" />
     <ClInclude Include="..\src\TwainAppCMD.h" />
     <ClInclude Include="..\..\common\TwainString.h" />
+    <ClInclude Include="..\src\utilities.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

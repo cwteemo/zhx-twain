@@ -3,7 +3,7 @@ package main
 // 定义DLL文件路径 - 根据实际路径修改
 
 /*
-#cgo LDFLAGS: -L../../visual_studio/Debug -lTWAIN_APP_CMD64 -lstdc++
+#cgo LDFLAGS: -L. -lTWAIN_APP_CMD64 -lstdc++
 //#cgo CFLAGS : -I${SRCDIR}/include
 
 typedef int (*ScanCallback)(char *filename);
@@ -15,6 +15,11 @@ void zhx_twain();
 void zhx_Init();
 int zhx_SetTransferMechanism(int mechanism);
 int zhx_SetImageFileFormat(int format);
+int zhx_GetCurrentFileFormat();
+char *zhx_GetSupportedFileFormats();
+char* zhx_GetSupportedResolutions();
+int zhx_SetResolution(int dpi);
+int zhx_GetCurrentResolution();
 // int zhx_ApproveLicenseA(char *license);
 char *zhx_GetDevicesList();
 // char *zhx_GetDevCapability_JSON(char *device);
@@ -30,6 +35,8 @@ import "C" // 切勿换行再写这个
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -117,15 +124,54 @@ func zhx_twain() {
 		fmt.Println("没有找到第二个扫描仪")
 	}
 	C.zhx_SetTransferMechanism(C.int(1))
-	C.zhx_SetImageFileFormat(0)
+	format := C.zhx_GetCurrentFileFormat()
+	fmt.Printf("\nAAAAAAAformat%d\n", format)
+	// 获取支持的文件格式
+	SupportedFileFormats := C.zhx_GetSupportedFileFormats()
+	// 将 C 字符串转换为 Go 字符串
+	formatsStr := C.GoString(SupportedFileFormats)
+	// 打印字符串内容
+	fmt.Printf("支持的文件格式 (JSON): %s\n", formatsStr)
+
+	result := C.zhx_SetResolution(C.int(600))
+	fmt.Printf("设置分辨率为300 DPI的结果: %v\n", result)
+
+	// 获取支持的分辨率并打印
+	fmt.Println("\n获取扫描仪支持的分辨率:")
+	resolutions := C.zhx_GetSupportedResolutions()
+	resStr := C.GoString(resolutions)
+	fmt.Printf("支持的分辨率 (JSON): %s\n", resStr)
+
+	currentDPI := C.zhx_GetCurrentResolution()
+	fmt.Printf("当前扫描分辨率: %d DPI\n", currentDPI)
+
 	//C.goFuncForScanCallBack(C.CString("temp"))
-	code := int(C.zhx_Scan(C.CString("L:/code/twain/zhx-twain/TWAIN-Samples/Twain_App_sample01/src/gotwain/temp1"), C.ScanCallback(C.goFuncForScanCallBack), C.int(6)))
+	// 获取当前执行程序的目录
+	execDir, err := os.Executable()
+	if err != nil {
+		fmt.Printf("Error getting executable path: %v\n", err)
+		return
+	}
+
+	// 获取可执行文件所在的目录
+	execDir = filepath.Dir(execDir)
+
+	// 创建temp目录路径
+	tempDir1 := filepath.Join(execDir, "temp1")
+	tempDir2 := filepath.Join(execDir, "temp2")
+
+	// 确保目录存在
+	os.MkdirAll(tempDir1, 0755)
+	os.MkdirAll(tempDir2, 0755)
+
+	// 进行扫描，使用创建的目录路径
+	code := int(C.zhx_Scan(C.CString(tempDir1), C.ScanCallback(C.goFuncForScanCallBack), C.int(2)))
 	fmt.Printf("\n扫描完成，错误码%d\n", code)
 
-	code1 := int(C.zhx_Scan(C.CString("L:/code/twain/zhx-twain/TWAIN-Samples/Twain_App_sample01/src/gotwain/temp1"), C.ScanCallback(C.goFuncForScanCallBack), C.int(6)))
+	code1 := int(C.zhx_Scan(C.CString(tempDir1), C.ScanCallback(C.goFuncForScanCallBack), C.int(2)))
 	fmt.Printf("\n扫描完成，错误码%d\n", code1)
 
-	code2 := int(C.zhx_Scan(C.CString("L:/code/twain/zhx-twain/TWAIN-Samples/Twain_App_sample01/src/gotwain/temp2"), C.ScanCallback(C.goFuncForScanCallBack), C.int(6)))
+	code2 := int(C.zhx_Scan(C.CString(tempDir2), C.ScanCallback(C.goFuncForScanCallBack), C.int(2)))
 	fmt.Printf("\n扫描完成，错误码%d\n", code2)
 	C.zhx_EndScan()
 	C.zhx_CloseDevice()
@@ -134,7 +180,7 @@ func zhx_twain() {
 	// 测试初始化TWAIN环境
 	//fmt.Println("\n测试2: 初始化TWAIN环境")
 
-	//fmt.Println("\n测试完成")
-	//fmt.Println("按Enter键退出...")
-	//fmt.Scanln()
+	fmt.Println("\n测试完成")
+	fmt.Println("按Enter键退出...")
+	fmt.Scanln()
 }

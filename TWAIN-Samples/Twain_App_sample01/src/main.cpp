@@ -1514,35 +1514,48 @@ int zhx_SetImageFileFormat(int format) {
 }
 
 
+/**
+ * Check and log all image file formats supported by the current scanner
+ * 
+ * This function queries the scanner for supported image file formats,
+ * logs them to the application log, and specifically checks for PNG support.
+ * It's useful for diagnostic purposes and to verify scanner capabilities
+ * before attempting to set specific file formats.
+ */
 void checkSupportedFormats() {
     Logger::Log("@INFO check supported formats of scanner...");
     
+    // Create capability structure for querying file formats
     TW_CAPABILITY cap;
-    cap.Cap = ICAP_IMAGEFILEFORMAT;
-    cap.ConType = TWON_DONTCARE16;
-    cap.hContainer = NULL;
+    cap.Cap = ICAP_IMAGEFILEFORMAT;   // Capability to query image file formats
+    cap.ConType = TWON_DONTCARE16;    // Let the scanner choose the container type
+    cap.hContainer = NULL;            // Container will be allocated by DSM_Entry
 
+    // Query the scanner for supported file formats
     TW_UINT16 rc = gpTwainApplicationCMD->DSM_Entry(
         DG_CONTROL, DAT_CAPABILITY, MSG_GET, (TW_MEMREF)&cap);
 
     if (rc == TWRC_SUCCESS) {
+        // Lock the memory to access the container data
         pTW_ENUMERATION pValues = (pTW_ENUMERATION)_DSM_LockMemory(cap.hContainer);
         if (pValues) {
             Logger::Log("@INFO scanner supports %d file formats:", pValues->NumItems);
             
+            // Loop through each supported format and log it
             for (TW_UINT32 i = 0; i < pValues->NumItems; i++) {
                 TW_UINT16 format = ((pTW_UINT16)(&pValues->ItemList))[i];
                 const char* ext = convertICAP_IMAGEFILEFORMAT_toExt(format);
                 Logger::Log("@INFO    format %d: %s", format, ext);
             }
             
-            // 检查当前设置的格式
+            // Get and log the current default format
             TW_UINT16 currentFormat = ((pTW_UINT16)(&pValues->ItemList))[pValues->CurrentIndex];
             Logger::Log("@INFO current default format: %d (%s)", 
                        currentFormat, 
                        convertICAP_IMAGEFILEFORMAT_toExt(currentFormat));
             
-            // 特别检查是否支持PNG
+            // Specifically check if PNG format is supported
+            // This is important for applications that prefer PNG format
             bool supportsPNG = false;
             for (TW_UINT32 i = 0; i < pValues->NumItems; i++) {
                 if (((pTW_UINT16)(&pValues->ItemList))[i] == TWFF_PNG) {
@@ -1551,17 +1564,436 @@ void checkSupportedFormats() {
                 }
             }
             
+            // Log PNG support status
             if (supportsPNG) {
                 Logger::Log("@INFO scanner supports PNG format");
             } else {
                 Logger::Log("@WARNING scanner does not support PNG format!");
             }
             
+            // Unlock the memory when done accessing the container data
             _DSM_UnlockMemory(cap.hContainer);
         }
+        // Free the memory allocated by DSM_Entry
         _DSM_Free(cap.hContainer);
     } else {
+        // Log error if query failed
         Logger::Log("@ERROR failed to query scanner supported formats, error code: %d", rc);
     }
 }
 
+/**
+ * 获取当前选择的文件格式
+ * 
+ * @return 当前的文件格式代码，出错返回-1
+ */
+int zhx_GetCurrentFileFormat()
+{
+    Logger::Init();
+    // 检查全局应用程序实例和状态
+    if (!gpTwainApplicationCMD || gpTwainApplicationCMD->m_DSMState < 4)
+    {
+        Logger::Log("@ERROR 获取当前文件格式失败：数据源未打开");
+        return -1;
+    }
+    
+    TW_UINT16 currentFormat;
+    if (gpTwainApplicationCMD->getICAP_IMAGEFILEFORMAT(currentFormat))
+    {
+        // 记录当前格式
+        const char* formatName = "未知";
+        switch (currentFormat)
+        {
+            case TWFF_TIFF: formatName = "TIFF"; break;
+            case TWFF_PICT: formatName = "PICT"; break;
+            case TWFF_BMP: formatName = "BMP"; break;
+            case TWFF_XBM: formatName = "XBM"; break;
+            case TWFF_JFIF: formatName = "JPEG"; break;
+            case TWFF_FPX: formatName = "FlashPix"; break;
+            case TWFF_TIFFMULTI: formatName = "TIFFMULTI"; break;
+            case TWFF_PNG: formatName = "PNG"; break;
+            case TWFF_SPIFF: formatName = "SPIFF"; break;
+            case TWFF_EXIF: formatName = "EXIF"; break;
+            case TWFF_PDF: formatName = "PDF"; break;
+            case TWFF_JP2: formatName = "JP2"; break;
+            case TWFF_JPN: formatName = "JPN"; break;
+            case TWFF_JPX: formatName = "JPX"; break;
+            case TWFF_DEJAVU: formatName = "DEJAVU"; break;
+            case TWFF_PDFA: formatName = "PDFA"; break;
+            case TWFF_PDFA2: formatName = "PDFA2"; break;
+        }
+        
+        Logger::Log("@INFO 当前文件格式为 %s (%d)", formatName, currentFormat);
+        return currentFormat;
+    }
+    
+    Logger::Log("@ERROR 获取当前文件格式失败");
+    Logger::Cleanup();
+    return -1;
+}
+
+
+/**
+ * 获取扫描仪支持的文件格式列表
+ * 
+ * @return 返回包含所有支持格式的JSON字符串，格式为"[{\"label\":\"格式1\",\"value\":1},{\"label\":\"格式2\",\"value\":2}]"，如果出错则返回空JSON数组"[]"
+ */
+char *zhx_GetSupportedFileFormats()
+{
+    static char result[1024] = {0}; // 静态缓冲区存储结果字符串
+    memset(result, 0, sizeof(result));
+    strcpy(result, "[]"); // 默认为空JSON数组
+    Logger::Init();
+    // 检查全局应用程序实例和状态
+    if (!gpTwainApplicationCMD || gpTwainApplicationCMD->m_DSMState < 4)
+    {
+        Logger::Log("@ERROR Get file format failed: The data source is not open");
+        return result;
+    }
+    
+    // 创建能力结构
+    TW_CAPABILITY cap;
+    memset(&cap, 0, sizeof(TW_CAPABILITY));
+    cap.Cap = ICAP_IMAGEFILEFORMAT;
+    cap.ConType = TWON_DONTCARE16;
+    
+    // 获取文件格式能力
+    TW_UINT16 rc = gpTwainApplicationCMD->DSM_Entry(
+        DG_CONTROL, DAT_CAPABILITY, MSG_GET, (TW_MEMREF)&cap);
+    
+    if (rc != TWRC_SUCCESS)
+    {
+        Logger::Log("@ERROR Get file format support failed: TWAIN error");
+        return result;
+    }
+    
+    // 检查返回的容器类型
+    if (cap.ConType != TWON_ENUMERATION)
+    {
+        if (cap.hContainer)
+        {
+            _DSM_Free(cap.hContainer);
+        }
+        Logger::Log("@ERROR Get file format support failed: The returned container type is not an enumeration type");
+        return result;
+    }
+    
+    // 访问容器数据
+    pTW_ENUMERATION pEnum = (pTW_ENUMERATION)_DSM_LockMemory(cap.hContainer);
+    
+    if (!pEnum)
+    {
+        _DSM_Free(cap.hContainer);
+        Logger::Log("@ERROR Get file format support failed: Unable to lock memory");
+        return result;
+    }
+    
+    // 初始化JSON数组
+    strcpy(result, "[");
+    int offset = 1; // 起始位置，因为已经写入了 "["
+    
+    // 添加支持的格式信息
+    for (TW_UINT16 i = 0; i < pEnum->NumItems; i++)
+    {
+        TW_UINT16 format = ((TW_UINT16*)(pEnum->ItemList))[i];
+        const char* formatName = "";
+        
+        // 转换格式代码为可读字符串
+        switch (format)
+        {
+            case TWFF_TIFF:
+                formatName = "TIFF";
+                break;
+            case TWFF_PICT:
+                formatName = "PICT";
+                break;
+            case TWFF_BMP:
+                formatName = "BMP";
+                break;
+            case TWFF_XBM:
+                formatName = "XBM";
+                break;
+            case TWFF_JFIF:
+                formatName = "JPEG";
+                break;
+            case TWFF_FPX:
+                formatName = "FlashPix";
+                break;
+            case TWFF_TIFFMULTI:
+                formatName = "TIFFMULTI";
+                break;
+            case TWFF_PNG:
+                formatName = "PNG";
+                break;
+            case TWFF_SPIFF:
+                formatName = "SPIFF";
+                break;
+            case TWFF_EXIF:
+                formatName = "EXIF";
+                break;
+            case TWFF_PDF:
+                formatName = "PDF";
+                break;
+            case TWFF_JP2:
+                formatName = "JP2";
+                break;
+            case TWFF_JPN:
+                formatName = "JPN";
+                break;
+            case TWFF_JPX:
+                formatName = "JPX";
+                break;
+            case TWFF_DEJAVU:
+                formatName = "DEJAVU";
+                break;
+            case TWFF_PDFA:
+                formatName = "PDFA";
+                break;
+            case TWFF_PDFA2:
+                formatName = "PDFA2";
+                break;
+            default:
+                formatName = "UNKNOWN";
+                break;
+        }
+        
+        // 添加JSON对象到结果数组，使用逗号分隔
+        if (i > 0)
+        {
+            offset += sprintf(result + offset, ",");
+        }
+        
+        // 添加键值对形式的对象
+        offset += sprintf(result + offset, "{\"label\":\"%s\",\"value\":%d}", formatName, format);
+        
+        // 防止缓冲区溢出
+        if (offset >= sizeof(result) - 50)  // 留出足够空间给下一个格式和结束括号
+        {
+            break;
+        }
+    }
+    
+    // 添加结束括号
+    strcat(result, "]");
+    
+    // 解锁并释放内存
+    _DSM_UnlockMemory(cap.hContainer);
+    _DSM_Free(cap.hContainer);
+    
+    Logger::Log("@INFO Supported file formatsJSON: %s", result);
+    Logger::Cleanup();
+    return result;
+}
+
+
+/**
+ * 设置扫描分辨率(DPI)
+ * 
+ * @param dpi 要设置的DPI值，典型值为：75, 100, 150, 200, 300, 600等
+ * @return 成功返回1，失败返回0
+ */
+int zhx_SetResolution(int dpi) {
+    Logger::Init();
+    Logger::Log("@INFO Starting to set resolution to: %d DPI", dpi);
+    
+    // Check if TWAIN environment is initialized
+    if (!gpTwainApplicationCMD) {
+        Logger::Log("@ERROR TWAIN environment not initialized");
+        Logger::Cleanup();
+        return 0;
+    }
+    
+    // Check if scanner is open
+    if (gpTwainApplicationCMD->m_DSMState < 4) {
+        Logger::Log("@ERROR Not connected to scanning device, current state: %d", gpTwainApplicationCMD->m_DSMState);
+        Logger::Cleanup();
+        return 0;
+    }
+    
+    // Create TW_FIX32 structure to represent DPI value
+    TW_FIX32 resolution;
+    // Convert integer DPI to TW_FIX32 format
+    // TW_FIX32 is a 32-bit fixed-point number, consisting of 16-bit integer part and 16-bit fractional part
+    resolution.Whole = dpi;  // Integer part
+    resolution.Frac = 0;     // Fractional part is 0
+    
+    // Set X resolution
+    gpTwainApplicationCMD->set_ICAP_RESOLUTION(ICAP_XRESOLUTION, &resolution);
+    
+    // Set Y resolution
+    gpTwainApplicationCMD->set_ICAP_RESOLUTION(ICAP_YRESOLUTION, &resolution);
+    
+    // Verify if setting was successful
+    TW_FIX32 currentXRes, currentYRes;
+    bool success = gpTwainApplicationCMD->getICAP_XRESOLUTION(currentXRes) && 
+                  gpTwainApplicationCMD->getICAP_YRESOLUTION(currentYRes);
+                  
+    if (success && currentXRes.Whole == dpi && currentYRes.Whole == dpi) {
+        Logger::Log("@INFO Resolution successfully set to %d DPI", dpi);
+        Logger::Cleanup();
+        return 1;
+    } else {
+        if (success) {
+            Logger::Log("@WARN Requested to set DPI to %d, but scanner selected X:%d.%04d, Y:%d.%04d", 
+                       dpi, currentXRes.Whole, currentXRes.Frac, currentYRes.Whole, currentYRes.Frac);
+        } else {
+            Logger::Log("@ERROR Failed to get current resolution settings");
+        }
+        Logger::Cleanup();
+        return 0;
+    }
+}
+
+
+/**
+ * Get the current DPI (resolution) setting of the scanner
+ * 
+ * @return Returns the current DPI value as an integer, or -1 on error
+ */
+int zhx_GetCurrentResolution() {
+    Logger::Init();
+    Logger::Log("@INFO Getting current scanner resolution");
+    
+    // Check if TWAIN environment is initialized
+    if (!gpTwainApplicationCMD) {
+        Logger::Log("@ERROR TWAIN environment not initialized");
+        Logger::Cleanup();
+        return -1;
+    }
+    
+    // Check if scanner is open
+    if (gpTwainApplicationCMD->m_DSMState < 4) {
+        Logger::Log("@ERROR Not connected to scanning device, current state: %d", gpTwainApplicationCMD->m_DSMState);
+        Logger::Cleanup();
+        return -1;
+    }
+    
+    // Get current X resolution
+    TW_FIX32 xRes;
+    if (!gpTwainApplicationCMD->getICAP_XRESOLUTION(xRes)) {
+        Logger::Log("@ERROR Failed to get current X resolution");
+        Logger::Cleanup();
+        return -1;
+    }
+    
+    // Get current Y resolution (for verification)
+    TW_FIX32 yRes;
+    if (!gpTwainApplicationCMD->getICAP_YRESOLUTION(yRes)) {
+        Logger::Log("@ERROR Failed to get current Y resolution");
+        Logger::Cleanup();
+        return -1;
+    }
+    
+    // Convert FIX32 to integer
+    int xDPI = xRes.Whole;
+    int yDPI = yRes.Whole;
+    
+    // Log the result
+    if (xDPI == yDPI) {
+        Logger::Log("@INFO Current scanner resolution is %d DPI", xDPI);
+    } else {
+        Logger::Log("@INFO Current scanner resolution is X: %d DPI, Y: %d DPI (different X/Y resolutions)", xDPI, yDPI);
+    }
+    
+    Logger::Cleanup();
+    return xDPI; // Return X resolution as the primary value
+}
+
+/**
+ * Get all DPI values supported by the scanner
+ * 
+ * @return Returns a JSON string with format "[{\"label\":\"75 DPI\",\"value\":75},{\"label\":\"300 DPI\",\"value\":300},...]"
+ *         or empty array "[]" on error
+ */
+char* zhx_GetSupportedResolutions() {
+    static char result[1024] = {0}; // Static buffer to store the result string
+    memset(result, 0, sizeof(result));
+    strcpy(result, "[]"); // Default to empty JSON array
+    
+    Logger::Init();
+    Logger::Log("@INFO Retrieving supported scanner resolutions");
+    
+    // Check if TWAIN environment is initialized
+    if (!gpTwainApplicationCMD) {
+        Logger::Log("@ERROR TWAIN environment not initialized");
+        Logger::Cleanup();
+        return result;
+    }
+    
+    // Check if scanner is open
+    if (gpTwainApplicationCMD->m_DSMState < 4) {
+        Logger::Log("@ERROR Not connected to scanning device, current state: %d", gpTwainApplicationCMD->m_DSMState);
+        Logger::Cleanup();
+        return result;
+    }
+    
+    // Create capability structure
+    TW_CAPABILITY cap;
+    memset(&cap, 0, sizeof(TW_CAPABILITY));
+    cap.Cap = ICAP_XRESOLUTION; // We use X resolution (vertical resolution is typically the same)
+    cap.ConType = TWON_DONTCARE16;
+    
+    // Get resolution capability
+    TW_UINT16 rc = gpTwainApplicationCMD->DSM_Entry(
+        DG_CONTROL, DAT_CAPABILITY, MSG_GET, (TW_MEMREF)&cap);
+    
+    if (rc != TWRC_SUCCESS) {
+        Logger::Log("@ERROR Failed to get resolution support: TWAIN error");
+        return result;
+    }
+    
+    // Check returned container type
+    if (cap.ConType != TWON_ENUMERATION) {
+        if (cap.hContainer) {
+            _DSM_Free(cap.hContainer);
+        }
+        Logger::Log("@ERROR Failed to get resolution support: Return container type is not enumeration type");
+        return result;
+    }
+    
+    // Access container data
+    pTW_ENUMERATION_FIX32 pEnum = (pTW_ENUMERATION_FIX32)_DSM_LockMemory(cap.hContainer);
+    
+    if (!pEnum) {
+        _DSM_Free(cap.hContainer);
+        Logger::Log("@ERROR Failed to get resolution support: Unable to lock memory");
+        return result;
+    }
+    
+    // Initialize JSON array
+    strcpy(result, "[");
+    int offset = 1; // Starting position, since we've already written "["
+    
+    // Add supported resolution information
+    for (TW_UINT16 i = 0; i < pEnum->NumItems; i++) {
+        TW_FIX32 resolution = pEnum->ItemList[i];
+        
+        // Convert FIX32 to float
+        float dpi = (float)resolution.Whole + ((float)resolution.Frac / 65536.0f);
+        
+        // Add JSON object to result array, use comma as delimiter
+        if (i > 0) {
+            offset += sprintf(result + offset, ",");
+        }
+        
+        // Add key-value pair object with "DPI" added to the label
+        offset += sprintf(result + offset, "{\"label\":\"%d DPI\",\"value\":%d}", 
+                         (int)dpi, (int)dpi);
+        
+        // Prevent buffer overflow
+        if (offset >= sizeof(result) - 50) {  // Leave enough space for the next format and closing bracket
+            break;
+        }
+    }
+    
+    // Add closing bracket
+    strcat(result, "]");
+    
+    // Unlock and free memory
+    _DSM_UnlockMemory(cap.hContainer);
+    _DSM_Free(cap.hContainer);
+    
+    Logger::Log("@INFO Supported resolutions JSON: %s", result);
+    Logger::Cleanup();
+    return result;
+}

@@ -90,4 +90,9 @@ extern "C" __declspec(dllexport) void  zhx_CloseDevice();
 extern "C" __declspec(dllexport) void  zhx_Exit();
 extern "C" __declspec(dllexport) int zhx_SetTransferMechanism(int mechanism);
 extern "C" __declspec(dllexport) int zhx_SetImageFileFormat(int format);
+extern "C" __declspec(dllexport) int zhx_GetCurrentFileFormat();
+extern "C" __declspec(dllexport) char* zhx_GetSupportedFileFormats();
+extern "C" __declspec(dllexport) int zhx_SetResolution(int dpi);
+extern "C" __declspec(dllexport) char* zhx_GetSupportedResolutions();
+extern "C" __declspec(dllexport) int zhx_GetCurrentResolution();
 #endif //__MAIN_H__
