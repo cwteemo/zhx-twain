@@ -54,6 +54,10 @@
 #include "CTiffWriter.h"
 #include "TwainString.h"
 #include "Logger.h"
+#include <time.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "utilities.h"
 
 using namespace std;
 
@@ -785,7 +789,7 @@ TW_UINT16 TwainApp::getTWCC(pTW_IDENTITY _pdestID, TW_INT16& _cc)
 }
 
 //////////////////////////////////////////////////////////////////////////////
-bool TwainApp::enableDS(TW_HANDLE hWnd, BOOL bShowUI, pTW_CALLBACK callbackFunc)
+bool TwainApp::enableDS(TW_HANDLE hWnd, BOOL bShowUI)
 {
   Logger::Log("=== Starting Enable Data Source Process ===");
   Logger::Log("Input Parameters:");
@@ -949,6 +953,16 @@ void TwainApp::initiateTransfer_Native()
   bool        bPendingXfers = true;
   TW_UINT16   twrc          = TWRC_SUCCESS;
   string      strPath       = m_strSavePath;
+  
+  // 使用类成员变量中的批次号，如果为空则生成一个新的
+  std::string serinumber = m_strSerialNumber;
+  if (serinumber.empty()) {
+    serinumber = generateFilenameSafeSerialNumber();
+    m_strSerialNumber = serinumber;  // 保存生成的批次号
+    PrintCMDMessage("app: Generated new batch number: %s\n", serinumber.c_str());
+  } else {
+    PrintCMDMessage("app: Using existing batch number: %s\n", serinumber.c_str());
+  }
 
   if(strlen(strPath.c_str()))
   {
@@ -962,7 +976,8 @@ void TwainApp::initiateTransfer_Native()
   int nMaxFileNum = 0;
   WIN32_FIND_DATAA findFileData;
   char szSearchPath[MAX_PATH];
-  sprintf_s(szSearchPath, sizeof(szSearchPath), "%sFROM_SCANNER_*N.bmp", strPath.c_str());
+  // 使用序列号作为搜索模式的一部分
+  sprintf_s(szSearchPath, sizeof(szSearchPath), "%s%s_*N.bmp", strPath.c_str(), serinumber.c_str());
   
   HANDLE hFind = FindFirstFileA(szSearchPath, &findFileData);
   if(hFind != INVALID_HANDLE_VALUE)
@@ -971,11 +986,14 @@ void TwainApp::initiateTransfer_Native()
     {
       // 提取文件名中的序号部分
       const char* pFileName = findFileData.cFileName;
-      if(strncmp(pFileName, "FROM_SCANNER_", 13) == 0)
+      std::string prefix = serinumber + "_";
+      size_t prefixLen = prefix.length();
+      
+      if(strncmp(pFileName, prefix.c_str(), prefixLen) == 0)
       {
         // 尝试从文件名中提取数字部分
         int nFileNum = 0;
-        if(sscanf_s(pFileName + 13, "%06d", &nFileNum) == 1)
+        if(sscanf_s(pFileName + prefixLen, "%06d", &nFileNum) == 1)
         {
           if(nFileNum > nMaxFileNum)
           {
@@ -986,7 +1004,8 @@ void TwainApp::initiateTransfer_Native()
     } while(FindNextFileA(hFind, &findFileData));
     
     FindClose(hFind);
-    PrintCMDMessage("app: Found existing files, max sequence number: %06d\n", nMaxFileNum);
+    PrintCMDMessage("app: Found existing files with prefix %s, max sequence number: %06d\n", 
+                   serinumber.c_str(), nMaxFileNum);
   }
   
   // 设置起始文件序号为最大序号+1
@@ -1023,8 +1042,9 @@ void TwainApp::initiateTransfer_Native()
         break;
       }
 
-      // 设置文件名 - 使用递增的序号
-      SSNPRINTF(szOutFileName, sizeof(szOutFileName), sizeof(szOutFileName), "%sFROM_SCANNER_%06dN.bmp", strPath.c_str(), m_nXferNum);
+      // 设置文件名 - 使用序列号作为前缀
+      SSNPRINTF(szOutFileName, sizeof(szOutFileName), sizeof(szOutFileName), 
+               "%s%s_%06dN.bmp", strPath.c_str(), serinumber.c_str(), m_nXferNum);
 
       // 检查文件是否已存在 - 如果存在，则继续增加序号直到找到未使用的文件名
       while(true)
@@ -1040,7 +1060,8 @@ void TwainApp::initiateTransfer_Native()
         
         // 增加序号并生成新的文件名
         m_nXferNum++;
-        SSNPRINTF(szOutFileName, sizeof(szOutFileName), sizeof(szOutFileName), "%sFROM_SCANNER_%06dN.bmp", strPath.c_str(), m_nXferNum);
+        SSNPRINTF(szOutFileName, sizeof(szOutFileName), sizeof(szOutFileName), 
+                 "%s%s_%06dN.bmp", strPath.c_str(), serinumber.c_str(), m_nXferNum);
       }
 
       // Save the image to disk
@@ -1471,8 +1492,18 @@ void TwainApp::initiateTransfer_File(TW_UINT16 fileformat /*= TWFF_TIFF*/)
   TW_SETUPFILEXFER filexfer;
   memset(&filexfer, 0, sizeof(filexfer));
   string    strPath       = m_strSavePath;
+  
+  // 使用类成员变量中的批次号，如果为空则生成一个新的
+  std::string serinumber = m_strSerialNumber;
+  if (serinumber.empty()) {
+    serinumber = generateFilenameSafeSerialNumber();
+    m_strSerialNumber = serinumber;  // 保存生成的批次号
+    PrintCMDMessage("app: Generated new batch number: %s\n", serinumber.c_str());
+  } else {
+    PrintCMDMessage("app: Using existing batch number: %s\n", serinumber.c_str());
+  }
 
-  if( strlen(strPath.c_str()) )
+  if(strlen(strPath.c_str()))
   {
     if(strPath[strlen(strPath.c_str())-1] != PATH_SEPERATOR)
     {
@@ -1483,11 +1514,15 @@ void TwainApp::initiateTransfer_File(TW_UINT16 fileformat /*= TWFF_TIFF*/)
   const char * pExt = convertICAP_IMAGEFILEFORMAT_toExt(fileformat);
   if(fileformat==TWFF_TIFFMULTI)
   {
-    SSNPRINTF(filexfer.FileName, sizeof(filexfer.FileName), sizeof(filexfer.FileName), "%sFROM_SCANNER_F%s", strPath.c_str(), pExt);
+    // 多页TIFF格式使用序列号作为前缀，不包含序号
+    SSNPRINTF(filexfer.FileName, sizeof(filexfer.FileName), sizeof(filexfer.FileName), 
+             "%s%s_F%s", strPath.c_str(), serinumber.c_str(), pExt);
   }
   else
   {
-    SSNPRINTF(filexfer.FileName, sizeof(filexfer.FileName), sizeof(filexfer.FileName), "%sFROM_SCANNER_%06dF%s", strPath.c_str(), m_nXferNum, pExt);
+    // 其他格式使用序列号作为前缀，包含序号
+    SSNPRINTF(filexfer.FileName, sizeof(filexfer.FileName), sizeof(filexfer.FileName), 
+             "%s%s_%06dF%s", strPath.c_str(), serinumber.c_str(), m_nXferNum, pExt);
   }
   filexfer.Format = fileformat;
 
@@ -1505,11 +1540,13 @@ void TwainApp::initiateTransfer_File(TW_UINT16 fileformat /*= TWFF_TIFF*/)
 
     if(fileformat!=TWFF_TIFFMULTI)
     {
-      SSNPRINTF(filexfer.FileName, sizeof(filexfer.FileName), sizeof(filexfer.FileName), "%sFROM_SCANNER_%06dF%s", strPath.c_str(), m_nXferNum, pExt);
+      // 更新文件名 - 使用序列号前缀和递增序号
+      SSNPRINTF(filexfer.FileName, sizeof(filexfer.FileName), sizeof(filexfer.FileName), 
+               "%s%s_%06dF%s", strPath.c_str(), serinumber.c_str(), m_nXferNum, pExt);
     }
 
     PrintCMDMessage("app: Sending file transfer details...\n");
-    twrc = DSM_Entry( DG_CONTROL, DAT_SETUPFILEXFER, MSG_SET, (TW_MEMREF)&(filexfer));
+    twrc = DSM_Entry(DG_CONTROL, DAT_SETUPFILEXFER, MSG_SET, (TW_MEMREF)&(filexfer));
 
     if(TWRC_SUCCESS != twrc)
     {
@@ -1518,12 +1555,12 @@ void TwainApp::initiateTransfer_File(TW_UINT16 fileformat /*= TWFF_TIFF*/)
     }
 
     PrintCMDMessage("app: Starting file transfer...\n");
-    twrc = DSM_Entry( DG_IMAGE, DAT_IMAGEFILEXFER, MSG_GET, 0);
+    twrc = DSM_Entry(DG_IMAGE, DAT_IMAGEFILEXFER, MSG_GET, 0);
 
     if(TWRC_XFERDONE == twrc)
     {
       // Findout where the file was actualy saved
-      twrc = DSM_Entry( DG_CONTROL, DAT_SETUPFILEXFER, MSG_GET, (TW_MEMREF)&(filexfer));
+      twrc = DSM_Entry(DG_CONTROL, DAT_SETUPFILEXFER, MSG_GET, (TW_MEMREF)&(filexfer));
 
       PrintCMDMessage("app: File \"%s\" saved...\n", filexfer.FileName);
 #ifdef _WINDOWS
@@ -1540,7 +1577,7 @@ void TwainApp::initiateTransfer_File(TW_UINT16 fileformat /*= TWFF_TIFF*/)
       TW_PENDINGXFERS pendxfers;
       memset(&pendxfers, 0, sizeof(pendxfers));
 
-      twrc = DSM_Entry( DG_CONTROL, DAT_PENDINGXFERS, MSG_ENDXFER, (TW_MEMREF)&pendxfers);
+      twrc = DSM_Entry(DG_CONTROL, DAT_PENDINGXFERS, MSG_ENDXFER, (TW_MEMREF)&pendxfers);
 
       if(TWRC_SUCCESS == twrc)
       {

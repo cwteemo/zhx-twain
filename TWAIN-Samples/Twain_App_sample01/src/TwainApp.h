@@ -195,7 +195,7 @@ public:
 * @param[in] bShowUI true to show UI false to enable without UI
 * @return true if successfully enabled DS.
 */
-  virtual bool enableDS(TW_HANDLE hWnd, BOOL bShowUI, pTW_CALLBACK callbackFunc);
+  virtual bool enableDS(TW_HANDLE hWnd, BOOL bShowUI);
 
 /**
 * Show the DS GUI so the user can modify current settings.
@@ -364,6 +364,9 @@ public:
 
   void setSavePath(const string &path) { m_strSavePath = path; }
   const string& getSavePath() const { return m_strSavePath; }
+  std::string m_strSerialNumber;  // 批次号/流水号
+  void setSerialNumber(const std::string &serialNumber) { m_strSerialNumber = serialNumber; }
+  const std::string& getSerialNumber() const { return m_strSerialNumber; }
 
 protected:
 /**
@@ -390,3 +393,5 @@ protected:
 };
 
 #endif //  __TWAINAPP_H__
+
+

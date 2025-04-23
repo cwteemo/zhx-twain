@@ -66,7 +66,7 @@ typedef union {
 #include <vector>
 #include <string>
 #include <algorithm>
-#include <windows.h>
+#include "utilities.h"
 
 using namespace std;
 
@@ -279,8 +279,7 @@ void negotiateCaps()
 void EnableDS()
 {
   gpTwainApplicationCMD->m_DSMessage = 0;
-  // 设置回调函数
-	pTW_CALLBACK callbackFunc=(pTW_CALLBACK)ImageCallback;
+  
   #ifdef TWNDS_OS_LINUX
 
     int test;
@@ -304,7 +303,7 @@ void EnableDS()
   // -The scan will not start until the source calls the callback function
   // that was registered earlier.
 #ifdef TWNDS_OS_WIN
-  if(!gpTwainApplicationCMD->enableDS(GetDesktopWindow(), FALSE,callbackFunc))
+  if(!gpTwainApplicationCMD->enableDS(GetDesktopWindow(), FALSE))
 #else
   if(!gpTwainApplicationCMD->enableDS(0, TRUE,callbackFunc))
 #endif
@@ -900,7 +899,7 @@ int zhx_Scan(char *path, ScanCallback cb, int count) {
     // 记录函数调用
     Logger::Init();
     Logger::Log("@INFO zhx_Scan is called, path: %s, pages: %d", path ? path : "default", count);
-    
+    std::string serinumber = generateFilenameSafeSerialNumber(); // 例如：SCAN_20250422_213045_123
     // 检查TWAIN环境是否初始化
     if (!gpTwainApplicationCMD) {
         Logger::Log("@ERROR The TWAIN environment is not initialized");
@@ -1159,74 +1158,6 @@ bool checkIfMorePagesAvailable() {
     return false; // 查询失败，假设没有更多页
     */
 }
-
-
-// 修正后的回调函数实现
-TW_UINT16 CALLBACK ImageCallback(pTW_IDENTITY pOrigin, 
-                                 pTW_IDENTITY pDest, 
-                                 TW_UINT32 DG,
-                                 TW_UINT16 DAT,
-                                 TW_UINT16 MSG,
-                                 TW_MEMREF pData)
-{
-    UNUSEDARG(pDest);  // 未使用的参数标记
-    UNUSEDARG(DG);     // 未使用的参数标记
-    UNUSEDARG(DAT);    // 未使用的参数标记
-    
-    // 确保来源是我们的数据源
-    if (0 == pOrigin || pOrigin->Id != gpTwainApplicationCMD->getDataSource()->Id)
-    {
-        return TWRC_FAILURE;
-    }
-    
-    // 处理不同的消息类型
-    switch (MSG)
-    {
-        case MSG_XFERREADY:
-            // 图像传输准备就绪
-            PrintCMDMessage("ImageCallback: Transfer is ready\n");
-            
-            // 如果pData包含图像数据，可以在这里处理
-            if (pData != NULL)
-            {
-                // 转换为正确的指针类型
-                LPBITMAPINFOHEADER bmpInfoHeader = reinterpret_cast<LPBITMAPINFOHEADER>(pData);
-                
-                // 获取图像数据
-                BYTE* imageData = reinterpret_cast<BYTE*>(bmpInfoHeader + 1);
-                
-                // 输出图像宽度和高度信息
-                PrintCMDMessage("Image Width: %d\n", bmpInfoHeader->biWidth);
-                PrintCMDMessage("Image Height: %d\n", bmpInfoHeader->biHeight);
-            }
-            
-            // 设置消息状态
-            gpTwainApplicationCMD->m_DSMessage = MSG;
-            break;
-            
-        case MSG_CLOSEDSREQ:
-        case MSG_CLOSEDSOK:
-        case MSG_NULL:
-            // 设置对应消息状态
-            gpTwainApplicationCMD->m_DSMessage = MSG;
-            break;
-            
-        default:
-            // 未知消息
-            PrintCMDMessage("ImageCallback: Unknown message received: %d\n", MSG);
-            return TWRC_FAILURE;
-    }
-    
-    // Linux下需要发送信号量
-#ifdef TWNDS_OS_LINUX
-    {
-        sem_post(&(gpTwainApplicationCMD->m_TwainEvent)); // Event semaphore Handle
-    }
-#endif
-    
-    return TWRC_SUCCESS;
-}
-
 
 /**
  * @brief 结束扫描并卸载数据源
@@ -1633,3 +1564,4 @@ void checkSupportedFormats() {
         Logger::Log("@ERROR failed to query scanner supported formats, error code: %d", rc);
     }
 }
+
