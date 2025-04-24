@@ -22,9 +22,8 @@ int zhx_SetResolution(int dpi);
 int zhx_GetCurrentResolution();
 // int zhx_ApproveLicenseA(char *license);
 char *zhx_GetDevicesList();
-// char *zhx_GetDevCapability_JSON(char *device);
-char* zhx_GetSupportedCapabilities();
-// int zhx_SetCapability_STR(char *nCap, char *value);
+char *zhx_GetDevCapability_JSON(char *device);
+int zhx_SetCapability_STR(char *nCap, char *value);
 int zhx_OpenDevice(char *device);
 int zhx_Scan(char *path, ScanCallback cb, int count);
 void zhx_EndScan();
@@ -162,7 +161,7 @@ func zhx_twain() {
 	}
 
 	// 获取支持的capabilities
-	supportedCapabilities := C.zhx_GetSupportedCapabilities()
+	supportedCapabilities := C.zhx_GetDevCapability_JSON(cScannerName)
 	supportedCapabilitiesStr := C.GoString(supportedCapabilities)
 	fmt.Printf("支持的capabilities: %s\n", supportedCapabilitiesStr)
 

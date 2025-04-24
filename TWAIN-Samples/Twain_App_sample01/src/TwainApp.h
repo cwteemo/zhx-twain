@@ -174,6 +174,17 @@ public:
 */
   void getSources();
 
+  /**
+* 获取当前数据源标识(ProductName)
+* @return 返回当前数据源的ProductName，如果没有数据源则返回空字符串
+*/
+std::string getSourceIdentity() {
+    if (m_pDataSource) {
+        return std::string(m_pDataSource->ProductName);
+    }
+    return "";
+}
+
 /**
 * Try to load a Data Source.  Loads the data source with the ID passed in. 
 * To open a Data Source the DSM must be in state 3 (Open).  If successful 

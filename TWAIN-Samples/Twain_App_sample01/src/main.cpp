@@ -782,6 +782,75 @@ int zhx_OpenDevice(char *device) {
     }
     
     try {
+        // Get device number from the device name
+        int deviceNumber = zhx_GetDeviceNumber(device);
+        if (deviceNumber <= 0) {
+            Logger::Log("@ERROR Could not find scanner named '%s'", device);
+            printf("[DLL ERROR] Could not find scanner named '%s'\n", device);
+            return 0;
+        }
+
+        // Load the found scanner using device number
+        gpTwainApplicationCMD->loadDS(deviceNumber);
+
+        // Verify scanner loaded successfully (should be in state 4)
+        if (gpTwainApplicationCMD->m_DSMState != 4) {
+            Logger::Log("@ERROR Failed to load scanner, current state: %d", gpTwainApplicationCMD->m_DSMState);
+            printf("[DLL ERROR] Failed to load scanner\n");
+            return 0;
+        }
+
+        Logger::Log("@INFO Successfully loaded scanner '%s'", device);
+        printf("[DLL INFO] Successfully loaded scanner '%s'\n", device);
+        Logger::Cleanup();
+        return 1; // Success
+    }
+    catch (std::exception& e) {
+        Logger::Log("@ERROR zhx_OpenDevice An exception has occurred: %s", e.what());
+        printf("[DLL ERROR] open scanner An exception has occurred: %s\n", e.what());
+        Logger::Cleanup();
+        return 0;
+    }
+    catch (...) {
+        Logger::Log("@ERROR zhx_OpenDevice An unknown anomaly has occurred");
+        printf("[DLL ERROR] open scanner error\n");
+        Logger::Cleanup();
+        return 0;
+    }
+}
+
+
+
+/**
+ * @brief 根据扫描仪名称获取对应的设备编号
+ * 
+ * 此函数从可用扫描仪列表中查找指定名称的扫描仪，并返回其设备编号。
+ * 设备编号是用于loadDS()方法的参数，从1开始计数。
+ * 
+ * @param device 扫描仪名称
+ * @return 成功返回设备编号(>0)，失败返回0
+ */
+/**
+ * @brief 根据扫描仪名称获取对应的设备编号
+ * 
+ * 此函数从可用扫描仪列表中查找指定名称的扫描仪，并返回其设备编号。
+ * 设备编号是用于loadDS()方法的参数，从1开始计数。
+ * 
+ * @param device 扫描仪名称
+ * @return 成功返回设备编号(>0)，失败返回0
+ */
+static int zhx_GetDeviceNumber(const char *device) {
+    // 检查参数
+    if (!device || !*device) {
+        return 0;
+    }
+    
+    // 检查TWAIN环境是否初始化
+    if (!gpTwainApplicationCMD || gpTwainApplicationCMD->m_DSMState < 3) {
+        return 0;
+    }
+    
+    try {
         // Get scanner list (semicolon-separated string)
         const char* scannerList = gpTwainApplicationCMD->getAvailableDataSources();
         Logger::Log("@INFO Retrieved scanner list: %s", scannerList);
@@ -793,8 +862,6 @@ int zhx_OpenDevice(char *device) {
         // Create a copy of the scanner list for parsing
         char* scannerListCopy = _strdup(scannerList);
         if (!scannerListCopy) {
-            Logger::Log("@ERROR Memory allocation failed");
-            printf("[DLL ERROR] Memory allocation failed\n");
             return 0;
         }
 
@@ -817,40 +884,16 @@ int zhx_OpenDevice(char *device) {
 
         // If matching scanner not found
         if (deviceIndex == -1) {
-            Logger::Log("@ERROR Could not find scanner named '%s'", device);
-            printf("[DLL ERROR] Could not find scanner named '%s'\n", device);
             return 0;
         }
 
         // Convert zero-based index to one-based device number
         int deviceNumber = deviceIndex + 1;
         Logger::Log("@INFO Found device at index %d, using device number %d", deviceIndex, deviceNumber);
-
-        // Load the found scanner using device number (not index)
-        gpTwainApplicationCMD->loadDS(deviceNumber);
-
-        // Verify scanner loaded successfully (should be in state 4)
-        if (gpTwainApplicationCMD->m_DSMState != 4) {
-            Logger::Log("@ERROR Failed to load scanner, current state: %d", gpTwainApplicationCMD->m_DSMState);
-            printf("[DLL ERROR] Failed to load scanner\n");
-            return 0;
-        }
-
-        Logger::Log("@INFO Successfully loaded scanner '%s', index: %d", device, deviceIndex);
-        printf("[DLL INFO] Successfully loaded scanner '%s', index: %d\n", device, deviceIndex);
-        Logger::Cleanup();
-        return 1; // Success
-    }
-    catch (std::exception& e) {
-        Logger::Log("@ERROR zhx_OpenDevice An exception has occurred: %s", e.what());
-        printf("[DLL ERROR] open scanner An exception has occurred: %s\n", e.what());
-        Logger::Cleanup();
-        return 0;
+        
+        return deviceNumber; // Return the device number
     }
     catch (...) {
-        Logger::Log("@ERROR zhx_OpenDevice An unknown anomaly has occurred");
-        printf("[DLL ERROR] open scanner error\n");
-        Logger::Cleanup();
         return 0;
     }
 }
@@ -2000,115 +2043,18 @@ char* zhx_GetSupportedResolutions() {
 
 
 /**
- * Get all capabilities supported by the scanner
+ * Get all capabilities supported by a specific scanner device
  * 
- * @return Returns a JSON string with format "[{\"name\":\"CAP_XFERCOUNT\",\"cap\":289,\"type\":\"base\"},
- * {\"name\":\"ICAP_PIXELTYPE\",\"cap\":257,\"type\":\"image\"},...]"
- * or empty array "[]" on error
+ * @param device Name of the scanner device to query
+ * @return JSON string with capabilities in format "[{\"name\":\"CAP_XFERCOUNT\",\"value\":1,\"label\":\"Transfer Count\"},...]"
  */
-// char* zhx_GetSupportedCapabilities() {
-//     static char result[4096] = {0}; // Larger buffer for potentially many capabilities
-//     memset(result, 0, sizeof(result));
-//     strcpy(result, "[]"); // Default to empty JSON array
-    
-//     Logger::Init();
-//     Logger::Log("@INFO Retrieving supported scanner capabilities");
-    
-//     // Check if TWAIN environment is initialized
-//     if (!gpTwainApplicationCMD) {
-//         Logger::Log("@ERROR TWAIN environment not initialized");
-//         Logger::Cleanup();
-//         return result;
-//     }
-    
-//     // Check if scanner is open
-//     if (gpTwainApplicationCMD->m_DSMState < 4) {
-//         Logger::Log("@ERROR Not connected to scanning device, current state: %d", gpTwainApplicationCMD->m_DSMState);
-//         Logger::Cleanup();
-//         return result;
-//     }
-    
-//     // Create capability structure for CAP_SUPPORTEDCAPS
-//     TW_CAPABILITY cap;
-//     memset(&cap, 0, sizeof(TW_CAPABILITY));
-//     cap.Cap = CAP_SUPPORTEDCAPS;
-//     cap.ConType = TWON_DONTCARE16;
-    
-//     // Query the scanner for supported capabilities
-//     TW_UINT16 rc = gpTwainApplicationCMD->DSM_Entry(
-//         DG_CONTROL, DAT_CAPABILITY, MSG_GET, (TW_MEMREF)&cap);
-    
-//     if (rc != TWRC_SUCCESS) {
-//         Logger::Log("@ERROR Failed to get supported capabilities: TWAIN error %d", rc);
-//         return result;
-//     }
-    
-//     // Check returned container type
-//     if (cap.ConType != TWON_ARRAY) {
-//         if (cap.hContainer) {
-//             _DSM_Free(cap.hContainer);
-//         }
-//         Logger::Log("@ERROR Failed to get capabilities: Return container type is not ARRAY");
-//         return result;
-//     }
-    
-//     // Access container data
-//     pTW_ARRAY_UINT16 pArray = (pTW_ARRAY_UINT16)_DSM_LockMemory(cap.hContainer);
-    
-//     if (!pArray) {
-//         _DSM_Free(cap.hContainer);
-//         Logger::Log("@ERROR Failed to get capabilities: Unable to lock memory");
-//         return result;
-//     }
-    
-//     // Initialize JSON array
-//     strcpy(result, "[");
-//     int offset = 1; // Starting position
-    
-//     // Process each capability
-//     for (TW_UINT32 i = 0; i < pArray->NumItems && offset < sizeof(result) - 256; i++) {
-//         TW_UINT16 capValue = pArray->ItemList[i];
-//         const char* capName = convertCAP_toString(capValue);
-//         const char* capType = "unknown";
-        
-//         // Determine capability type
-//         if (capValue >= CAP_CUSTOMBASE) {
-//             capType = "custom";
-//         } else if (capValue >= ICAP_AUTOBRIGHT && capValue <= ICAP_ZOOMFACTOR) {
-//             capType = "image";
-//         } else if (capValue >= CAP_CUSTOMAVAILABLEVALUES && capValue <= CAP_XFERCOUNT) {
-//             capType = "base";
-//         }
-        
-//         // Add JSON object to array
-//         if (i > 0) {
-//             offset += sprintf(result + offset, ",");
-//         }
-        
-//         offset += sprintf(result + offset, "{\"name\":\"%s\",\"cap\":%d,\"type\":\"%s\"}", 
-//                          capName, capValue, capType);
-//     }
-    
-//     // Add closing bracket
-//     strcat(result, "]");
-    
-//     // Unlock and free memory
-//     _DSM_UnlockMemory(cap.hContainer);
-//     _DSM_Free(cap.hContainer);
-    
-//     Logger::Log("@INFO Retrieved %d supported capabilities", pArray->NumItems);
-//     Logger::Cleanup();
-//     return result;
-// }
-
-
-
-char* zhx_GetSupportedCapabilities() {
+char* zhx_GetDevCapability_JSON(char* device) {
     static char result[4096] = {0}; // Larger buffer for potentially many capabilities
     memset(result, 0, sizeof(result));
+    strcpy(result, "[]"); // Default to empty JSON array
     
     Logger::Init();
-    Logger::Log("@INFO Retrieving supported scanner capabilities");
+    Logger::Log("@INFO Retrieving capabilities for scanner: %s", device);
     
     // Check if TWAIN environment is initialized
     if (!gpTwainApplicationCMD) {
@@ -2117,66 +2063,472 @@ char* zhx_GetSupportedCapabilities() {
         return result;
     }
     
+    // Save current connection state
+    bool wasConnected = false;
+    int previousState = gpTwainApplicationCMD->m_DSMState;
+    std::string previousDevice = "";
+    
+    // If already connected to a device, record which one and disconnect
+    if (previousState >= 4) {
+        wasConnected = true;
+        previousDevice = gpTwainApplicationCMD->getSourceIdentity();
+        
+        // Close current device if it's different from the requested one
+        if (previousDevice != device) {
+            Logger::Log("@INFO Temporarily closing current device: %s", previousDevice.c_str());
+            gpTwainApplicationCMD->disableDS();
+            gpTwainApplicationCMD->unloadDS();
+        } else {
+            // If same device, we can skip reconnection
+            Logger::Log("@INFO Already connected to requested device: %s", device);
+        }
+    }
+    
+    // Connect to the specified device if not already connected to it
+    bool newConnectionNeeded = !wasConnected || previousDevice != device;
+    bool connectionSuccess = true;
+    
+    if (newConnectionNeeded) {
+        Logger::Log("@INFO Connecting to device: %s", device);
+        
+        // 修正: 使用zhx_GetDeviceNumber获取设备编号
+        int deviceNumber = zhx_GetDeviceNumber(device);
+        if (deviceNumber <= 0) {
+            Logger::Log("@ERROR Failed to get device number for: %s", device);
+            connectionSuccess = false;
+        } else {
+            // 加载数据源，使用设备编号而不是设备名称
+            int prevState = gpTwainApplicationCMD->m_DSMState;
+            gpTwainApplicationCMD->loadDS(deviceNumber);
+            if (gpTwainApplicationCMD->m_DSMState != 4) { // 成功loadDS后状态应该是4
+                Logger::Log("@ERROR Failed to load device: %s (number: %d)", device, deviceNumber);
+                connectionSuccess = false;
+            }
+        }
+    }
+    
+    // Proceed with capability query if connection is established
+    if ((newConnectionNeeded && connectionSuccess) || (!newConnectionNeeded && previousState >= 4)) {
+        // Create capability structure for CAP_SUPPORTEDCAPS
+        TW_CAPABILITY cap;
+        memset(&cap, 0, sizeof(TW_CAPABILITY));
+        cap.Cap = CAP_SUPPORTEDCAPS;
+        cap.ConType = TWON_DONTCARE16;
+        
+        // Query the scanner for supported capabilities
+        TW_UINT16 rc = gpTwainApplicationCMD->DSM_Entry(
+            DG_CONTROL, DAT_CAPABILITY, MSG_GET, (TW_MEMREF)&cap);
+        
+        if (rc != TWRC_SUCCESS) {
+            Logger::Log("@ERROR Failed to get supported capabilities: TWAIN error %d", rc);
+        } else {
+            // Check returned container type
+            if (cap.ConType != TWON_ARRAY) {
+                if (cap.hContainer) {
+                    _DSM_Free(cap.hContainer);
+                }
+                Logger::Log("@ERROR Failed to get capabilities: Return container type is not ARRAY");
+            } else {
+                // Access container data
+                pTW_ARRAY_UINT16 pArray = (pTW_ARRAY_UINT16)_DSM_LockMemory(cap.hContainer);
+                
+                if (!pArray) {
+                    _DSM_Free(cap.hContainer);
+                    Logger::Log("@ERROR Failed to get capabilities: Unable to lock memory");
+                } else {
+                    // Initialize JSON array
+                    strcpy(result, "[");
+                    int offset = 1; // Starting position, since we've already written "["
+                    
+                    // Process each capability
+                    for (TW_UINT32 i = 0; i < pArray->NumItems && offset < sizeof(result) - 256; i++) {
+                        TW_UINT16 capValue = pArray->ItemList[i];
+                        const char* capName = convertCAP_toString(capValue);
+                        const char* capLabel = getCapabilityChineseLabel(capValue); // Using English labels
+                        
+                        // Add JSON object to result array, use comma as delimiter
+                        if (i > 0) {
+                            offset += sprintf(result + offset, ",");
+                        }
+                        
+                        // Add key-value-label triple in JSON format
+                        offset += sprintf(result + offset, "{\"name\":\"%s\",\"value\":%d,\"label\":\"%s\"}", 
+                                         capName, capValue, capLabel);
+                    }
+                    
+                    // Add closing bracket
+                    strcat(result, "]");
+                    
+                    // Unlock and free memory
+                    _DSM_UnlockMemory(cap.hContainer);
+                    
+                    Logger::Log("@INFO Retrieved %d supported capabilities for device: %s", pArray->NumItems, device);
+                }
+                
+                _DSM_Free(cap.hContainer);
+            }
+        }
+    }
+    
+    // Restore previous connection if needed
+    if (newConnectionNeeded) {
+        // Close the temporary device connection
+        if (connectionSuccess) {
+            gpTwainApplicationCMD->disableDS();
+            gpTwainApplicationCMD->unloadDS();
+        }
+        
+        // 恢复之前设备连接的部分
+        if (wasConnected && previousDevice != device) {
+            Logger::Log("@INFO Restoring connection to previous device: %s", previousDevice.c_str());
+            
+            // 修正: 使用zhx_GetDeviceNumber获取之前设备的编号
+            int prevDeviceNumber = zhx_GetDeviceNumber(previousDevice.c_str());
+            if (prevDeviceNumber > 0) {
+                int prevState = gpTwainApplicationCMD->m_DSMState;
+                gpTwainApplicationCMD->loadDS(prevDeviceNumber);
+                if (gpTwainApplicationCMD->m_DSMState == 4) {
+                    Logger::Log("@INFO Successfully restored previous device connection");
+                } else {
+                    Logger::Log("@WARNING Failed to reload previous device: %s (number: %d)", previousDevice.c_str(), prevDeviceNumber);
+                }
+            } else {
+                Logger::Log("@WARNING Failed to get device number for previous device: %s", previousDevice.c_str());
+            }
+        }
+    }
+    
+    Logger::Cleanup();
+    return result;
+}
+
+
+/**
+ * 获取能力ID对应的中文说明
+ * 
+ * @param capValue 能力ID值
+ * @return 返回对应的中文说明
+ */
+const char* getCapabilityChineseLabel(TW_UINT16 capValue) {
+    switch (capValue) {
+        // 基本控制能力
+        // Basic Control Capabilities
+        case CAP_DEVICEONLINE:      return "Device Online Status";
+        case CAP_INDICATORS:        return "Progress Indicators";
+        case CAP_ENABLEDSUIONLY:    return "Enable DS UI Only";
+        case CAP_UICONTROLLABLE:    return "UI Controllable";
+        case CAP_SUPPORTEDCAPS:     return "Supported Capabilities";
+        case CAP_CUSTOMINTERFACEGUID: return "Custom Interface GUID";
+        case CAP_CUSTOMDSDATA:      return "Custom DS Data";
+        
+        // Feeder Related
+        case CAP_PAPERDETECTABLE:   return "Paper Detection";
+        case CAP_FEEDERENABLED:     return "Feeder Enabled";
+        case CAP_FEEDERLOADED:      return "Feeder Loaded";
+        case CAP_DUPLEX:            return "Duplex Support";
+        case CAP_DUPLEXENABLED:     return "Duplex Enabled";
+        case CAP_AUTOFEED:          return "Auto Feed";
+        
+        // Image Properties and Transfer
+        case CAP_XFERCOUNT:         return "Transfer Count";
+        case ICAP_BITDEPTH:         return "Bit Depth";
+        case ICAP_BITORDER:         return "Bit Order";
+        case ICAP_COMPRESSION:      return "Compression";
+        case ICAP_IMAGEFILEFORMAT:  return "Image File Format";
+        case ICAP_PIXELFLAVOR:      return "Pixel Flavor";
+        case ICAP_PIXELTYPE:        return "Pixel Type";
+        case ICAP_PLANARCHUNKY:     return "Planar/Chunky";
+        case ICAP_XFERMECH:         return "Transfer Mechanism";
+        
+        // Page and Image Size
+        case ICAP_FRAMES:           return "Image Frames";
+        case ICAP_MAXFRAMES:        return "Maximum Frames";
+        case ICAP_PHYSICALHEIGHT:   return "Physical Height";
+        case ICAP_PHYSICALWIDTH:    return "Physical Width";
+        case ICAP_SUPPORTEDSIZES:   return "Supported Paper Sizes";
+        case ICAP_ORIENTATION:      return "Image Orientation";
+        case ICAP_UNITS:            return "Measurement Units";
+        
+        // Resolution
+        case ICAP_XNATIVERESOLUTION: return "Native X Resolution";
+        case ICAP_YNATIVERESOLUTION: return "Native Y Resolution";
+        case ICAP_XRESOLUTION:      return "X Resolution";
+        case ICAP_YRESOLUTION:      return "Y Resolution";
+        
+        // Image Enhancement
+        case ICAP_THRESHOLD:        return "Threshold";
+        case ICAP_CONTRAST:         return "Contrast";
+        case ICAP_BRIGHTNESS:       return "Brightness";
+        case ICAP_GAMMA:            return "Gamma";
+        
+        // Custom Capabilities
+        case 4158:                  return "Vendor Specific";
+        case 32769:                 return "Custom Capability 1";
+        case 32770:                 return "Custom Capability 2";
+        
+        default:
+            if (capValue >= CAP_CUSTOMBASE) {
+                return "Custom Capability";
+            } else if (capValue >= ICAP_AUTOBRIGHT && capValue <= ICAP_ZOOMFACTOR) {
+                return "Image Control Capability";
+            } else {
+                return "Basic Control Capability";
+            }
+    }
+}
+
+/**
+ * Set a TWAIN capability based on string parameters
+ * 
+ * @param nCap String representation of the capability name (e.g. "ICAP_BITDEPTH")
+ * @param value String value to set (e.g. "24")
+ * @return 0 on success, error code on failure
+ */
+int zhx_SetCapability_STR(char *nCap, char *value) {
+    Logger::Init();
+    Logger::Log("@INFO Setting capability: %s to %s", nCap, value);
+
+    // Check if TWAIN environment is initialized
+    if (!gpTwainApplicationCMD) {
+        Logger::Log("@ERROR TWAIN environment not initialized");
+        Logger::Cleanup();
+        return -1;
+    }
+    
     // Check if scanner is open
     if (gpTwainApplicationCMD->m_DSMState < 4) {
         Logger::Log("@ERROR Not connected to scanning device, current state: %d", gpTwainApplicationCMD->m_DSMState);
         Logger::Cleanup();
-        return result;
+        return -2;
     }
     
-    // Create capability structure for CAP_SUPPORTEDCAPS
+    // Convert capability string to numeric value
+    TW_UINT16 capValue = 0;
+    bool capFound = false;
+    
+    // Search for capability by name
+    // Common capabilities
+    if (strcmp(nCap, "ICAP_BITDEPTH") == 0) {
+        capValue = ICAP_BITDEPTH;
+        capFound = true;
+    } else if (strcmp(nCap, "ICAP_PIXELTYPE") == 0) {
+        capValue = ICAP_PIXELTYPE;
+        capFound = true;
+    } else if (strcmp(nCap, "ICAP_UNITS") == 0) {
+        capValue = ICAP_UNITS;
+        capFound = true;
+    } else if (strcmp(nCap, "ICAP_XFERMECH") == 0) {
+        capValue = ICAP_XFERMECH;
+        capFound = true;
+    } else if (strcmp(nCap, "ICAP_COMPRESSION") == 0) {
+        capValue = ICAP_COMPRESSION;
+        capFound = true;
+    } else if (strcmp(nCap, "ICAP_IMAGEFILEFORMAT") == 0) {
+        capValue = ICAP_IMAGEFILEFORMAT;
+        capFound = true;
+    } else if (strcmp(nCap, "ICAP_XRESOLUTION") == 0 || strcmp(nCap, "ICAP_YRESOLUTION") == 0) {
+        capValue = (strcmp(nCap, "ICAP_XRESOLUTION") == 0) ? ICAP_XRESOLUTION : ICAP_YRESOLUTION;
+        capFound = true;
+    } else if (strcmp(nCap, "CAP_FEEDERENABLED") == 0) {
+        capValue = CAP_FEEDERENABLED;
+        capFound = true;
+    } else if (strcmp(nCap, "CAP_DUPLEXENABLED") == 0) {
+        capValue = CAP_DUPLEXENABLED;
+        capFound = true;
+    } else if (strcmp(nCap, "CAP_AUTOFEED") == 0) {
+        capValue = CAP_AUTOFEED;
+        capFound = true;
+    } else if (strcmp(nCap, "ICAP_SUPPORTEDSIZES") == 0) {
+        capValue = ICAP_SUPPORTEDSIZES;
+        capFound = true;
+    } else if (strcmp(nCap, "ICAP_ORIENTATION") == 0) {
+        capValue = ICAP_ORIENTATION;
+        capFound = true;
+    } else if (strcmp(nCap, "ICAP_CONTRAST") == 0) {
+        capValue = ICAP_CONTRAST;
+        capFound = true;
+    } else if (strcmp(nCap, "ICAP_BRIGHTNESS") == 0) {
+        capValue = ICAP_BRIGHTNESS;
+        capFound = true;
+    } else if (strcmp(nCap, "ICAP_GAMMA") == 0) {
+        capValue = ICAP_GAMMA;
+        capFound = true;
+    } else if (strcmp(nCap, "ICAP_THRESHOLD") == 0) {
+        capValue = ICAP_THRESHOLD;
+        capFound = true;
+    }
+
+    // If capability wasn't found by name
+    if (!capFound) {
+        // Try to parse as hexadecimal
+        if (strncmp(nCap, "0x", 2) == 0) {
+            capValue = (TW_UINT16)strtol(nCap, NULL, 16);
+            capFound = true;
+        } 
+        // Try to parse as decimal
+        else {
+            char* endptr;
+            capValue = (TW_UINT16)strtol(nCap, &endptr, 10);
+            if (*endptr == '\0') {
+                capFound = true;
+            }
+        }
+    }
+    
+    if (!capFound) {
+        Logger::Log("@ERROR Unknown capability: %s", nCap);
+        Logger::Cleanup();
+        return -3;
+    }
+    
+    // Prepare capability structure
     TW_CAPABILITY cap;
     memset(&cap, 0, sizeof(TW_CAPABILITY));
-    cap.Cap = CAP_SUPPORTEDCAPS;
-    cap.ConType = TWON_DONTCARE16;
+    cap.Cap = capValue;
     
-    // Query the scanner for supported capabilities
+    // First get the current value to determine type
+    cap.ConType = TWON_DONTCARE16;
     TW_UINT16 rc = gpTwainApplicationCMD->DSM_Entry(
         DG_CONTROL, DAT_CAPABILITY, MSG_GET, (TW_MEMREF)&cap);
     
     if (rc != TWRC_SUCCESS) {
-        Logger::Log("@ERROR Failed to get supported capabilities: TWAIN error %d", rc);
-        return result;
+        Logger::Log("@ERROR Failed to get capability %s: TWAIN error %d", nCap, rc);
+        Logger::Cleanup();
+        return -4;
     }
     
-    // Check returned container type
-    if (cap.ConType != TWON_ARRAY) {
-        if (cap.hContainer) {
-            _DSM_Free(cap.hContainer);
+    // Determine container type and item type
+    TW_UINT16 itemType = TWTY_UINT16; // Default
+    
+    if (cap.ConType == TWON_ONEVALUE) {
+        pTW_ONEVALUE pVal = (pTW_ONEVALUE)_DSM_LockMemory(cap.hContainer);
+        if (pVal) {
+            itemType = pVal->ItemType;
+            _DSM_UnlockMemory(cap.hContainer);
         }
-        Logger::Log("@ERROR Failed to get capabilities: Return container type is not ARRAY");
-        return result;
-    }
-    
-    // Access container data
-    pTW_ARRAY_UINT16 pArray = (pTW_ARRAY_UINT16)_DSM_LockMemory(cap.hContainer);
-    
-    if (!pArray) {
-        _DSM_Free(cap.hContainer);
-        Logger::Log("@ERROR Failed to get capabilities: Unable to lock memory");
-        return result;
-    }
-    
-    int offset = 0; // Starting position
-    
-    // Process each capability
-    for (TW_UINT32 i = 0; i < pArray->NumItems && offset < sizeof(result) - 256; i++) {
-        TW_UINT16 capValue = pArray->ItemList[i];
-        const char* capName = convertCAP_toString(capValue);
-        
-        // Add capability to result string with format NAME:ID;
-        if (i > 0) {
-            offset += sprintf(result + offset, ";");
+    } else if (cap.ConType == TWON_ENUMERATION) {
+        pTW_ENUMERATION pEnum = (pTW_ENUMERATION)_DSM_LockMemory(cap.hContainer);
+        if (pEnum) {
+            itemType = pEnum->ItemType;
+            _DSM_UnlockMemory(cap.hContainer);
         }
-        
-        offset += sprintf(result + offset, "%s:%d", capName, capValue);
+    } else if (cap.ConType == TWON_RANGE) {
+        pTW_RANGE pRange = (pTW_RANGE)_DSM_LockMemory(cap.hContainer);
+        if (pRange) {
+            itemType = pRange->ItemType;
+            _DSM_UnlockMemory(cap.hContainer);
+        }
     }
     
-    // Unlock and free memory
-    _DSM_UnlockMemory(cap.hContainer);
     _DSM_Free(cap.hContainer);
     
-    Logger::Log("@INFO Retrieved %d supported capabilities", pArray->NumItems);
+    // Now create a new container to set the value
+    pTW_ONEVALUE pOneValue = NULL;
+    
+    // Allocate memory for the container
+    cap.hContainer = _DSM_Alloc(sizeof(TW_ONEVALUE));
+    if (!cap.hContainer) {
+        Logger::Log("@ERROR Memory allocation failed");
+        Logger::Cleanup();
+        return -5;
+    }
+    
+    pOneValue = (pTW_ONEVALUE)_DSM_LockMemory(cap.hContainer);
+    if (!pOneValue) {
+        _DSM_Free(cap.hContainer);
+        Logger::Log("@ERROR Failed to lock memory");
+        Logger::Cleanup();
+        return -6;
+    }
+    
+    cap.ConType = TWON_ONEVALUE;
+    pOneValue->ItemType = itemType;
+    
+    // Set the value based on the item type
+    switch (itemType) {
+        case TWTY_INT8:
+        case TWTY_UINT8:
+            pOneValue->Item = (TW_UINT32)atoi(value);
+            Logger::Log("@INFO Setting UINT8 value: %d", (TW_UINT8)pOneValue->Item);
+            break;
+            
+        case TWTY_INT16:
+        case TWTY_UINT16:
+            pOneValue->Item = (TW_UINT32)atoi(value);
+            Logger::Log("@INFO Setting UINT16 value: %d", (TW_UINT16)pOneValue->Item);
+            break;
+            
+        case TWTY_INT32:
+        case TWTY_UINT32:
+            pOneValue->Item = (TW_UINT32)atol(value);
+            Logger::Log("@INFO Setting UINT32 value: %d", pOneValue->Item);
+            break;
+            
+        case TWTY_BOOL:
+            if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0) {
+                pOneValue->Item = 1;
+            } else {
+                pOneValue->Item = 0;
+            }
+            Logger::Log("@INFO Setting BOOL value: %s", pOneValue->Item ? "TRUE" : "FALSE");
+            break;
+            
+        case TWTY_FIX32:
+            {
+                // Convert value string to float
+                float fValue = (float)atof(value);
+                
+                // Convert float to FIX32
+                TW_FIX32 fix32;
+                fix32.Whole = (TW_INT16)fValue;
+                fix32.Frac = (TW_UINT16)((fValue - fix32.Whole) * 65536.0f);
+                
+                // Copy FIX32 bytes to Item
+                memcpy(&pOneValue->Item, &fix32, sizeof(TW_FIX32));
+                Logger::Log("@INFO Setting FIX32 value: %f", fValue);
+            }
+            break;
+            
+        case TWTY_FRAME:
+            Logger::Log("@ERROR FRAME type not supported for string-based setting");
+            _DSM_UnlockMemory(cap.hContainer);
+            _DSM_Free(cap.hContainer);
+            Logger::Cleanup();
+            return -7;
+            
+        case TWTY_STR32:
+        case TWTY_STR64:
+        case TWTY_STR128:
+        case TWTY_STR255:
+            Logger::Log("@ERROR String types not supported for string-based setting");
+            _DSM_UnlockMemory(cap.hContainer);
+            _DSM_Free(cap.hContainer);
+            Logger::Cleanup();
+            return -8;
+            
+        default:
+            Logger::Log("@ERROR Unsupported item type: %d", itemType);
+            _DSM_UnlockMemory(cap.hContainer);
+            _DSM_Free(cap.hContainer);
+            Logger::Cleanup();
+            return -9;
+    }
+    
+    _DSM_UnlockMemory(cap.hContainer);
+    
+    // Set the capability
+    rc = gpTwainApplicationCMD->DSM_Entry(
+        DG_CONTROL, DAT_CAPABILITY, MSG_SET, (TW_MEMREF)&cap);
+    
+    _DSM_Free(cap.hContainer);
+    
+    if (rc != TWRC_SUCCESS) {
+        Logger::Log("@ERROR Failed to set capability %s to %s: TWAIN error %d", nCap, value, rc);
+        Logger::Cleanup();
+        return -10;
+    }
+    
+    Logger::Log("@INFO Successfully set capability %s to %s", nCap, value);
     Logger::Cleanup();
-    return result;
+    return 0;
 }

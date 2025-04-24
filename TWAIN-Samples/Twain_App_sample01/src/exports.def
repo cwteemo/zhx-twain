@@ -16,4 +16,5 @@ EXPORTS
     zhx_SetResolution
     zhx_GetCurrentResolution
     zhx_GetSupportedResolutions
-    zhx_GetSupportedCapabilities
+    zhx_GetDevCapability_JSON
+    zhx_SetCapability_STR

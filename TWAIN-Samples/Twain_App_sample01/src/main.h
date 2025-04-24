@@ -72,8 +72,18 @@ TW_UINT16 CALLBACK ImageCallback(pTW_IDENTITY pOrigin,
                                  TW_MEMREF pData);
 // 导出函数声明
 typedef int (*ScanCallback)(char *filename);
-
+const char* getCapabilityChineseLabel(TW_UINT16 capValue);
 void checkSupportedFormats();
+/**
+ * @brief 根据扫描仪名称获取对应的设备编号
+ * 
+ * 此函数从可用扫描仪列表中查找指定名称的扫描仪，并返回其设备编号。
+ * 设备编号是用于loadDS()方法的参数，从1开始计数。
+ * 
+ * @param device 扫描仪名称
+ * @return 成功返回设备编号(>0)，失败返回0
+ */
+static int zhx_GetDeviceNumber(const char *device);
 extern "C" __declspec(dllexport) void  zhx_twain_test();
 
 extern "C" __declspec(dllexport) void  zhx_twain();
@@ -95,5 +105,6 @@ extern "C" __declspec(dllexport) char* zhx_GetSupportedFileFormats();
 extern "C" __declspec(dllexport) int zhx_SetResolution(int dpi);
 extern "C" __declspec(dllexport) char* zhx_GetSupportedResolutions();
 extern "C" __declspec(dllexport) int zhx_GetCurrentResolution();
-extern "C" __declspec(dllexport) char* zhx_GetSupportedCapabilities();
+extern "C" __declspec(dllexport) char* zhx_GetDevCapability_JSON(char *device);
+extern "C" __declspec(dllexport) int zhx_SetCapability_STR(char *nCap, char *value);
 #endif //__MAIN_H__
