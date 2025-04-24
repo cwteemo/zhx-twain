@@ -95,4 +95,5 @@ extern "C" __declspec(dllexport) char* zhx_GetSupportedFileFormats();
 extern "C" __declspec(dllexport) int zhx_SetResolution(int dpi);
 extern "C" __declspec(dllexport) char* zhx_GetSupportedResolutions();
 extern "C" __declspec(dllexport) int zhx_GetCurrentResolution();
+extern "C" __declspec(dllexport) char* zhx_GetSupportedCapabilities();
 #endif //__MAIN_H__

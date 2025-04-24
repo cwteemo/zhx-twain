@@ -23,6 +23,7 @@ int zhx_GetCurrentResolution();
 // int zhx_ApproveLicenseA(char *license);
 char *zhx_GetDevicesList();
 // char *zhx_GetDevCapability_JSON(char *device);
+char* zhx_GetSupportedCapabilities();
 // int zhx_SetCapability_STR(char *nCap, char *value);
 int zhx_OpenDevice(char *device);
 int zhx_Scan(char *path, ScanCallback cb, int count);
@@ -33,6 +34,7 @@ void zhx_Exit();
 */
 import "C" // 切勿换行再写这个
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -86,13 +88,7 @@ func main() {
 	// http.ListenAndServe(":8000", nil)
 }
 func zhx_twain() {
-	//fmt.Println("TWAIN DLL测试程序")
-	//fmt.Println("==================")
-
-	// 测试zhx_twain_test函数
-	//fmt.Println("\n测试1: 调用zhx_twain_test函数")
-	//C.zhx_twain_test()
-	// 首先初始化TWAIN环境
+	// 初始化TWAIN环境
 	C.zhx_Init()
 
 	// 获取设备列表
@@ -100,87 +96,252 @@ func zhx_twain() {
 	devicesString := C.GoString(devicesList)
 
 	// 打印字符串内容
-	fmt.Printf("\n扫描仪列表: %s\n", devicesString)
+	fmt.Printf("\n===== 可用扫描仪列表 =====\n")
 	// 解析分号分隔的扫描仪列表
 	scanners := strings.Split(devicesString, ";")
-	fmt.Printf("找到%d台扫描仪:\n", len(scanners))
-	for i, scanner := range scanners {
+
+	// 创建有效扫描仪的列表（过滤空项）
+	var validScanners []string
+	for _, scanner := range scanners {
 		if scanner != "" { // 忽略空项
-			fmt.Printf("%d. %s\n", i+1, scanner)
+			validScanners = append(validScanners, scanner)
 		}
 	}
 
-	// 选择第二个扫描仪（如果存在）
-	if len(scanners) >= 2 && scanners[1] != "" {
-		// 将Go字符串转换为C字符串
-		cScannerName := C.CString(scanners[1])
-
-		// 打开第二个扫描仪
-		result := C.zhx_OpenDevice(cScannerName)
-		fmt.Printf("打开扫描仪 '%s' 的结果: %v\n", scanners[1], result)
-
-		// 后续操作...
-	} else {
-		fmt.Println("没有找到第二个扫描仪")
-	}
-	C.zhx_SetTransferMechanism(C.int(1))
-	format := C.zhx_GetCurrentFileFormat()
-	fmt.Printf("\nAAAAAAAformat%d\n", format)
-	// 获取支持的文件格式
-	SupportedFileFormats := C.zhx_GetSupportedFileFormats()
-	// 将 C 字符串转换为 Go 字符串
-	formatsStr := C.GoString(SupportedFileFormats)
-	// 打印字符串内容
-	fmt.Printf("支持的文件格式 (JSON): %s\n", formatsStr)
-
-	result := C.zhx_SetResolution(C.int(600))
-	fmt.Printf("设置分辨率为300 DPI的结果: %v\n", result)
-
-	// 获取支持的分辨率并打印
-	fmt.Println("\n获取扫描仪支持的分辨率:")
-	resolutions := C.zhx_GetSupportedResolutions()
-	resStr := C.GoString(resolutions)
-	fmt.Printf("支持的分辨率 (JSON): %s\n", resStr)
-
-	currentDPI := C.zhx_GetCurrentResolution()
-	fmt.Printf("当前扫描分辨率: %d DPI\n", currentDPI)
-
-	//C.goFuncForScanCallBack(C.CString("temp"))
-	// 获取当前执行程序的目录
-	execDir, err := os.Executable()
-	if err != nil {
-		fmt.Printf("Error getting executable path: %v\n", err)
+	// 检查是否找到扫描仪
+	if len(validScanners) == 0 {
+		fmt.Println("未检测到扫描仪设备！")
+		fmt.Println("按Enter键退出...")
+		fmt.Scanln()
 		return
 	}
 
-	// 获取可执行文件所在的目录
-	execDir = filepath.Dir(execDir)
+	// 输出扫描仪列表供用户选择
+	fmt.Printf("找到 %d 台扫描仪:\n", len(validScanners))
+	for i, scanner := range validScanners {
+		fmt.Printf("%d. %s\n", i+1, scanner)
+	}
+
+	// 提示用户选择扫描仪
+	var selectedIndex int
+	for {
+		fmt.Printf("\n请输入要使用的扫描仪序号 (1-%d): ", len(validScanners))
+		_, err := fmt.Scanln(&selectedIndex)
+
+		if err != nil {
+			// 清除输入缓冲区
+			fmt.Scanln() // 消耗可能剩余的换行符
+			fmt.Println("输入无效，请重新输入数字。")
+			continue
+		}
+
+		// 检查输入的有效性
+		if selectedIndex < 1 || selectedIndex > len(validScanners) {
+			fmt.Printf("序号必须在 1 到 %d 之间，请重新输入。\n", len(validScanners))
+			continue
+		}
+
+		break // 输入有效，退出循环
+	}
+
+	// 调整索引（用户输入1-n，但索引从0开始）
+	selectedIndex--
+
+	// 将Go字符串转换为C字符串
+	cScannerName := C.CString(validScanners[selectedIndex])
+
+	// 打开选定的扫描仪
+	result := C.zhx_OpenDevice(cScannerName)
+	fmt.Printf("打开扫描仪 '%s' 的结果: %v\n", validScanners[selectedIndex], result)
+
+	if result == 0 {
+		fmt.Println("打开扫描仪失败！")
+		fmt.Println("按Enter键退出...")
+		fmt.Scanln()
+		return
+	}
+
+	// 获取支持的capabilities
+	supportedCapabilities := C.zhx_GetSupportedCapabilities()
+	supportedCapabilitiesStr := C.GoString(supportedCapabilities)
+	fmt.Printf("支持的capabilities: %s\n", supportedCapabilitiesStr)
+
+	// 设置传输机制
+	C.zhx_SetTransferMechanism(C.int(1))
+
+	// =========== 设置文件格式 ===========
+	fmt.Println("\n===== 文件格式设置 =====")
+
+	// 获取当前文件格式
+	currentFormat := C.zhx_GetCurrentFileFormat()
+	fmt.Printf("当前文件格式: %d\n", currentFormat)
+
+	// 获取支持的文件格式
+	supportedFormatsC := C.zhx_GetSupportedFileFormats()
+	supportedFormatsStr := C.GoString(supportedFormatsC)
+
+	// 解析JSON格式的支持格式
+	var formatsList []map[string]interface{}
+	if err := json.Unmarshal([]byte(supportedFormatsStr), &formatsList); err != nil {
+		fmt.Printf("解析文件格式数据出错: %v\n", err)
+		fmt.Println("将使用默认文件格式继续...")
+	} else {
+		// 显示可用的文件格式选项
+		fmt.Println("\n可用的文件格式:")
+		for i, format := range formatsList {
+			fmt.Printf("%d. %s\n", i+1, format["label"])
+		}
+
+		// 提示用户选择文件格式
+		var formatIndex int
+		for {
+			fmt.Printf("\n请输入要使用的文件格式序号 (1-%d): ", len(formatsList))
+			_, err := fmt.Scanln(&formatIndex)
+
+			if err != nil {
+				fmt.Scanln() // 清除输入
+				fmt.Println("输入无效，请重新输入数字。")
+				continue
+			}
+
+			if formatIndex < 1 || formatIndex > len(formatsList) {
+				fmt.Printf("序号必须在 1 到 %d 之间，请重新输入。\n", len(formatsList))
+				continue
+			}
+
+			break
+		}
+
+		// 设置用户选择的文件格式
+		selectedFormat := int(formatsList[formatIndex-1]["value"].(float64))
+		formatResult := C.zhx_SetImageFileFormat(C.int(selectedFormat))
+		fmt.Printf("设置文件格式的结果: %v\n", formatResult)
+
+		// 获取设置后的当前格式
+		currentFormat = C.zhx_GetCurrentFileFormat()
+		var selectedFormatName string
+		for _, format := range formatsList {
+			if int(format["value"].(float64)) == int(currentFormat) {
+				selectedFormatName = format["label"].(string)
+				break
+			}
+		}
+		fmt.Printf("当前设置的文件格式: %s (%d)\n", selectedFormatName, currentFormat)
+	}
+
+	// =========== 设置分辨率 ===========
+	fmt.Println("\n===== 分辨率设置 =====")
+
+	// 获取支持的分辨率
+	resolutions := C.zhx_GetSupportedResolutions()
+	resStr := C.GoString(resolutions)
+
+	// 解析分辨率JSON
+	var resList []map[string]interface{}
+	if err := json.Unmarshal([]byte(resStr), &resList); err != nil {
+		fmt.Printf("解析分辨率数据出错: %v\n", err)
+		// 使用默认值300 DPI
+		C.zhx_SetResolution(C.int(300))
+		fmt.Println("将使用默认分辨率 300 DPI 继续...")
+	} else {
+		// 显示可用分辨率选项
+		fmt.Println("\n可用的扫描分辨率:")
+		for i, res := range resList {
+			fmt.Printf("%d. %s\n", i+1, res["label"])
+		}
+
+		// 提示用户选择分辨率
+		var resIndex int
+		for {
+			fmt.Printf("\n请输入要使用的分辨率序号 (1-%d): ", len(resList))
+			_, err := fmt.Scanln(&resIndex)
+
+			if err != nil {
+				fmt.Scanln() // 清除输入
+				fmt.Println("输入无效，请重新输入数字。")
+				continue
+			}
+
+			if resIndex < 1 || resIndex > len(resList) {
+				fmt.Printf("序号必须在 1 到 %d 之间，请重新输入。\n", len(resList))
+				continue
+			}
+
+			break
+		}
+
+		// 设置用户选择的分辨率
+		selectedRes := int(resList[resIndex-1]["value"].(float64))
+		result := C.zhx_SetResolution(C.int(selectedRes))
+		fmt.Printf("设置分辨率为 %d DPI 的结果: %v\n", selectedRes, result)
+	}
+
+	// 再次获取当前分辨率确认
+	currentDPI := C.zhx_GetCurrentResolution()
+	fmt.Printf("当前扫描分辨率: %d DPI\n", currentDPI)
+
+	// =========== 设置扫描目录 ===========
+	fmt.Println("\n===== 扫描设置 =====")
+
+	// 使用当前工作目录，而不是可执行文件的目录
+	workDir, err := os.Getwd()
+	if err != nil {
+		fmt.Printf("获取当前工作目录出错: %v\n", err)
+		return
+	}
 
 	// 创建temp目录路径
-	tempDir1 := filepath.Join(execDir, "temp1")
-	tempDir2 := filepath.Join(execDir, "temp2")
+	tempDir1 := filepath.Join(workDir, "temp1")
+	tempDir2 := filepath.Join(workDir, "temp2")
+
+	fmt.Printf("\n扫描文件将保存到:\n1. %s\n2. %s\n", tempDir1, tempDir2)
 
 	// 确保目录存在
 	os.MkdirAll(tempDir1, 0755)
 	os.MkdirAll(tempDir2, 0755)
 
-	// 进行扫描，使用创建的目录路径
+	// =========== 开始扫描 ===========
+	fmt.Println("\n===== 开始扫描 =====")
+
+	// 询问用户是否开始扫描
+	fmt.Print("\n准备开始扫描，按Enter键继续...")
+	fmt.Scanln()
+
+	// 进行扫描
+	fmt.Println("\n开始第一次扫描...")
 	code := int(C.zhx_Scan(C.CString(tempDir1), C.ScanCallback(C.goFuncForScanCallBack), C.int(2)))
-	fmt.Printf("\n扫描完成，错误码%d\n", code)
+	fmt.Printf("第一次扫描完成，状态码: %d\n", code)
 
-	code1 := int(C.zhx_Scan(C.CString(tempDir1), C.ScanCallback(C.goFuncForScanCallBack), C.int(2)))
-	fmt.Printf("\n扫描完成，错误码%d\n", code1)
+	// 询问是否继续
+	var continueScan string
+	fmt.Print("\n是否继续进行下一次扫描? (y/n): ")
+	fmt.Scanln(&continueScan)
 
-	code2 := int(C.zhx_Scan(C.CString(tempDir2), C.ScanCallback(C.goFuncForScanCallBack), C.int(2)))
-	fmt.Printf("\n扫描完成，错误码%d\n", code2)
+	if strings.ToLower(continueScan) == "y" || strings.ToLower(continueScan) == "yes" {
+		fmt.Println("\n开始第二次扫描...")
+		code1 := int(C.zhx_Scan(C.CString(tempDir1), C.ScanCallback(C.goFuncForScanCallBack), C.int(2)))
+		fmt.Printf("第二次扫描完成，状态码: %d\n", code1)
+
+		fmt.Print("\n是否继续进行第三次扫描? (y/n): ")
+		fmt.Scanln(&continueScan)
+
+		if strings.ToLower(continueScan) == "y" || strings.ToLower(continueScan) == "yes" {
+			fmt.Println("\n开始第三次扫描...")
+			code2 := int(C.zhx_Scan(C.CString(tempDir2), C.ScanCallback(C.goFuncForScanCallBack), C.int(2)))
+			fmt.Printf("第三次扫描完成，状态码: %d\n", code2)
+		}
+	}
+
+	// =========== 清理资源 ===========
+	fmt.Println("\n===== 清理资源 =====")
 	C.zhx_EndScan()
 	C.zhx_CloseDevice()
 	C.zhx_Exit()
-	//C.zhx_twain()
-	// 测试初始化TWAIN环境
-	//fmt.Println("\n测试2: 初始化TWAIN环境")
 
-	fmt.Println("\n测试完成")
+	// 显示扫描结果路径
+	fmt.Printf("\n扫描结果保存在:\n1和2: %s\n3: %s\n", tempDir1, tempDir2)
+
+	fmt.Println("\n所有操作已完成")
 	fmt.Println("按Enter键退出...")
 	fmt.Scanln()
 }

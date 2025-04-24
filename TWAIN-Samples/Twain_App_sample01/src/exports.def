@@ -1,0 +1,19 @@
+LIBRARY TWAIN_APP_CMD64
+EXPORTS
+    zhx_twain_test
+    zhx_twain
+    zhx_Init
+    zhx_GetDevicesList
+    zhx_OpenDevice
+    zhx_Scan
+    zhx_EndScan
+    zhx_CloseDevice
+    zhx_Exit
+    zhx_SetTransferMechanism
+    zhx_SetImageFileFormat
+    zhx_GetCurrentFileFormat
+    zhx_GetSupportedFileFormats
+    zhx_SetResolution
+    zhx_GetCurrentResolution
+    zhx_GetSupportedResolutions
+    zhx_GetSupportedCapabilities
