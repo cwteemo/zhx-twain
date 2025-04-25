@@ -84,6 +84,21 @@ void checkSupportedFormats();
  * @return 成功返回设备编号(>0)，失败返回0
  */
 static int zhx_GetDeviceNumber(const char *device);
+/**
+ * 转换TWAIN项目类型为字符串
+ * @param itemType TWAIN数据类型ID
+ * @return 对应的类型名称字符串
+ */
+static const char* convertItemTypeToString(TW_UINT16 itemType);
+
+/**
+ * 获取能力值的描述标签
+ * @param capValue 能力ID
+ * @param itemValue 能力值
+ * @return 对应值的描述标签
+ */
+static const char* getCapabilityValueLabel(TW_UINT16 capValue, int itemValue);
+
 extern "C" __declspec(dllexport) void  zhx_twain_test();
 
 extern "C" __declspec(dllexport) void  zhx_twain();
@@ -106,5 +121,7 @@ extern "C" __declspec(dllexport) int zhx_SetResolution(int dpi);
 extern "C" __declspec(dllexport) char* zhx_GetSupportedResolutions();
 extern "C" __declspec(dllexport) int zhx_GetCurrentResolution();
 extern "C" __declspec(dllexport) char* zhx_GetDevCapability_JSON(char *device);
+extern "C" __declspec(dllexport) char* zhx_GetCapability_STR(char* capOrDevice);
 extern "C" __declspec(dllexport) int zhx_SetCapability_STR(char *nCap, char *value);
+extern "C" __declspec(dllexport) char* zhx_GetDevCapability_STR(char* device);
 #endif //__MAIN_H__

@@ -2203,6 +2203,176 @@ char* zhx_GetDevCapability_JSON(char* device) {
 }
 
 
+
+/**
+ * @brief 获取指定设备支持的全部TWAIN能力列表
+ * 
+ * 此函数连接到指定的TWAIN设备并查询其支持的所有能力(capabilities)。
+ * 返回结果格式为："支持的capabilities: CAP_NAME1:VALUE1;CAP_NAME2:VALUE2;..."
+ * 如果设备已经连接，会临时保存连接状态，查询完后恢复原有连接。
+ * 
+ * @param device 要查询的设备名称
+ * @return 返回包含设备所有支持能力的字符串
+ */
+char* zhx_GetDevCapability_STR(char* device) {
+    // 为返回结果分配静态缓冲区，确保跨函数调用有效
+    static char result[4096] = {0}; // 保持较大的缓冲区
+    memset(result, 0, sizeof(result));
+    strcpy(result, "支持的capabilities: "); // 初始化结果字符串
+    int offset = strlen(result); // 当前写入位置
+    
+    // 初始化日志记录器
+    Logger::Init();
+    Logger::Log("@INFO Retrieving capabilities for scanner: %s", device);
+    
+    // 检查TWAIN环境是否初始化
+    if (!gpTwainApplicationCMD) {
+        Logger::Log("@ERROR TWAIN environment not initialized");
+        Logger::Cleanup();
+        return result; // 返回空结果
+    }
+    
+    // 保存当前连接状态，以便在完成后恢复
+    bool wasConnected = false;
+    int previousState = gpTwainApplicationCMD->m_DSMState;
+    std::string previousDevice = "";
+    
+    // 检查是否已连接到其他设备，如果是则记录设备信息
+    if (previousState >= 4) {
+        wasConnected = true;
+        previousDevice = gpTwainApplicationCMD->getSourceIdentity();
+        
+        // 如果当前连接的设备与要查询的设备不同，则暂时关闭当前设备
+        if (previousDevice != device) {
+            Logger::Log("@INFO Temporarily closing current device: %s", previousDevice.c_str());
+            gpTwainApplicationCMD->disableDS();
+            gpTwainApplicationCMD->unloadDS();
+        } else {
+            // 如果已连接到请求的设备，则无需重新连接
+            Logger::Log("@INFO Already connected to requested device: %s", device);
+        }
+    }
+    
+    // 确定是否需要建立新连接
+    bool newConnectionNeeded = !wasConnected || previousDevice != device;
+    bool connectionSuccess = true;
+    
+    // 如果需要新连接，则连接到指定设备
+    if (newConnectionNeeded) {
+        Logger::Log("@INFO Connecting to device: %s", device);
+        
+        // 使用设备名称获取设备编号
+        int deviceNumber = zhx_GetDeviceNumber(device);
+        if (deviceNumber <= 0) {
+            Logger::Log("@ERROR Failed to get device number for: %s", device);
+            connectionSuccess = false;
+        } else {
+            // 加载指定设备的数据源
+            int prevState = gpTwainApplicationCMD->m_DSMState;
+            gpTwainApplicationCMD->loadDS(deviceNumber);
+            
+            // 检查加载是否成功
+            if (gpTwainApplicationCMD->m_DSMState != 4) {
+                Logger::Log("@ERROR Failed to load device: %s (number: %d)", device, deviceNumber);
+                connectionSuccess = false;
+            }
+        }
+    }
+    
+    // 如果已成功连接到设备，继续查询其支持的能力
+    if ((newConnectionNeeded && connectionSuccess) || (!newConnectionNeeded && previousState >= 4)) {
+        // 创建查询CAP_SUPPORTEDCAPS的能力结构
+        TW_CAPABILITY cap;
+        memset(&cap, 0, sizeof(TW_CAPABILITY));
+        cap.Cap = CAP_SUPPORTEDCAPS; // 查询所有支持的能力
+        cap.ConType = TWON_DONTCARE16; // 不关心返回的容器类型
+        
+        // 调用TWAIN DSM接口查询支持的能力
+        TW_UINT16 rc = gpTwainApplicationCMD->DSM_Entry(
+            DG_CONTROL, DAT_CAPABILITY, MSG_GET, (TW_MEMREF)&cap);
+        
+        // 检查查询结果
+        if (rc != TWRC_SUCCESS) {
+            Logger::Log("@ERROR Failed to get supported capabilities: TWAIN error %d", rc);
+        } else {
+            // 确认返回的容器类型是数组
+            if (cap.ConType != TWON_ARRAY) {
+                if (cap.hContainer) {
+                    _DSM_Free(cap.hContainer);
+                }
+                Logger::Log("@ERROR Failed to get capabilities: Return container type is not ARRAY");
+            } else {
+                // 锁定内存访问容器数据
+                pTW_ARRAY_UINT16 pArray = (pTW_ARRAY_UINT16)_DSM_LockMemory(cap.hContainer);
+                
+                if (!pArray) {
+                    _DSM_Free(cap.hContainer);
+                    Logger::Log("@ERROR Failed to get capabilities: Unable to lock memory");
+                } else {
+                    // 遍历数组中的每个能力项，格式化为输出字符串
+                    for (TW_UINT32 i = 0; i < pArray->NumItems && offset < sizeof(result) - 256; i++) {
+                        TW_UINT16 capValue = pArray->ItemList[i]; // 获取能力ID
+                        const char* capName = convertCAP_toString(capValue); // 转换ID为名称
+                        
+                        // 使用分号作为分隔符，第一个项目不需要分号
+                        if (i > 0) {
+                            offset += sprintf(result + offset, ";");
+                        }
+                        
+                        // 格式化输出为 "CAP_NAME:VALUE" 格式
+                        offset += sprintf(result + offset, "%s:%d", capName, capValue);
+                    }
+                    
+                    // 解锁内存并记录日志
+                    _DSM_UnlockMemory(cap.hContainer);
+                    Logger::Log("@INFO Retrieved %d supported capabilities for device: %s", pArray->NumItems, device);
+                }
+                
+                // 释放TWAIN分配的内存
+                _DSM_Free(cap.hContainer);
+            }
+        }
+    }
+    
+    // 恢复之前的设备连接（如果需要）
+    if (newConnectionNeeded) {
+        // 关闭临时设备连接
+        if (connectionSuccess) {
+            gpTwainApplicationCMD->disableDS();
+            gpTwainApplicationCMD->unloadDS();
+        }
+        
+        // 如果之前有连接且设备不同，则恢复到之前的设备
+        if (wasConnected && previousDevice != device) {
+            Logger::Log("@INFO Restoring connection to previous device: %s", previousDevice.c_str());
+            
+            // 获取之前设备的编号并重新连接
+            int prevDeviceNumber = zhx_GetDeviceNumber(previousDevice.c_str());
+            if (prevDeviceNumber > 0) {
+                int prevState = gpTwainApplicationCMD->m_DSMState;
+                gpTwainApplicationCMD->loadDS(prevDeviceNumber);
+                
+                // 检查恢复连接是否成功
+                if (gpTwainApplicationCMD->m_DSMState == 4) {
+                    Logger::Log("@INFO Successfully restored previous device connection");
+                } else {
+                    Logger::Log("@WARNING Failed to reload previous device: %s (number: %d)", 
+                            previousDevice.c_str(), prevDeviceNumber);
+                }
+            } else {
+                Logger::Log("@WARNING Failed to get device number for previous device: %s", 
+                        previousDevice.c_str());
+            }
+        }
+    }
+    
+    // 清理日志记录器
+    Logger::Cleanup();
+    return result; // 返回格式化后的结果字符串
+}
+
+
+
 /**
  * 获取能力ID对应的中文说明
  * 
@@ -2276,6 +2446,423 @@ const char* getCapabilityChineseLabel(TW_UINT16 capValue) {
             }
     }
 }
+
+
+
+/**
+ * @brief 获取指定能力的支持值
+ * 
+ * 此函数可以获取当前打开的数据源中特定能力项支持的值列表，
+ * 或者如果传入的是扫描仪名称，则返回该扫描仪支持的所有能力。
+ * 
+ * @param capOrDevice 能力项名称(如"ICAP_SUPPORTEDSIZES")或扫描仪名称
+ * @return 返回JSON格式的支持值列表
+ */
+char* zhx_GetCapability_STR(char* capOrDevice) {
+    static char result[4096] = {0}; // 分配足够大的缓冲区
+    memset(result, 0, sizeof(result));
+    strcpy(result, "[]"); // 默认为空JSON数组
+    
+    Logger::Init();
+    Logger::Log("@INFO Retrieving capability information for: %s", capOrDevice);
+    
+    // 检查TWAIN环境是否初始化
+    if (!gpTwainApplicationCMD) {
+        Logger::Log("@ERROR TWAIN environment not initialized");
+        Logger::Cleanup();
+        return result;
+    }
+    
+    // 检查是否已连接到数据源
+    if (gpTwainApplicationCMD->m_DSMState < 4) {
+        Logger::Log("@ERROR Not connected to scanning device, current state: %d", gpTwainApplicationCMD->m_DSMState);
+        Logger::Cleanup();
+        return result;
+    }
+    
+    // 确定是能力项名称还是设备名称
+    // 先假设是能力项，尝试转换为能力ID
+    TW_UINT16 capValue = 0;
+    bool isCapability = false;
+    
+    // 搜索常见能力项
+    if (strcmp(capOrDevice, "ICAP_SUPPORTEDSIZES") == 0) {
+        capValue = ICAP_SUPPORTEDSIZES;
+        isCapability = true;
+    } else if (strcmp(capOrDevice, "ICAP_BITDEPTH") == 0) {
+        capValue = ICAP_BITDEPTH;
+        isCapability = true;
+    } else if (strcmp(capOrDevice, "ICAP_PIXELTYPE") == 0) {
+        capValue = ICAP_PIXELTYPE;
+        isCapability = true;
+    } else if (strcmp(capOrDevice, "ICAP_UNITS") == 0) {
+        capValue = ICAP_UNITS;
+        isCapability = true;
+    } else if (strcmp(capOrDevice, "ICAP_XFERMECH") == 0) {
+        capValue = ICAP_XFERMECH;
+        isCapability = true;
+    } else if (strcmp(capOrDevice, "ICAP_COMPRESSION") == 0) {
+        capValue = ICAP_COMPRESSION;
+        isCapability = true;
+    } else if (strcmp(capOrDevice, "ICAP_IMAGEFILEFORMAT") == 0) {
+        capValue = ICAP_IMAGEFILEFORMAT;
+        isCapability = true;
+    } else if (strcmp(capOrDevice, "ICAP_XRESOLUTION") == 0) {
+        capValue = ICAP_XRESOLUTION;
+        isCapability = true;
+    } else if (strcmp(capOrDevice, "ICAP_YRESOLUTION") == 0) {
+        capValue = ICAP_YRESOLUTION;
+        isCapability = true;
+    } else if (strcmp(capOrDevice, "CAP_FEEDERENABLED") == 0) {
+        capValue = CAP_FEEDERENABLED;
+        isCapability = true;
+    } else if (strcmp(capOrDevice, "CAP_DUPLEXENABLED") == 0) {
+        capValue = CAP_DUPLEXENABLED;
+        isCapability = true;
+    } else if (strcmp(capOrDevice, "CAP_AUTOFEED") == 0) {
+        capValue = CAP_AUTOFEED;
+        isCapability = true;
+    } else if (strncmp(capOrDevice, "0x", 2) == 0) {
+        // 尝试解析十六进制值
+        capValue = (TW_UINT16)strtol(capOrDevice, NULL, 16);
+        isCapability = true;
+    } else {
+        // 尝试解析为十进制数值
+        char* endptr;
+        capValue = (TW_UINT16)strtol(capOrDevice, &endptr, 10);
+        if (*endptr == '\0') {
+            isCapability = true;
+        }
+    }
+    
+    if (isCapability) {
+        // 是能力项，获取其支持的值
+        TW_CAPABILITY cap;
+        memset(&cap, 0, sizeof(TW_CAPABILITY));
+        cap.Cap = capValue;
+        cap.ConType = TWON_DONTCARE16;
+        
+        // 获取能力项的当前值
+        TW_UINT16 rc = gpTwainApplicationCMD->DSM_Entry(
+            DG_CONTROL, DAT_CAPABILITY, MSG_GET, (TW_MEMREF)&cap);
+        
+        if (rc != TWRC_SUCCESS) {
+            Logger::Log("@ERROR Failed to get capability: TWAIN error %d", rc);
+            Logger::Cleanup();
+            return result;
+        }
+        
+        // 根据返回的容器类型处理
+        strcpy(result, "[");
+        int offset = 1;
+        
+        if (cap.ConType == TWON_ONEVALUE) {
+            pTW_ONEVALUE pVal = (pTW_ONEVALUE)_DSM_LockMemory(cap.hContainer);
+            if (pVal) {
+                const char* typeName = convertItemTypeToString(pVal->ItemType);
+                offset += sprintf(result + offset, "{\"type\":\"%s\",\"value\":", typeName);
+                
+                // 根据类型格式化值
+                switch (pVal->ItemType) {
+                    case TWTY_INT8:
+                    case TWTY_INT16:
+                    case TWTY_INT32:
+                    case TWTY_UINT8:
+                    case TWTY_UINT16:
+                    case TWTY_UINT32:
+                    case TWTY_BOOL:
+                        offset += sprintf(result + offset, "%d", (int)pVal->Item);
+                        break;
+                    case TWTY_FIX32:
+                        {
+                            TW_FIX32 fix32;
+                            memcpy(&fix32, &pVal->Item, sizeof(TW_FIX32));
+                            float fVal = fix32.Whole + fix32.Frac / 65536.0f;
+                            offset += sprintf(result + offset, "%.2f", fVal);
+                        }
+                        break;
+                    default:
+                        offset += sprintf(result + offset, "\"%s\"", "unsupported type");
+                        break;
+                }
+                
+                offset += sprintf(result + offset, ",\"label\":\"%s\"}", getCapabilityValueLabel(capValue, (int)pVal->Item));
+                _DSM_UnlockMemory(cap.hContainer);
+            }
+        }
+        else if (cap.ConType == TWON_ENUMERATION) {
+            pTW_ENUMERATION pEnum = (pTW_ENUMERATION)_DSM_LockMemory(cap.hContainer);
+            if (pEnum) {
+                const char* typeName = convertItemTypeToString(pEnum->ItemType);
+                
+                // 处理枚举中的每个值
+                for (TW_UINT32 i = 0; i < pEnum->NumItems; i++) {
+                    if (i > 0) {
+                        offset += sprintf(result + offset, ",");
+                    }
+                    
+                    offset += sprintf(result + offset, "{\"type\":\"%s\",\"value\":", typeName);
+                    
+                    // 获取值并根据类型格式化
+                    TW_UINT32 itemValue = 0;
+                    switch (pEnum->ItemType) {
+                        case TWTY_INT8:
+                            itemValue = *(((TW_INT8*)(&pEnum->ItemList)) + i);
+                            break;
+                        case TWTY_INT16:
+                            itemValue = *(((TW_INT16*)(&pEnum->ItemList)) + i);
+                            break;
+                        case TWTY_INT32:
+                            itemValue = *(((TW_INT32*)(&pEnum->ItemList)) + i);
+                            break;
+                        case TWTY_UINT8:
+                            itemValue = *(((TW_UINT8*)(&pEnum->ItemList)) + i);
+                            break;
+                        case TWTY_UINT16:
+                            itemValue = *(((TW_UINT16*)(&pEnum->ItemList)) + i);
+                            break;
+                        case TWTY_UINT32:
+                            itemValue = *(((TW_UINT32*)(&pEnum->ItemList)) + i);
+                            break;
+                        case TWTY_BOOL:
+                            itemValue = *(((TW_BOOL*)(&pEnum->ItemList)) + i);
+                            break;
+                        case TWTY_FIX32:
+                            {
+                                TW_FIX32 fix32 = *(((TW_FIX32*)(&pEnum->ItemList)) + i);
+                                float fVal = fix32.Whole + fix32.Frac / 65536.0f;
+                                offset += sprintf(result + offset, "%.2f", fVal);
+                                offset += sprintf(result + offset, ",\"label\":\"%s\"}", getCapabilityValueLabel(capValue, i));
+                                continue;
+                            }
+                            break;
+                        default:
+                            offset += sprintf(result + offset, "\"%s\"", "unsupported type");
+                            offset += sprintf(result + offset, ",\"label\":\"%s\"}", getCapabilityValueLabel(capValue, i));
+                            continue;
+                    }
+                    
+                    offset += sprintf(result + offset, "%d", (int)itemValue);
+                    offset += sprintf(result + offset, ",\"label\":\"%s\"}", getCapabilityValueLabel(capValue, (int)itemValue));
+                }
+                
+                _DSM_UnlockMemory(cap.hContainer);
+            }
+        }
+        else if (cap.ConType == TWON_RANGE) {
+            pTW_RANGE pRange = (pTW_RANGE)_DSM_LockMemory(cap.hContainer);
+            if (pRange) {
+                const char* typeName = convertItemTypeToString(pRange->ItemType);
+                
+                // 添加最小值
+                offset += sprintf(result + offset, "{\"type\":\"%s\",\"value\":", typeName);
+                if (pRange->ItemType == TWTY_FIX32) {
+                    TW_FIX32 fix32;
+                    memcpy(&fix32, &pRange->MinValue, sizeof(TW_FIX32));
+                    float fVal = fix32.Whole + fix32.Frac / 65536.0f;
+                    offset += sprintf(result + offset, "%.2f", fVal);
+                } else {
+                    offset += sprintf(result + offset, "%d", (int)pRange->MinValue);
+                }
+                offset += sprintf(result + offset, ",\"label\":\"Minimum\"},");
+                
+                // 添加最大值
+                offset += sprintf(result + offset, "{\"type\":\"%s\",\"value\":", typeName);
+                if (pRange->ItemType == TWTY_FIX32) {
+                    TW_FIX32 fix32;
+                    memcpy(&fix32, &pRange->MaxValue, sizeof(TW_FIX32));
+                    float fVal = fix32.Whole + fix32.Frac / 65536.0f;
+                    offset += sprintf(result + offset, "%.2f", fVal);
+                } else {
+                    offset += sprintf(result + offset, "%d", (int)pRange->MaxValue);
+                }
+                offset += sprintf(result + offset, ",\"label\":\"Maximum\"},");
+                
+                // 添加步长
+                offset += sprintf(result + offset, "{\"type\":\"%s\",\"value\":", typeName);
+                if (pRange->ItemType == TWTY_FIX32) {
+                    TW_FIX32 fix32;
+                    memcpy(&fix32, &pRange->StepSize, sizeof(TW_FIX32));
+                    float fVal = fix32.Whole + fix32.Frac / 65536.0f;
+                    offset += sprintf(result + offset, "%.2f", fVal);
+                } else {
+                    offset += sprintf(result + offset, "%d", (int)pRange->StepSize);
+                }
+                offset += sprintf(result + offset, ",\"label\":\"Step\"},");
+                
+                // 添加默认值
+                offset += sprintf(result + offset, "{\"type\":\"%s\",\"value\":", typeName);
+                if (pRange->ItemType == TWTY_FIX32) {
+                    TW_FIX32 fix32;
+                    memcpy(&fix32, &pRange->DefaultValue, sizeof(TW_FIX32));
+                    float fVal = fix32.Whole + fix32.Frac / 65536.0f;
+                    offset += sprintf(result + offset, "%.2f", fVal);
+                } else {
+                    offset += sprintf(result + offset, "%d", (int)pRange->DefaultValue);
+                }
+                offset += sprintf(result + offset, ",\"label\":\"Default\"}");
+                
+                _DSM_UnlockMemory(cap.hContainer);
+            }
+        }
+        
+        // 关闭JSON数组
+        strcat(result, "]");
+        
+        // 释放资源
+        _DSM_Free(cap.hContainer);
+    }
+    else {
+        // 不是能力项，可能是设备名称，调用现有的获取能力列表函数
+        char* allCaps = zhx_GetDevCapability_JSON(capOrDevice);
+        strcpy(result, allCaps);
+    }
+    
+    Logger::Cleanup();
+    return result;
+}
+
+/**
+ * 转换项目类型为字符串
+ */
+const char* convertItemTypeToString(TW_UINT16 itemType) {
+    switch (itemType) {
+        case TWTY_INT8:     return "INT8";
+        case TWTY_INT16:    return "INT16";
+        case TWTY_INT32:    return "INT32";
+        case TWTY_UINT8:    return "UINT8";
+        case TWTY_UINT16:   return "UINT16";
+        case TWTY_UINT32:   return "UINT32";
+        case TWTY_BOOL:     return "BOOL";
+        case TWTY_FIX32:    return "FIX32";
+        case TWTY_FRAME:    return "FRAME";
+        case TWTY_STR32:    return "STR32";
+        case TWTY_STR64:    return "STR64";
+        case TWTY_STR128:   return "STR128";
+        case TWTY_STR255:   return "STR255";
+        default:            return "UNKNOWN";
+    }
+}
+
+/**
+ * 获取能力值的标签
+ */
+const char* getCapabilityValueLabel(TW_UINT16 capValue, int itemValue) {
+    // 根据能力类型返回对应值的标签
+    switch (capValue) {
+        case ICAP_SUPPORTEDSIZES:
+            switch (itemValue) {
+                case TWSS_NONE:        return "None";
+                case TWSS_A4:          return "A4";
+                case TWSS_JISB5:       return "JIS B5";
+                case 3:                return "US Letter";
+                case TWSS_USLEGAL:     return "US Legal";
+                case TWSS_A5:          return "A5";
+                case TWSS_ISOB4:       return "ISO B4";
+                case TWSS_ISOB6:       return "ISO B6";
+                case 9:                return "US Executive";
+                case TWSS_A3:          return "A3";
+                case TWSS_ISOB3:       return "ISO B3";
+                case TWSS_A6:          return "A6";
+                case TWSS_C4:          return "C4";
+                case TWSS_C5:          return "C5";
+                case TWSS_C6:          return "C6";
+                case TWSS_4A0:         return "4A0";
+                case TWSS_2A0:         return "2A0";
+                case TWSS_A0:          return "A0";
+                case TWSS_A1:          return "A1";
+                case TWSS_A2:          return "A2";
+                case TWSS_A7:          return "A7";
+                case TWSS_A8:          return "A8";
+                case TWSS_A9:          return "A9";
+                case TWSS_A10:         return "A10";
+                case TWSS_ISOB0:       return "ISO B0";
+                case TWSS_ISOB1:       return "ISO B1";
+                case TWSS_ISOB2:       return "ISO B2";
+                case TWSS_ISOB5:       return "ISO B5";
+                case TWSS_ISOB7:       return "ISO B7";
+                case TWSS_ISOB8:       return "ISO B8";
+                case TWSS_ISOB9:       return "ISO B9";
+                case TWSS_ISOB10:      return "ISO B10";
+                case TWSS_JISB0:       return "JIS B0";
+                case TWSS_JISB1:       return "JIS B1";
+                case TWSS_JISB2:       return "JIS B2";
+                case TWSS_JISB3:       return "JIS B3";
+                case TWSS_JISB4:       return "JIS B4";
+                case TWSS_JISB6:       return "JIS B6";
+                case TWSS_JISB7:       return "JIS B7";
+                case TWSS_JISB8:       return "JIS B8";
+                case TWSS_JISB9:       return "JIS B9";
+                case TWSS_JISB10:      return "JIS B10";
+                default:               return "Unknown Paper Size";
+            }
+            
+        case ICAP_PIXELTYPE:
+            switch (itemValue) {
+                case TWPT_BW:          return "Black & White";
+                case TWPT_GRAY:        return "Grayscale";
+                case TWPT_RGB:         return "RGB";
+                case TWPT_PALETTE:     return "Palette";
+                case TWPT_CMY:         return "CMY";
+                case TWPT_CMYK:        return "CMYK";
+                case TWPT_YUV:         return "YUV";
+                case TWPT_YUVK:        return "YUVK";
+                case TWPT_CIEXYZ:      return "CIEXYZ";
+                default:               return "Unknown Pixel Type";
+            }
+            
+        case ICAP_UNITS:
+            switch (itemValue) {
+                case TWUN_INCHES:      return "Inches";
+                case TWUN_CENTIMETERS: return "Centimeters";
+                case TWUN_PICAS:       return "Picas";
+                case TWUN_POINTS:      return "Points";
+                case TWUN_TWIPS:       return "Twips";
+                case TWUN_PIXELS:      return "Pixels";
+                case TWUN_MILLIMETERS: return "Millimeters";
+                default:               return "Unknown Unit";
+            }
+            
+        case ICAP_XFERMECH:
+            switch (itemValue) {
+                case TWSX_NATIVE:      return "Native";
+                case TWSX_FILE:        return "File";
+                case TWSX_MEMORY:      return "Memory";
+                case TWSX_MEMFILE:     return "Memory File";
+                default:               return "Unknown Transfer Mechanism";
+            }
+            
+        case ICAP_IMAGEFILEFORMAT:
+            switch (itemValue) {
+                case TWFF_TIFF:        return "TIFF";
+                case TWFF_PICT:        return "PICT";
+                case TWFF_BMP:         return "BMP";
+                case TWFF_XBM:         return "XBM";
+                case TWFF_JFIF:        return "JPEG";
+                case TWFF_FPX:         return "FlashPix";
+                case TWFF_TIFFMULTI:   return "Multi-page TIFF";
+                case TWFF_PNG:         return "PNG";
+                case TWFF_SPIFF:       return "SPIFF";
+                case TWFF_EXIF:        return "EXIF";
+                case TWFF_PDF:         return "PDF";
+                case TWFF_JP2:         return "JPEG 2000";
+                case TWFF_JPX:         return "JPEG 2000 Extended";
+                case TWFF_DEJAVU:      return "DEJAVU";
+                case TWFF_PDFA:        return "PDF/A";
+                case TWFF_PDFA2:       return "PDF/A-2";
+                default:               return "Unknown File Format";
+            }
+            
+        default:
+            // 对于其他能力值，直接返回数值的字符串表示
+            static char numLabel[20];
+            sprintf(numLabel, "Value %d", itemValue);
+            return numLabel;
+    }
+}
+
+
+
 
 /**
  * Set a TWAIN capability based on string parameters

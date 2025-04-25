@@ -23,6 +23,8 @@ int zhx_GetCurrentResolution();
 // int zhx_ApproveLicenseA(char *license);
 char *zhx_GetDevicesList();
 char *zhx_GetDevCapability_JSON(char *device);
+char *zhx_GetDevCapability_STR(char *device);
+char *zhx_GetCapability_STR(char* capOrDevice);
 int zhx_SetCapability_STR(char *nCap, char *value);
 int zhx_OpenDevice(char *device);
 int zhx_Scan(char *path, ScanCallback cb, int count);
@@ -164,6 +166,36 @@ func zhx_twain() {
 	supportedCapabilities := C.zhx_GetDevCapability_JSON(cScannerName)
 	supportedCapabilitiesStr := C.GoString(supportedCapabilities)
 	fmt.Printf("支持的capabilities: %s\n", supportedCapabilitiesStr)
+
+	// 获取支持的capabilities
+	supportedCapabilitiesStrA := C.zhx_GetDevCapability_STR(cScannerName)
+	supportedCapabilitiesStrB := C.GoString(supportedCapabilitiesStrA)
+	fmt.Printf("支持的capabilities: %s\n", supportedCapabilitiesStrB)
+
+	// =========== 手动设置扫描参数 ===========
+	fmt.Println("\n===== 设置扫描参数 =====")
+	// 获取扫描仪支持的纸张尺寸
+	paperSizes := C.zhx_GetCapability_STR(C.CString("ICAP_SUPPORTEDSIZES"))
+	paperSizesStr := C.GoString(paperSizes)
+	fmt.Printf("扫描仪支持的纸张尺寸: %s\n", paperSizesStr)
+	// 设置分辨率为 300 DPI
+	fmt.Println("设置分辨率为 300 DPI...")
+	resXResult := C.zhx_SetCapability_STR(C.CString("ICAP_XRESOLUTION"), C.CString("300"))
+	resYResult := C.zhx_SetCapability_STR(C.CString("ICAP_YRESOLUTION"), C.CString("300"))
+	fmt.Printf("设置 X 分辨率结果: %d, Y 分辨率结果: %d\n", resXResult, resYResult)
+
+	// 设置文件格式为 TIFF (TWFF_TIFF = 0)
+	fmt.Println("设置文件格式为 TIFF...")
+	formatResult := C.zhx_SetCapability_STR(C.CString("ICAP_IMAGEFILEFORMAT"), C.CString("0"))
+	fmt.Printf("设置文件格式结果: %d\n", formatResult)
+
+	// 设置纸张尺寸为 A4 (TWSS_A4 = 1)
+	fmt.Println("设置纸张尺寸为 A4...")
+	// 确保单位为英寸 (TWUN_INCHES = 0)
+	// 设置纸张尺寸为 US Letter (值为 3)
+	fmt.Println("设置纸张尺寸为 US Letter...")
+	paperResult := C.zhx_SetCapability_STR(C.CString("ICAP_SUPPORTEDSIZES"), C.CString("3"))
+	fmt.Printf("纸张尺寸设置结果: %d\n", paperResult)
 
 	// 设置传输机制
 	C.zhx_SetTransferMechanism(C.int(1))
