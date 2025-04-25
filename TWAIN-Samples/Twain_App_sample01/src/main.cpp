@@ -2218,7 +2218,7 @@ char* zhx_GetDevCapability_STR(char* device) {
     // 为返回结果分配静态缓冲区，确保跨函数调用有效
     static char result[4096] = {0}; // 保持较大的缓冲区
     memset(result, 0, sizeof(result));
-    strcpy(result, "支持的capabilities: "); // 初始化结果字符串
+    strcpy(result, ""); // 初始化结果字符串
     int offset = strlen(result); // 当前写入位置
     
     // 初始化日志记录器
