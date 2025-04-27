@@ -74,6 +74,8 @@ TW_UINT16 CALLBACK ImageCallback(pTW_IDENTITY pOrigin,
 typedef int (*ScanCallback)(char *filename);
 const char* getCapabilityChineseLabel(TW_UINT16 capValue);
 void checkSupportedFormats();
+void initBasicCapabilityMap();
+void updateCapabilityMapFromDevice(const char* device);
 /**
  * @brief 根据扫描仪名称获取对应的设备编号
  * 

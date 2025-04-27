@@ -65,8 +65,10 @@ typedef union {
 #include <time.h>  // 时间相关函数
 #include <vector>
 #include <string>
+#include <map>
 #include <algorithm>
 #include "utilities.h"
+
 
 using namespace std;
 
@@ -74,7 +76,9 @@ using namespace std;
 // Global Variables
 TwainAppCMD  *gpTwainApplicationCMD;  /**< The main application */
 extern bool   gUSE_CALLBACKS;         // defined in TwainApp.cpp
-
+// 全局映射表，用于存储能力项名称与ID的对应关系
+std::map<std::string, TW_UINT16> g_capabilityMap;
+bool g_capabilityMapInitialized = false;
 //////////////////////////////////////////////////////////////////////////////
 /** 
 * Display exit message.
@@ -670,7 +674,7 @@ void zhx_Init() {
             gpTwainApplicationCMD = NULL;
             return; // 初始化失败
         }
-        //zhx_GetDevicesList();
+        initBasicCapabilityMap();
         Logger::Log("@INFO TWAIN The environment is initialized successfully and the DSM is connected");
         Logger::Cleanup();
     }
@@ -792,7 +796,8 @@ int zhx_OpenDevice(char *device) {
 
         // Load the found scanner using device number
         gpTwainApplicationCMD->loadDS(deviceNumber);
-
+        // 如果成功打开设备
+        //updateCapabilityMapFromDevice(device);
         // Verify scanner loaded successfully (should be in state 4)
         if (gpTwainApplicationCMD->m_DSMState != 4) {
             Logger::Log("@ERROR Failed to load scanner, current state: %d", gpTwainApplicationCMD->m_DSMState);
@@ -896,6 +901,83 @@ static int zhx_GetDeviceNumber(const char *device) {
     catch (...) {
         return 0;
     }
+}
+
+
+// 只初始化基本的能力项映射，作为备用
+void initBasicCapabilityMap() {
+    if (g_capabilityMapInitialized) return;
+    
+    // 只保留最基本的核心能力项，其他都通过动态方式获取
+    g_capabilityMap["CAP_SUPPORTEDCAPS"] = 4101;  // 这个是必需的，用于获取其他能力项
+    g_capabilityMap["CAP_XFERCOUNT"] = 1;
+    g_capabilityMapInitialized = true;
+}
+
+
+// 从设备获取所有支持的能力项并添加到映射表
+void updateCapabilityMapFromDevice(const char* device) {
+    Logger::Init();
+    Logger::Log("@INFO Updating capability map from device: %s", device);
+    
+    // 确保基本映射表已初始化
+    if (!g_capabilityMapInitialized) {
+        initBasicCapabilityMap();
+    }
+    
+    // 调用现有的获取能力项函数
+    char* capsStr = zhx_GetDevCapability_STR((char*)device);
+    if (!capsStr || strlen(capsStr) == 0) {
+        Logger::Log("@WARNING No capabilities retrieved from device");
+        Logger::Cleanup();
+        return;
+    }
+    
+    Logger::Log("@INFO Retrieved capabilities: %s", capsStr);
+    
+    // 创建临时缓冲区处理字符串
+    char* tempBuffer = strdup(capsStr);
+    if (!tempBuffer) {
+        Logger::Log("@ERROR Memory allocation failed");
+        Logger::Cleanup();
+        return;
+    }
+    
+    // 解析分号分隔的能力项列表
+    char* token = strtok(tempBuffer, ";");
+    int count = 0;
+    
+    while (token != NULL) {
+        // 寻找冒号分隔符
+        char* colon = strchr(token, ':');
+        if (colon) {
+            *colon = '\0';  // 分割字符串
+            const char* capName = token;
+            TW_UINT16 capValue;
+            
+            // 获取能力项ID值
+            if (*(colon + 1) == '0' && *(colon + 2) == 'x') {
+                // 十六进制值
+                capValue = (TW_UINT16)strtol(colon + 3, NULL, 16);
+            } else {
+                // 十进制值
+                capValue = (TW_UINT16)atoi(colon + 1);
+            }
+            
+            // 添加到映射表
+            std::string capNameStr(capName);
+            g_capabilityMap[capNameStr] = capValue;
+            count++;
+            
+            Logger::Log("@INFO Added capability: %s = %d", capName, capValue);
+        }
+        
+        token = strtok(NULL, ";");
+    }
+    
+    Logger::Log("@INFO Added %d capabilities to the map", count);
+    free(tempBuffer);
+    Logger::Cleanup();
 }
 
 
@@ -2309,10 +2391,30 @@ char* zhx_GetDevCapability_STR(char* device) {
                     _DSM_Free(cap.hContainer);
                     Logger::Log("@ERROR Failed to get capabilities: Unable to lock memory");
                 } else {
+                    // 记录 pArray 的属性到日志
+                    Logger::Log("@INFO pArray Details:");
+                    Logger::Log("@INFO - ItemType: %d", pArray->ItemType);
+                    Logger::Log("@INFO - NumItems: %d", pArray->NumItems);
+                    
+                    // 创建单独的日志条目，记录每个能力项的值
+                    Logger::Log("@INFO - ItemList Contents:");
+                    
+                    // 打印详细信息到控制台（同时写入日志）
+                    printf("\n===== pArray 属性详情 =====\n");
+                    printf("ItemType: %d\n", pArray->ItemType);
+                    printf("NumItems: %d\n", pArray->NumItems);
+                    printf("ItemList 内容:\n");
+                    
                     // 遍历数组中的每个能力项，格式化为输出字符串
                     for (TW_UINT32 i = 0; i < pArray->NumItems && offset < sizeof(result) - 256; i++) {
                         TW_UINT16 capValue = pArray->ItemList[i]; // 获取能力ID
                         const char* capName = convertCAP_toString(capValue); // 转换ID为名称
+                        
+                        // 记录到日志
+                        Logger::Log("@INFO   [%d] ID: %d, Name: %s", i, capValue, capName);
+                        
+                        // 打印到控制台
+                        printf("  [%d] ID: %d, Name: %s\n", i, capValue, capName);
                         
                         // 使用分号作为分隔符，第一个项目不需要分号
                         if (i > 0) {
@@ -2322,6 +2424,8 @@ char* zhx_GetDevCapability_STR(char* device) {
                         // 格式化输出为 "CAP_NAME:VALUE" 格式
                         offset += sprintf(result + offset, "%s:%d", capName, capValue);
                     }
+                    
+                    printf("=============================\n\n");
                     
                     // 解锁内存并记录日志
                     _DSM_UnlockMemory(cap.hContainer);
@@ -2365,7 +2469,7 @@ char* zhx_GetDevCapability_STR(char* device) {
             }
         }
     }
-    
+    Logger::Log("@INFO zhx_GetDevCapability_STR");
     // 清理日志记录器
     Logger::Cleanup();
     return result; // 返回格式化后的结果字符串
@@ -2459,12 +2563,42 @@ const char* getCapabilityChineseLabel(TW_UINT16 capValue) {
  * @return 返回JSON格式的支持值列表
  */
 char* zhx_GetCapability_STR(char* capOrDevice) {
+    Logger::Init();
+    Logger::Log("@INFO Retrieving capability information for: %s", capOrDevice);
+
+    static bool initializedForCurrentDevice = false;
+    static std::string currentDeviceName = "";
+    
+    // 检查是否需要初始化映射表
+    if (!initializedForCurrentDevice && gpTwainApplicationCMD && 
+        gpTwainApplicationCMD->m_DSMState >= 4) {
+        
+        std::string deviceName = gpTwainApplicationCMD->getSourceIdentity();
+        if (deviceName != currentDeviceName) {
+            // 只保存基本的能力项
+            g_capabilityMap.clear();
+            initBasicCapabilityMap();
+            
+            // 添加常用能力项（硬编码方式作为备份）
+            g_capabilityMap["CAP_XFERCOUNT"] = 1;
+            g_capabilityMap["ICAP_PIXELTYPE"] = 257;
+            g_capabilityMap["ICAP_UNITS"] = 258;
+            g_capabilityMap["ICAP_XFERMECH"] = 259;
+            g_capabilityMap["CAP_FEEDERENABLED"] = 2;
+            g_capabilityMap["CAP_AUTOFEED"] = 7;
+            g_capabilityMap["CAP_DUPLEX"] = 16;
+            g_capabilityMap["ICAP_RESOLUTION"] = 283;
+            g_capabilityMap["CAP_DEVICEONLINE"] = 4111;
+            // ... 其他常用能力项 ...
+            
+            currentDeviceName = deviceName;
+            initializedForCurrentDevice = true;
+        }
+    }
+    
     static char result[4096] = {0}; // 分配足够大的缓冲区
     memset(result, 0, sizeof(result));
     strcpy(result, "[]"); // 默认为空JSON数组
-    
-    Logger::Init();
-    Logger::Log("@INFO Retrieving capability information for: %s", capOrDevice);
     
     // 检查TWAIN环境是否初始化
     if (!gpTwainApplicationCMD) {
@@ -2480,54 +2614,54 @@ char* zhx_GetCapability_STR(char* capOrDevice) {
         return result;
     }
     
+    // 记录数据源当前状态
+    int originalState = gpTwainApplicationCMD->m_DSMState;
+    bool sourceWasEnabled = false;
+    
+    // 只有当状态为4时，才尝试激活数据源
+    if (originalState == 4) {
+        Logger::Log("@INFO Temporarily enabling data source to get capability");
+        
+        // 使用DSM_Entry直接调用TWAIN接口，而不是使用enableDS方法
+        TW_USERINTERFACE ui;
+        memset(&ui, 0, sizeof(TW_USERINTERFACE));
+        ui.ShowUI = FALSE;  // 不显示UI
+        ui.ModalUI = TRUE;  // 模态窗口
+        ui.hParent = NULL;  // 无父窗口
+        
+        TW_UINT16 rc = gpTwainApplicationCMD->DSM_Entry(
+            DG_CONTROL, DAT_USERINTERFACE, MSG_ENABLEDS, (TW_MEMREF)&ui);
+        
+        if (rc == TWRC_SUCCESS && gpTwainApplicationCMD->m_DSMState >= 5) {
+            sourceWasEnabled = true;
+            Logger::Log("@INFO Data source successfully enabled (state changed from 4 to %d)", 
+                      gpTwainApplicationCMD->m_DSMState);
+        } else {
+            Logger::Log("@WARNING Failed to enable data source, error code: %d", rc);
+        }
+    }
+    
     // 确定是能力项名称还是设备名称
     // 先假设是能力项，尝试转换为能力ID
     TW_UINT16 capValue = 0;
     bool isCapability = false;
     
-    // 搜索常见能力项
-    if (strcmp(capOrDevice, "ICAP_SUPPORTEDSIZES") == 0) {
-        capValue = ICAP_SUPPORTEDSIZES;
+    // 先检查是否在映射表中
+    std::string capNameStr(capOrDevice);
+    auto it = g_capabilityMap.find(capNameStr);
+    if (it != g_capabilityMap.end()) {
+        capValue = it->second;
         isCapability = true;
-    } else if (strcmp(capOrDevice, "ICAP_BITDEPTH") == 0) {
-        capValue = ICAP_BITDEPTH;
+        Logger::Log("@INFO Found capability in dynamic map: %s = %d", capOrDevice, capValue);
+    }
+    // 如果不在映射表中，尝试其他解析方式
+    else if (strncmp(capOrDevice, "0x", 2) == 0) {
+        // 解析十六进制
+        capValue = (TW_UINT16)strtol(capOrDevice + 2, NULL, 16);
         isCapability = true;
-    } else if (strcmp(capOrDevice, "ICAP_PIXELTYPE") == 0) {
-        capValue = ICAP_PIXELTYPE;
-        isCapability = true;
-    } else if (strcmp(capOrDevice, "ICAP_UNITS") == 0) {
-        capValue = ICAP_UNITS;
-        isCapability = true;
-    } else if (strcmp(capOrDevice, "ICAP_XFERMECH") == 0) {
-        capValue = ICAP_XFERMECH;
-        isCapability = true;
-    } else if (strcmp(capOrDevice, "ICAP_COMPRESSION") == 0) {
-        capValue = ICAP_COMPRESSION;
-        isCapability = true;
-    } else if (strcmp(capOrDevice, "ICAP_IMAGEFILEFORMAT") == 0) {
-        capValue = ICAP_IMAGEFILEFORMAT;
-        isCapability = true;
-    } else if (strcmp(capOrDevice, "ICAP_XRESOLUTION") == 0) {
-        capValue = ICAP_XRESOLUTION;
-        isCapability = true;
-    } else if (strcmp(capOrDevice, "ICAP_YRESOLUTION") == 0) {
-        capValue = ICAP_YRESOLUTION;
-        isCapability = true;
-    } else if (strcmp(capOrDevice, "CAP_FEEDERENABLED") == 0) {
-        capValue = CAP_FEEDERENABLED;
-        isCapability = true;
-    } else if (strcmp(capOrDevice, "CAP_DUPLEXENABLED") == 0) {
-        capValue = CAP_DUPLEXENABLED;
-        isCapability = true;
-    } else if (strcmp(capOrDevice, "CAP_AUTOFEED") == 0) {
-        capValue = CAP_AUTOFEED;
-        isCapability = true;
-    } else if (strncmp(capOrDevice, "0x", 2) == 0) {
-        // 尝试解析十六进制值
-        capValue = (TW_UINT16)strtol(capOrDevice, NULL, 16);
-        isCapability = true;
-    } else {
-        // 尝试解析为十进制数值
+    }
+    else {
+        // 解析十进制
         char* endptr;
         capValue = (TW_UINT16)strtol(capOrDevice, &endptr, 10);
         if (*endptr == '\0') {
@@ -2547,175 +2681,388 @@ char* zhx_GetCapability_STR(char* capOrDevice) {
             DG_CONTROL, DAT_CAPABILITY, MSG_GET, (TW_MEMREF)&cap);
         
         if (rc != TWRC_SUCCESS) {
+            printf("\n===== Failed to get capability %s =====\n",capOrDevice);
             Logger::Log("@ERROR Failed to get capability: TWAIN error %d", rc);
-            Logger::Cleanup();
-            return result;
-        }
-        
-        // 根据返回的容器类型处理
-        strcpy(result, "[");
-        int offset = 1;
-        
-        if (cap.ConType == TWON_ONEVALUE) {
-            pTW_ONEVALUE pVal = (pTW_ONEVALUE)_DSM_LockMemory(cap.hContainer);
-            if (pVal) {
-                const char* typeName = convertItemTypeToString(pVal->ItemType);
-                offset += sprintf(result + offset, "{\"type\":\"%s\",\"value\":", typeName);
-                
-                // 根据类型格式化值
-                switch (pVal->ItemType) {
-                    case TWTY_INT8:
-                    case TWTY_INT16:
-                    case TWTY_INT32:
-                    case TWTY_UINT8:
-                    case TWTY_UINT16:
-                    case TWTY_UINT32:
-                    case TWTY_BOOL:
-                        offset += sprintf(result + offset, "%d", (int)pVal->Item);
-                        break;
-                    case TWTY_FIX32:
-                        {
-                            TW_FIX32 fix32;
-                            memcpy(&fix32, &pVal->Item, sizeof(TW_FIX32));
-                            float fVal = fix32.Whole + fix32.Frac / 65536.0f;
-                            offset += sprintf(result + offset, "%.2f", fVal);
-                        }
-                        break;
-                    default:
-                        offset += sprintf(result + offset, "\"%s\"", "unsupported type");
-                        break;
-                }
-                
-                offset += sprintf(result + offset, ",\"label\":\"%s\"}", getCapabilityValueLabel(capValue, (int)pVal->Item));
-                _DSM_UnlockMemory(cap.hContainer);
-            }
-        }
-        else if (cap.ConType == TWON_ENUMERATION) {
-            pTW_ENUMERATION pEnum = (pTW_ENUMERATION)_DSM_LockMemory(cap.hContainer);
-            if (pEnum) {
-                const char* typeName = convertItemTypeToString(pEnum->ItemType);
-                
-                // 处理枚举中的每个值
-                for (TW_UINT32 i = 0; i < pEnum->NumItems; i++) {
-                    if (i > 0) {
-                        offset += sprintf(result + offset, ",");
-                    }
+        } else {
+            // 根据返回的容器类型处理
+            strcpy(result, "[");
+            int offset = 1;
+            
+            // 打印 pVal 结构体的属性并添加到result字符串中
+            if (cap.ConType == TWON_ONEVALUE) {
+                pTW_ONEVALUE pVal = (pTW_ONEVALUE)_DSM_LockMemory(cap.hContainer);
+                if (pVal) {
+                    printf("\n===== pVal %s =====\n", capOrDevice);
+                    printf("ItemType: %d (%s)\n", pVal->ItemType, convertItemTypeToString(pVal->ItemType));
+                    printf("Item: %d\n", (int)pVal->Item);
                     
-                    offset += sprintf(result + offset, "{\"type\":\"%s\",\"value\":", typeName);
+                    // 添加到result字符串，使用JSON格式
+                    offset += sprintf(result + offset, "{\"container\":\"ONEVALUE\",\"itemType\":%d,\"itemTypeName\":\"%s\"", 
+                                    pVal->ItemType, convertItemTypeToString(pVal->ItemType));
                     
-                    // 获取值并根据类型格式化
-                    TW_UINT32 itemValue = 0;
-                    switch (pEnum->ItemType) {
+                    // 根据类型打印格式化的值并添加到result
+                    printf("Item(data): ");
+                    offset += sprintf(result + offset, ",\"value\":");
+                    
+                    switch (pVal->ItemType) {
                         case TWTY_INT8:
-                            itemValue = *(((TW_INT8*)(&pEnum->ItemList)) + i);
+                            printf("%d (INT8)\n", (TW_INT8)pVal->Item);
+                            offset += sprintf(result + offset, "%d", (TW_INT8)pVal->Item);
                             break;
                         case TWTY_INT16:
-                            itemValue = *(((TW_INT16*)(&pEnum->ItemList)) + i);
+                            printf("%d (INT16)\n", (TW_INT16)pVal->Item);
+                            offset += sprintf(result + offset, "%d", (TW_INT16)pVal->Item);
                             break;
                         case TWTY_INT32:
-                            itemValue = *(((TW_INT32*)(&pEnum->ItemList)) + i);
+                            printf("%d (INT32)\n", (TW_INT32)pVal->Item);
+                            offset += sprintf(result + offset, "%d", (TW_INT32)pVal->Item);
                             break;
                         case TWTY_UINT8:
-                            itemValue = *(((TW_UINT8*)(&pEnum->ItemList)) + i);
+                            printf("%u (UINT8)\n", (TW_UINT8)pVal->Item);
+                            offset += sprintf(result + offset, "%u", (TW_UINT8)pVal->Item);
                             break;
                         case TWTY_UINT16:
-                            itemValue = *(((TW_UINT16*)(&pEnum->ItemList)) + i);
+                            printf("%u (UINT16)\n", (TW_UINT16)pVal->Item);
+                            offset += sprintf(result + offset, "%u", (TW_UINT16)pVal->Item);
                             break;
                         case TWTY_UINT32:
-                            itemValue = *(((TW_UINT32*)(&pEnum->ItemList)) + i);
+                            printf("%u (UINT32)\n", (TW_UINT32)pVal->Item);
+                            offset += sprintf(result + offset, "%u", (TW_UINT32)pVal->Item);
                             break;
                         case TWTY_BOOL:
-                            itemValue = *(((TW_BOOL*)(&pEnum->ItemList)) + i);
+                            printf("%s (BOOL)\n", (TW_BOOL)pVal->Item ? "true" : "false");
+                            offset += sprintf(result + offset, "%s", (TW_BOOL)pVal->Item ? "true" : "false");
                             break;
                         case TWTY_FIX32:
                             {
-                                TW_FIX32 fix32 = *(((TW_FIX32*)(&pEnum->ItemList)) + i);
+                                TW_FIX32 fix32;
+                                memcpy(&fix32, &pVal->Item, sizeof(TW_FIX32));
                                 float fVal = fix32.Whole + fix32.Frac / 65536.0f;
-                                offset += sprintf(result + offset, "%.2f", fVal);
-                                offset += sprintf(result + offset, ",\"label\":\"%s\"}", getCapabilityValueLabel(capValue, i));
-                                continue;
+                                printf("%.4f (FIX32) [Whole: %d, Frac: %u]\n", fVal, fix32.Whole, fix32.Frac);
+                                offset += sprintf(result + offset, "%.4f", fVal);
+                                // 添加FIX32的组成部分
+                                offset += sprintf(result + offset, ",\"whole\":%d,\"frac\":%u", fix32.Whole, fix32.Frac);
                             }
                             break;
+                        case TWTY_FRAME:
+                            {
+                                TW_FRAME* pFrame = (TW_FRAME*)&pVal->Item;
+                                printf("FRAME [Left:%.2f, Top:%.2f, Right:%.2f, Bottom:%.2f]\n",
+                                    FIX32ToFloat(pFrame->Left), FIX32ToFloat(pFrame->Top),
+                                    FIX32ToFloat(pFrame->Right), FIX32ToFloat(pFrame->Bottom));
+                                
+                                // 添加FRAME属性
+                                offset += sprintf(result + offset, "{\"left\":%.2f,\"top\":%.2f,\"right\":%.2f,\"bottom\":%.2f}",
+                                                FIX32ToFloat(pFrame->Left), FIX32ToFloat(pFrame->Top),
+                                                FIX32ToFloat(pFrame->Right), FIX32ToFloat(pFrame->Bottom));
+                            }
+                            break;
+                        case TWTY_STR32:
+                        case TWTY_STR64:
+                        case TWTY_STR128:
+                        case TWTY_STR255:
+                            printf("%s (STRING)\n", (char*)&pVal->Item);
+                            offset += sprintf(result + offset, "\"%s\"", (char*)&pVal->Item);
+                            break;
                         default:
-                            offset += sprintf(result + offset, "\"%s\"", "unsupported type");
-                            offset += sprintf(result + offset, ",\"label\":\"%s\"}", getCapabilityValueLabel(capValue, i));
-                            continue;
+                            printf("未知类型 (Type ID: %d)\n", pVal->ItemType);
+                            offset += sprintf(result + offset, "\"未知类型\"");
+                            break;
                     }
                     
-                    offset += sprintf(result + offset, "%d", (int)itemValue);
-                    offset += sprintf(result + offset, ",\"label\":\"%s\"}", getCapabilityValueLabel(capValue, (int)itemValue));
+                    offset += sprintf(result + offset, "}"); // 关闭当前值的JSON对象
+                    
+                    // 记录到日志
+                    Logger::Log("@INFO pVal Details:");
+                    Logger::Log("@INFO - ItemType: %d (%s)", pVal->ItemType, convertItemTypeToString(pVal->ItemType));
+                    Logger::Log("@INFO - Item: %d", (int)pVal->Item);
+                    
+                    printf("==================================\n\n");
+                    
+                    _DSM_UnlockMemory(cap.hContainer);
                 }
-                
-                _DSM_UnlockMemory(cap.hContainer);
             }
-        }
-        else if (cap.ConType == TWON_RANGE) {
-            pTW_RANGE pRange = (pTW_RANGE)_DSM_LockMemory(cap.hContainer);
-            if (pRange) {
-                const char* typeName = convertItemTypeToString(pRange->ItemType);
-                
-                // 添加最小值
-                offset += sprintf(result + offset, "{\"type\":\"%s\",\"value\":", typeName);
-                if (pRange->ItemType == TWTY_FIX32) {
-                    TW_FIX32 fix32;
-                    memcpy(&fix32, &pRange->MinValue, sizeof(TW_FIX32));
-                    float fVal = fix32.Whole + fix32.Frac / 65536.0f;
-                    offset += sprintf(result + offset, "%.2f", fVal);
-                } else {
-                    offset += sprintf(result + offset, "%d", (int)pRange->MinValue);
+            // 打印 pEnum 结构体的属性并添加到result字符串中
+            else if (cap.ConType == TWON_ENUMERATION) {
+                pTW_ENUMERATION pEnum = (pTW_ENUMERATION)_DSM_LockMemory(cap.hContainer);
+                if (pEnum) {
+                    printf("\n===== pEnum %s =====\n", capOrDevice);
+                    printf("ItemType: %d (%s)\n", pEnum->ItemType, convertItemTypeToString(pEnum->ItemType));
+                    printf("NumItems: %d\n", pEnum->NumItems);
+                    printf("CurrentIndex: %d\n", pEnum->CurrentIndex);
+                    printf("DefaultIndex: %d\n", pEnum->DefaultIndex);
+                    
+                    // 添加到result字符串，使用JSON格式
+                    offset += sprintf(result + offset, "{\"container\":\"ENUMERATION\",\"itemType\":%d,\"itemTypeName\":\"%s\"",
+                                    pEnum->ItemType, convertItemTypeToString(pEnum->ItemType));
+                    offset += sprintf(result + offset, ",\"numItems\":%d,\"currentIndex\":%d,\"defaultIndex\":%d,\"items\":[",
+                                    pEnum->NumItems, pEnum->CurrentIndex, pEnum->DefaultIndex);
+                    
+                    // 记录到日志
+                    Logger::Log("@INFO pEnum Details:");
+                    Logger::Log("@INFO - ItemType: %d (%s)", pEnum->ItemType, convertItemTypeToString(pEnum->ItemType));
+                    Logger::Log("@INFO - NumItems: %d", pEnum->NumItems);
+                    Logger::Log("@INFO - CurrentIndex: %d", pEnum->CurrentIndex);
+                    Logger::Log("@INFO - DefaultIndex: %d", pEnum->DefaultIndex);
+                    
+                    // 打印所有枚举项
+                    printf("enum (ItemList):\n");
+                    Logger::Log("@INFO - ItemList Values:");
+                    
+                    for (TW_UINT32 i = 0; i < pEnum->NumItems; i++) {
+                        if (i > 0) {
+                            offset += sprintf(result + offset, ","); // 项之间添加逗号
+                        }
+                        
+                        printf("  [%d] ", i);
+                        offset += sprintf(result + offset, "{\"index\":%d,\"value\":", i);
+                        
+                        // 基于类型获取和打印值
+                        switch (pEnum->ItemType) {
+                            case TWTY_INT8:
+                                {
+                                    TW_INT8 val = *(((TW_INT8*)(&pEnum->ItemList)) + i);
+                                    printf("%d (INT8)", val);
+                                    Logger::Log("@INFO   [%d] %d (INT8)", i, val);
+                                    offset += sprintf(result + offset, "%d", val);
+                                }
+                                break;
+                            case TWTY_INT16:
+                                {
+                                    TW_INT16 val = *(((TW_INT16*)(&pEnum->ItemList)) + i);
+                                    printf("%d (INT16)", val);
+                                    Logger::Log("@INFO   [%d] %d (INT16)", i, val);
+                                    offset += sprintf(result + offset, "%d", val);
+                                }
+                                break;
+                            case TWTY_INT32:
+                                {
+                                    TW_INT32 val = *(((TW_INT32*)(&pEnum->ItemList)) + i);
+                                    printf("%d (INT32)", val);
+                                    Logger::Log("@INFO   [%d] %d (INT32)", i, val);
+                                    offset += sprintf(result + offset, "%d", val);
+                                }
+                                break;
+                            case TWTY_UINT8:
+                                {
+                                    TW_UINT8 val = *(((TW_UINT8*)(&pEnum->ItemList)) + i);
+                                    printf("%u (UINT8)", val);
+                                    Logger::Log("@INFO   [%d] %u (UINT8)", i, val);
+                                    offset += sprintf(result + offset, "%u", val);
+                                }
+                                break;
+                            case TWTY_UINT16:
+                                {
+                                    TW_UINT16 val = *(((TW_UINT16*)(&pEnum->ItemList)) + i);
+                                    printf("%u (UINT16)", val);
+                                    Logger::Log("@INFO   [%d] %u (UINT16)", i, val);
+                                    offset += sprintf(result + offset, "%u", val);
+                                }
+                                break;
+                            case TWTY_UINT32:
+                                {
+                                    TW_UINT32 val = *(((TW_UINT32*)(&pEnum->ItemList)) + i);
+                                    printf("%u (UINT32)", val);
+                                    Logger::Log("@INFO   [%d] %u (UINT32)", i, val);
+                                    offset += sprintf(result + offset, "%u", val);
+                                }
+                                break;
+                            case TWTY_BOOL:
+                                {
+                                    TW_BOOL val = *(((TW_BOOL*)(&pEnum->ItemList)) + i);
+                                    printf("%s (BOOL)", val ? "true" : "false");
+                                    Logger::Log("@INFO   [%d] %s (BOOL)", i, val ? "true" : "false");
+                                    offset += sprintf(result + offset, "%s", val ? "true" : "false");
+                                }
+                                break;
+                            case TWTY_FIX32:
+                                {
+                                    TW_FIX32 fix32 = *(((TW_FIX32*)(&pEnum->ItemList)) + i);
+                                    float fVal = fix32.Whole + fix32.Frac / 65536.0f;
+                                    printf("%.4f (FIX32) [Whole: %d, Frac: %u]", 
+                                        fVal, fix32.Whole, fix32.Frac);
+                                    Logger::Log("@INFO   [%d] %.4f (FIX32) [Whole: %d, Frac: %u]", 
+                                            i, fVal, fix32.Whole, fix32.Frac);
+                                    offset += sprintf(result + offset, "%.4f,\"whole\":%d,\"frac\":%u", 
+                                                    fVal, fix32.Whole, fix32.Frac);
+                                }
+                                break;
+                            case TWTY_FRAME:
+                                {
+                                    TW_FRAME frame = *(((TW_FRAME*)(&pEnum->ItemList)) + i);
+                                    printf("FRAME [Left:%.2f, Top:%.2f, Right:%.2f, Bottom:%.2f]",
+                                        FIX32ToFloat(frame.Left), FIX32ToFloat(frame.Top),
+                                        FIX32ToFloat(frame.Right), FIX32ToFloat(frame.Bottom));
+                                    Logger::Log("@INFO   [%d] FRAME [L:%.2f, T:%.2f, R:%.2f, B:%.2f]", i,
+                                            FIX32ToFloat(frame.Left), FIX32ToFloat(frame.Top),
+                                            FIX32ToFloat(frame.Right), FIX32ToFloat(frame.Bottom));
+                                    
+                                    offset += sprintf(result + offset, "{\"left\":%.2f,\"top\":%.2f,\"right\":%.2f,\"bottom\":%.2f}",
+                                                    FIX32ToFloat(frame.Left), FIX32ToFloat(frame.Top),
+                                                    FIX32ToFloat(frame.Right), FIX32ToFloat(frame.Bottom));
+                                }
+                                break;
+                            default:
+                                printf("unknown (Type ID: %d)", pEnum->ItemType);
+                                Logger::Log("@INFO   [%d] unknown (Type ID: %d)", i, pEnum->ItemType);
+                                offset += sprintf(result + offset, "\"unknown\"");
+                                break;
+                        }
+                        
+                        // 如果是当前项或默认项，添加标记
+                        bool isCurrent = (i == pEnum->CurrentIndex);
+                        bool isDefault = (i == pEnum->DefaultIndex);
+                        
+                        if (isCurrent && isDefault) {
+                            printf(" [当前值 & 默认值]");
+                            offset += sprintf(result + offset, ",\"isCurrent\":true,\"isDefault\":true");
+                        } else if (isCurrent) {
+                            printf(" [当前值]");
+                            offset += sprintf(result + offset, ",\"isCurrent\":true,\"isDefault\":false");
+                        } else if (isDefault) {
+                            printf(" [默认值]");
+                            offset += sprintf(result + offset, ",\"isCurrent\":false,\"isDefault\":true");
+                        } else {
+                            offset += sprintf(result + offset, ",\"isCurrent\":false,\"isDefault\":false");
+                        }
+                        
+                        printf("\n");
+                        offset += sprintf(result + offset, "}"); // 关闭当前项的JSON对象
+                    }
+                    
+                    offset += sprintf(result + offset, "]}"); // 关闭items数组和整个枚举的JSON对象
+                    
+                    printf("==================================\n\n");
+                    
+                    _DSM_UnlockMemory(cap.hContainer);
                 }
-                offset += sprintf(result + offset, ",\"label\":\"Minimum\"},");
-                
-                // 添加最大值
-                offset += sprintf(result + offset, "{\"type\":\"%s\",\"value\":", typeName);
-                if (pRange->ItemType == TWTY_FIX32) {
-                    TW_FIX32 fix32;
-                    memcpy(&fix32, &pRange->MaxValue, sizeof(TW_FIX32));
-                    float fVal = fix32.Whole + fix32.Frac / 65536.0f;
-                    offset += sprintf(result + offset, "%.2f", fVal);
-                } else {
-                    offset += sprintf(result + offset, "%d", (int)pRange->MaxValue);
-                }
-                offset += sprintf(result + offset, ",\"label\":\"Maximum\"},");
-                
-                // 添加步长
-                offset += sprintf(result + offset, "{\"type\":\"%s\",\"value\":", typeName);
-                if (pRange->ItemType == TWTY_FIX32) {
-                    TW_FIX32 fix32;
-                    memcpy(&fix32, &pRange->StepSize, sizeof(TW_FIX32));
-                    float fVal = fix32.Whole + fix32.Frac / 65536.0f;
-                    offset += sprintf(result + offset, "%.2f", fVal);
-                } else {
-                    offset += sprintf(result + offset, "%d", (int)pRange->StepSize);
-                }
-                offset += sprintf(result + offset, ",\"label\":\"Step\"},");
-                
-                // 添加默认值
-                offset += sprintf(result + offset, "{\"type\":\"%s\",\"value\":", typeName);
-                if (pRange->ItemType == TWTY_FIX32) {
-                    TW_FIX32 fix32;
-                    memcpy(&fix32, &pRange->DefaultValue, sizeof(TW_FIX32));
-                    float fVal = fix32.Whole + fix32.Frac / 65536.0f;
-                    offset += sprintf(result + offset, "%.2f", fVal);
-                } else {
-                    offset += sprintf(result + offset, "%d", (int)pRange->DefaultValue);
-                }
-                offset += sprintf(result + offset, ",\"label\":\"Default\"}");
-                
-                _DSM_UnlockMemory(cap.hContainer);
             }
+            // 打印 pRange 结构体的属性并添加到result字符串中
+            else if (cap.ConType == TWON_RANGE) {
+                pTW_RANGE pRange = (pTW_RANGE)_DSM_LockMemory(cap.hContainer);
+                if (pRange) {
+                    printf("\n===== pRange %s =====\n", capOrDevice);
+                    printf("ItemType: %d (%s)\n", pRange->ItemType, convertItemTypeToString(pRange->ItemType));
+                    
+                    // 添加到result字符串，使用JSON格式
+                    offset += sprintf(result + offset, "{\"container\":\"RANGE\",\"itemType\":%d,\"itemTypeName\":\"%s\"",
+                                    pRange->ItemType, convertItemTypeToString(pRange->ItemType));
+                    
+                    // 记录到日志
+                    Logger::Log("@INFO pRange Details:");
+                    Logger::Log("@INFO - ItemType: %d (%s)", pRange->ItemType, convertItemTypeToString(pRange->ItemType));
+                    
+                    // 根据类型打印格式化的值并添加到result
+                    if (pRange->ItemType == TWTY_FIX32) {
+                        TW_FIX32 minFix32, maxFix32, stepFix32, defFix32, curFix32;
+                        
+                        memcpy(&minFix32, &pRange->MinValue, sizeof(TW_FIX32));
+                        memcpy(&maxFix32, &pRange->MaxValue, sizeof(TW_FIX32));
+                        memcpy(&stepFix32, &pRange->StepSize, sizeof(TW_FIX32));
+                        memcpy(&defFix32, &pRange->DefaultValue, sizeof(TW_FIX32));
+                        memcpy(&curFix32, &pRange->CurrentValue, sizeof(TW_FIX32));
+                        
+                        float minVal = minFix32.Whole + minFix32.Frac / 65536.0f;
+                        float maxVal = maxFix32.Whole + maxFix32.Frac / 65536.0f;
+                        float stepVal = stepFix32.Whole + stepFix32.Frac / 65536.0f;
+                        float defVal = defFix32.Whole + defFix32.Frac / 65536.0f;
+                        float curVal = curFix32.Whole + curFix32.Frac / 65536.0f;
+                        
+                        printf("MinValue: %.4f (FIX32) [Whole: %d, Frac: %u]\n", 
+                            minVal, minFix32.Whole, minFix32.Frac);
+                        printf("MaxValue: %.4f (FIX32) [Whole: %d, Frac: %u]\n", 
+                            maxVal, maxFix32.Whole, maxFix32.Frac);
+                        printf("StepSize: %.4f (FIX32) [Whole: %d, Frac: %u]\n", 
+                            stepVal, stepFix32.Whole, stepFix32.Frac);
+                        printf("DefaultValue: %.4f (FIX32) [Whole: %d, Frac: %u]\n", 
+                            defVal, defFix32.Whole, defFix32.Frac);
+                        printf("CurrentValue: %.4f (FIX32) [Whole: %d, Frac: %u]\n", 
+                            curVal, curFix32.Whole, curFix32.Frac);
+                        
+                        // 添加值到result
+                        offset += sprintf(result + offset, 
+                                        ",\"minValue\":%.4f,\"minWhole\":%d,\"minFrac\":%u,"
+                                        "\"maxValue\":%.4f,\"maxWhole\":%d,\"maxFrac\":%u,"
+                                        "\"stepSize\":%.4f,\"stepWhole\":%d,\"stepFrac\":%u,"
+                                        "\"defaultValue\":%.4f,\"defaultWhole\":%d,\"defaultFrac\":%u,"
+                                        "\"currentValue\":%.4f,\"currentWhole\":%d,\"currentFrac\":%u",
+                                        minVal, minFix32.Whole, minFix32.Frac,
+                                        maxVal, maxFix32.Whole, maxFix32.Frac,
+                                        stepVal, stepFix32.Whole, stepFix32.Frac,
+                                        defVal, defFix32.Whole, defFix32.Frac,
+                                        curVal, curFix32.Whole, curFix32.Frac);
+                        
+                        Logger::Log("@INFO - MinValue: %.4f (FIX32) [Whole: %d, Frac: %u]", 
+                                minVal, minFix32.Whole, minFix32.Frac);
+                        Logger::Log("@INFO - MaxValue: %.4f (FIX32) [Whole: %d, Frac: %u]", 
+                                maxVal, maxFix32.Whole, maxFix32.Frac);
+                        Logger::Log("@INFO - StepSize: %.4f (FIX32) [Whole: %d, Frac: %u]", 
+                                stepVal, stepFix32.Whole, stepFix32.Frac);
+                        Logger::Log("@INFO - DefaultValue: %.4f (FIX32) [Whole: %d, Frac: %u]", 
+                                defVal, defFix32.Whole, defFix32.Frac);
+                        Logger::Log("@INFO - CurrentValue: %.4f (FIX32) [Whole: %d, Frac: %u]", 
+                                curVal, curFix32.Whole, curFix32.Frac);
+                    } else {
+                        printf("MinValue: %d\n", (int)pRange->MinValue);
+                        printf("MaxValue: %d\n", (int)pRange->MaxValue);
+                        printf("StepSize: %d\n", (int)pRange->StepSize);
+                        printf("DefaultValue: %d\n", (int)pRange->DefaultValue);
+                        printf("CurrentValue: %d\n", (int)pRange->CurrentValue);
+                        
+                        // 添加值到result
+                        offset += sprintf(result + offset, 
+                                        ",\"minValue\":%d,\"maxValue\":%d,\"stepSize\":%d,"
+                                        "\"defaultValue\":%d,\"currentValue\":%d",
+                                        (int)pRange->MinValue, (int)pRange->MaxValue, 
+                                        (int)pRange->StepSize, (int)pRange->DefaultValue, 
+                                        (int)pRange->CurrentValue);
+                        
+                        Logger::Log("@INFO - MinValue: %d", (int)pRange->MinValue);
+                        Logger::Log("@INFO - MaxValue: %d", (int)pRange->MaxValue);
+                        Logger::Log("@INFO - StepSize: %d", (int)pRange->StepSize);
+                        Logger::Log("@INFO - DefaultValue: %d", (int)pRange->DefaultValue);
+                        Logger::Log("@INFO - CurrentValue: %d", (int)pRange->CurrentValue);
+                    }
+                    
+                    offset += sprintf(result + offset, "}"); // 关闭range的JSON对象
+                    
+                    printf("==================================\n\n");
+                    
+                    _DSM_UnlockMemory(cap.hContainer);
+                }
+            }
+            
+            // 关闭JSON数组
+            strcat(result, "]");
+            
+            // 释放资源
+            _DSM_Free(cap.hContainer);
         }
-        
-        // 关闭JSON数组
-        strcat(result, "]");
-        
-        // 释放资源
-        _DSM_Free(cap.hContainer);
     }
     else {
-        // 不是能力项，可能是设备名称，调用现有的获取能力列表函数
-        char* allCaps = zhx_GetDevCapability_JSON(capOrDevice);
-        strcpy(result, allCaps);
+        printf("\n===== capOrDevice %s =====\n",capOrDevice);
+        // 不是能力项（不再尝试当作设备名称处理）
+        Logger::Log("@ERROR Unknown capability name or format: %s", capOrDevice);
+        strcpy(result, "[]");
+    }
+    
+    // 如果之前临时激活了数据源，现在禁用它，恢复原始状态
+    if (sourceWasEnabled && gpTwainApplicationCMD->m_DSMState >= 5) {
+        Logger::Log("@INFO Disabling data source after capability retrieval");
+        
+        // 使用DSM_Entry直接调用TWAIN接口禁用数据源
+        TW_USERINTERFACE ui;
+        memset(&ui, 0, sizeof(TW_USERINTERFACE));
+        
+        TW_UINT16 rc = gpTwainApplicationCMD->DSM_Entry(
+            DG_CONTROL, DAT_USERINTERFACE, MSG_DISABLEDS, (TW_MEMREF)&ui);
+        
+        if (rc == TWRC_SUCCESS) {
+            Logger::Log("@INFO Data source disabled (state changed back to %d)", 
+                      gpTwainApplicationCMD->m_DSMState);
+        } else {
+            Logger::Log("@WARNING Failed to disable data source: %d", rc);
+        }
     }
     
     Logger::Cleanup();
