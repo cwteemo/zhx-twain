@@ -575,7 +575,8 @@ void zhx_twain() {
     //gpTwainApplicationCMD->printIdentityStruct(atoi("2"));
     std::cout << "G" << std::endl;
     Logger::Log("G");
-    gpTwainApplicationCMD->loadDS(atoi("2"));
+    //测试 写死的需要连接的扫描仪
+    gpTwainApplicationCMD->loadDS(atoi("1"));
     std::cout << "H" << std::endl;
     Logger::Log("H");
     //gpTwainApplicationCMD->unloadDS();

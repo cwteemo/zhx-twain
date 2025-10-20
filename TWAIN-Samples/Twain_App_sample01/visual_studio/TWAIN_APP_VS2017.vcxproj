@@ -179,7 +179,7 @@ if EXIST "$(ProjectDir)..\pub\bin\win64\$(TargetName).exe" del /q /f "$(ProjectD
       <DataExecutionPrevention>
       </DataExecutionPrevention>
       <TargetMachine>MachineX64</TargetMachine>
-      <ModuleDefinitionFile>L:\code\twain\zhx-twain\TWAIN-Samples\Twain_App_sample01\visual_studio\Debug\exports.def</ModuleDefinitionFile>
+      <ModuleDefinitionFile>..\exports.def</ModuleDefinitionFile>
     </Link>
     <PostBuildEvent>
       <Message>Copy Application to pub\bin directory</Message>
@@ -255,7 +255,7 @@ if EXIST "$(ProjectDir)..\pub\bin\win64\$(TargetName).exe" del /q /f "$(ProjectD
       <DataExecutionPrevention>
       </DataExecutionPrevention>
       <TargetMachine>MachineX64</TargetMachine>
-      <ModuleDefinitionFile>L:\code\twain\zhx-twain\TWAIN-Samples\Twain_App_sample01\visual_studio\Debug\exports.def</ModuleDefinitionFile>
+      <ModuleDefinitionFile>..\exports.def</ModuleDefinitionFile>
     </Link>
     <PostBuildEvent>
       <Message>Copy Application to pub\bin directory</Message>
