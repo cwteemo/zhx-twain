@@ -37,9 +37,10 @@ import "C" // 切勿换行再写这个
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
-	"unsafe"
 
 	"gotwain/twainConfig" // 导入本地包
 )
@@ -81,7 +82,7 @@ func main() {
 	//return
 	// 注册路由处理函数
 	//http.HandleFunc("/", indexHandler)
-	//http.HandleFunc("/zhx_twain", zhxTwainHandler)
+	http.HandleFunc("/zhx_twain", zhxTwainHandler)
 	http.HandleFunc("/config", twainConfig.ScannerConfigHandler) // 直接使用twainConfig包中的函数
 
 	fmt.Println("Server started, visit http://localhost:8000/ to test the API")
@@ -163,49 +164,49 @@ func zhx_twain() {
 	}
 
 	//获取支持的capabilities
-	supportedCapabilities := C.zhx_GetDevCapability_STR(cScannerName)
-	supportedCapabilitiesStr := C.GoString(supportedCapabilities)
-	fmt.Printf("支持的capabilities: %s\n", supportedCapabilitiesStr)
+	// supportedCapabilities := C.zhx_GetDevCapability_STR(cScannerName)
+	// supportedCapabilitiesStr := C.GoString(supportedCapabilities)
+	// fmt.Printf("支持的capabilities: %s\n", supportedCapabilitiesStr)
 
-	capabilitiesStr := "CAP_DEVICEONLINE:4111;CAP_INDICATORS:4107;CAP_ENABLEDSUIONLY:4116;CAP_PAPERDETECTABLE:4109;CAP_FEEDERENABLED:4098;CAP_FEEDERLOADED:4099;CAP_DUPLEX:4114;CAP_DUPLEXENABLED:4115;CAP_AUTOFEED:4103;CAP_SUPPORTEDCAPS:4101;Unknown CAP 0x:103E:4158;CAP_UICONTROLLABLE:4110;CAP_XFERCOUNT:1;ICAP_BITDEPTH:4395;ICAP_BITORDER:4380;ICAP_COMPRESSION:256;ICAP_FRAMES:4372;ICAP_MAXFRAMES:4378;ICAP_IMAGEFILEFORMAT:4364;ICAP_PHYSICALHEIGHT:4370;ICAP_PHYSICALWIDTH:4369;ICAP_PIXELFLAVOR:4383;ICAP_PIXELTYPE:257;ICAP_PLANARCHUNKY:4384;ICAP_SUPPORTEDSIZES:4386;ICAP_ORIENTATION:4368;ICAP_UNITS:258;ICAP_XFERMECH:259;ICAP_XNATIVERESOLUTION:4374;ICAP_XRESOLUTION:4376;ICAP_YNATIVERESOLUTION:4375;ICAP_YRESOLUTION:4377;ICAP_THRESHOLD:4387;ICAP_CONTRAST:4355;ICAP_BRIGHTNESS:4353;ICAP_GAMMA:4360;CAP_CUSTOMINTERFACEGUID:4156;Custom CAP 0x:8001:32769;Custom CAP 0x:8002:32770;CAP_CUSTOMDSDATA:4117"
+	// capabilitiesStr := "CAP_DEVICEONLINE:4111;CAP_INDICATORS:4107;CAP_ENABLEDSUIONLY:4116;CAP_PAPERDETECTABLE:4109;CAP_FEEDERENABLED:4098;CAP_FEEDERLOADED:4099;CAP_DUPLEX:4114;CAP_DUPLEXENABLED:4115;CAP_AUTOFEED:4103;CAP_SUPPORTEDCAPS:4101;Unknown CAP 0x:103E:4158;CAP_UICONTROLLABLE:4110;CAP_XFERCOUNT:1;ICAP_BITDEPTH:4395;ICAP_BITORDER:4380;ICAP_COMPRESSION:256;ICAP_FRAMES:4372;ICAP_MAXFRAMES:4378;ICAP_IMAGEFILEFORMAT:4364;ICAP_PHYSICALHEIGHT:4370;ICAP_PHYSICALWIDTH:4369;ICAP_PIXELFLAVOR:4383;ICAP_PIXELTYPE:257;ICAP_PLANARCHUNKY:4384;ICAP_SUPPORTEDSIZES:4386;ICAP_ORIENTATION:4368;ICAP_UNITS:258;ICAP_XFERMECH:259;ICAP_XNATIVERESOLUTION:4374;ICAP_XRESOLUTION:4376;ICAP_YNATIVERESOLUTION:4375;ICAP_YRESOLUTION:4377;ICAP_THRESHOLD:4387;ICAP_CONTRAST:4355;ICAP_BRIGHTNESS:4353;ICAP_GAMMA:4360;CAP_CUSTOMINTERFACEGUID:4156;Custom CAP 0x:8001:32769;Custom CAP 0x:8002:32770;CAP_CUSTOMDSDATA:4117"
 
-	// 解析字符串
-	capabilities := strings.Split(capabilitiesStr, ";")
+	// // 解析字符串
+	// capabilities := strings.Split(capabilitiesStr, ";")
 
-	// 遍历每个能力项并获取其值
-	for _, capability := range capabilities {
-		// 以冒号分割
-		parts := strings.SplitN(capability, ":", 2)
-		if len(parts) < 2 {
-			continue // 跳过格式不正确的项
-		}
+	// // 遍历每个能力项并获取其值
+	// for _, capability := range capabilities {
+	// 	// 以冒号分割
+	// 	parts := strings.SplitN(capability, ":", 2)
+	// 	if len(parts) < 2 {
+	// 		continue // 跳过格式不正确的项
+	// 	}
 
-		capName := parts[0]
-		capValue := parts[1]
+	// 	capName := parts[0]
+	// 	capValue := parts[1]
 
-		// 设置为当前线程锁定
-		runtime.LockOSThread()
+	// 	// 设置为当前线程锁定
+	// 	runtime.LockOSThread()
 
-		// 调用C函数获取能力值
-		cCapName := C.CString(capValue)
-		defer C.free(unsafe.Pointer(cCapName))
-		capResult := C.zhx_GetCapability_STR(cCapName)
+	// 	// 调用C函数获取能力值
+	// 	cCapName := C.CString(capValue)
+	// 	defer C.free(unsafe.Pointer(cCapName))
+	// 	capResult := C.zhx_GetCapability_STR(cCapName)
 
-		// 转换结果为Go字符串
-		resultStr := C.GoString(capResult)
+	// 	// 转换结果为Go字符串
+	// 	resultStr := C.GoString(capResult)
 
-		// 解锁线程
-		runtime.UnlockOSThread()
-		// 打印结果
-		fmt.Printf("能力项: %s (值: %s)\n结果: %s\n\n", capName, capValue, resultStr)
-	}
+	// 	// 解锁线程
+	// 	runtime.UnlockOSThread()
+	// 	// 打印结果
+	// 	fmt.Printf("能力项: %s (值: %s)\n结果: %s\n\n", capName, capValue, resultStr)
+	// }
 
-	cStr := C.CString("CAP_XFERCOUNT")
-	defer C.free(unsafe.Pointer(cStr))
-	paperSizes := C.zhx_GetCapability_STR(cStr)
-	paperSizesStr := C.GoString(paperSizes)
-	fmt.Printf("传输计数: %s\n", paperSizesStr)
-	return
+	// cStr := C.CString("CAP_XFERCOUNT")
+	// defer C.free(unsafe.Pointer(cStr))
+	// paperSizes := C.zhx_GetCapability_STR(cStr)
+	// paperSizesStr := C.GoString(paperSizes)
+	// fmt.Printf("传输计数: %s\n", paperSizesStr)
+	//return
 
 	// 获取支持的capabilities
 	// supportedCapabilities := C.zhx_GetDevCapability_JSON(cScannerName)
@@ -220,8 +221,8 @@ func zhx_twain() {
 	// // =========== 手动设置扫描参数 ===========
 	// fmt.Println("\n===== 设置扫描参数 =====")
 	// // 获取扫描仪支持的纸张尺寸
-	// paperSizes := C.zhx_GetCapability_STR(C.CString("ICAP_SUPPORTEDSIZES"))
-	// paperSizesStr := C.GoString(paperSizes)
+	// paperSizes = C.zhx_GetCapability_STR(C.CString("ICAP_SUPPORTEDSIZES"))
+	// paperSizesStr = C.GoString(paperSizes)
 	// fmt.Printf("扫描仪支持的纸张尺寸: %s\n", paperSizesStr)
 	// // 设置分辨率为 300 DPI
 	// fmt.Println("设置分辨率为 300 DPI...")
@@ -305,7 +306,7 @@ func zhx_twain() {
 	// 	fmt.Printf("当前设置的文件格式: %s (%d)\n", selectedFormatName, currentFormat)
 	// }
 
-	// // =========== 设置分辨率 ===========
+	// =========== 设置分辨率 ===========
 	// fmt.Println("\n===== 分辨率设置 =====")
 
 	// // 获取支持的分辨率
@@ -352,72 +353,72 @@ func zhx_twain() {
 	// 	fmt.Printf("设置分辨率为 %d DPI 的结果: %v\n", selectedRes, result)
 	// }
 
-	// // 再次获取当前分辨率确认
-	// currentDPI := C.zhx_GetCurrentResolution()
-	// fmt.Printf("当前扫描分辨率: %d DPI\n", currentDPI)
+	// 再次获取当前分辨率确认
+	currentDPI := C.zhx_GetCurrentResolution()
+	fmt.Printf("当前扫描分辨率: %d DPI\n", currentDPI)
 
-	// // =========== 设置扫描目录 ===========
-	// fmt.Println("\n===== 扫描设置 =====")
+	// =========== 设置扫描目录 ===========
+	fmt.Println("\n===== 扫描设置 =====")
 
-	// // 使用当前工作目录，而不是可执行文件的目录
-	// workDir, err := os.Getwd()
-	// if err != nil {
-	// 	fmt.Printf("获取当前工作目录出错: %v\n", err)
-	// 	return
-	// }
+	// 使用当前工作目录，而不是可执行文件的目录
+	workDir, err := os.Getwd()
+	if err != nil {
+		fmt.Printf("获取当前工作目录出错: %v\n", err)
+		return
+	}
 
-	// // 创建temp目录路径
-	// tempDir1 := filepath.Join(workDir, "temp1")
-	// tempDir2 := filepath.Join(workDir, "temp2")
+	// 创建temp目录路径
+	tempDir1 := filepath.Join(workDir, "temp1")
+	tempDir2 := filepath.Join(workDir, "temp2")
 
-	// fmt.Printf("\n扫描文件将保存到:\n1. %s\n2. %s\n", tempDir1, tempDir2)
+	fmt.Printf("\n扫描文件将保存到:\n1. %s\n2. %s\n", tempDir1, tempDir2)
 
-	// // 确保目录存在
-	// os.MkdirAll(tempDir1, 0755)
-	// os.MkdirAll(tempDir2, 0755)
+	// 确保目录存在
+	os.MkdirAll(tempDir1, 0755)
+	os.MkdirAll(tempDir2, 0755)
 
-	// // =========== 开始扫描 ===========
-	// fmt.Println("\n===== 开始扫描 =====")
+	// =========== 开始扫描 ===========
+	fmt.Println("\n===== 开始扫描 =====")
 
-	// // 询问用户是否开始扫描
-	// fmt.Print("\n准备开始扫描，按Enter键继续...")
-	// fmt.Scanln()
+	// 询问用户是否开始扫描
+	fmt.Print("\n准备开始扫描，按Enter键继续...")
+	fmt.Scanln()
 
-	// // 进行扫描
-	// fmt.Println("\n开始第一次扫描...")
-	// code := int(C.zhx_Scan(C.CString(tempDir1), C.ScanCallback(C.goFuncForScanCallBack), C.int(2)))
-	// fmt.Printf("第一次扫描完成，状态码: %d\n", code)
+	// 进行扫描
+	fmt.Println("\n开始第一次扫描...")
+	code := int(C.zhx_Scan(C.CString(tempDir1), C.ScanCallback(C.goFuncForScanCallBack), C.int(2)))
+	fmt.Printf("第一次扫描完成，状态码: %d\n", code)
 
-	// // 询问是否继续
-	// var continueScan string
-	// fmt.Print("\n是否继续进行下一次扫描? (y/n): ")
-	// fmt.Scanln(&continueScan)
+	// 询问是否继续
+	var continueScan string
+	fmt.Print("\n是否继续进行下一次扫描? (y/n): ")
+	fmt.Scanln(&continueScan)
 
-	// if strings.ToLower(continueScan) == "y" || strings.ToLower(continueScan) == "yes" {
-	// 	fmt.Println("\n开始第二次扫描...")
-	// 	code1 := int(C.zhx_Scan(C.CString(tempDir1), C.ScanCallback(C.goFuncForScanCallBack), C.int(2)))
-	// 	fmt.Printf("第二次扫描完成，状态码: %d\n", code1)
+	if strings.ToLower(continueScan) == "y" || strings.ToLower(continueScan) == "yes" {
+		fmt.Println("\n开始第二次扫描...")
+		code1 := int(C.zhx_Scan(C.CString(tempDir1), C.ScanCallback(C.goFuncForScanCallBack), C.int(2)))
+		fmt.Printf("第二次扫描完成，状态码: %d\n", code1)
 
-	// 	fmt.Print("\n是否继续进行第三次扫描? (y/n): ")
-	// 	fmt.Scanln(&continueScan)
+		fmt.Print("\n是否继续进行第三次扫描? (y/n): ")
+		fmt.Scanln(&continueScan)
 
-	// 	if strings.ToLower(continueScan) == "y" || strings.ToLower(continueScan) == "yes" {
-	// 		fmt.Println("\n开始第三次扫描...")
-	// 		code2 := int(C.zhx_Scan(C.CString(tempDir2), C.ScanCallback(C.goFuncForScanCallBack), C.int(2)))
-	// 		fmt.Printf("第三次扫描完成，状态码: %d\n", code2)
-	// 	}
-	// }
+		if strings.ToLower(continueScan) == "y" || strings.ToLower(continueScan) == "yes" {
+			fmt.Println("\n开始第三次扫描...")
+			code2 := int(C.zhx_Scan(C.CString(tempDir2), C.ScanCallback(C.goFuncForScanCallBack), C.int(2)))
+			fmt.Printf("第三次扫描完成，状态码: %d\n", code2)
+		}
+	}
 
-	// // =========== 清理资源 ===========
-	// fmt.Println("\n===== 清理资源 =====")
-	// C.zhx_EndScan()
-	// C.zhx_CloseDevice()
-	// C.zhx_Exit()
+	// =========== 清理资源 ===========
+	fmt.Println("\n===== 清理资源 =====")
+	C.zhx_EndScan()
+	C.zhx_CloseDevice()
+	C.zhx_Exit()
 
-	// // 显示扫描结果路径
-	// fmt.Printf("\n扫描结果保存在:\n1和2: %s\n3: %s\n", tempDir1, tempDir2)
+	// 显示扫描结果路径
+	fmt.Printf("\n扫描结果保存在:\n1和2: %s\n3: %s\n", tempDir1, tempDir2)
 
-	// fmt.Println("\n所有操作已完成")
-	// fmt.Println("按Enter键退出...")
-	// fmt.Scanln()
+	fmt.Println("\n所有操作已完成")
+	fmt.Println("按Enter键退出...")
+	fmt.Scanln()
 }
