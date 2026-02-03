@@ -14,7 +14,9 @@ EXPORTS
     zhx_GetCurrentFileFormat
     zhx_GetSupportedFileFormats
     zhx_SetResolution
-    zhx_GetCurrentResolution
     zhx_GetSupportedResolutions
+    zhx_GetCurrentResolution
     zhx_GetDevCapability_JSON
+    zhx_GetCapability_STR
     zhx_SetCapability_STR
+    zhx_GetDevCapability_STR
