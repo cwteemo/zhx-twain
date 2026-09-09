@@ -1390,26 +1390,14 @@ void zhx_CloseDevice() {
             gpTwainApplicationCMD->unloadDS();
         }
         
-        if (gpTwainApplicationCMD->m_DSMState >= 3) {
-            // 断开与DSM的连接
-            int prevState = gpTwainApplicationCMD->m_DSMState;
-            Logger::Log("@INFO Disconnect from DSM, current state: %d", prevState);
-            printf("[DLL INFO] Disconnect from DSM, current state: %d\n", prevState);
-            
-            gpTwainApplicationCMD->disconnectDSM();
-            
-            // 验证断开连接的结果
-            if (gpTwainApplicationCMD->m_DSMState < 3) {
-                Logger::Log("@INFO Successfully disconnected from DSM, new status: %d", gpTwainApplicationCMD->m_DSMState);
-                printf("[DLL INFO] Successfully disconnected from DSM, new status: %d\n", gpTwainApplicationCMD->m_DSMState);
-            } else {
-                Logger::Log("@WARN The connection to the DSM is successfully disconnected, and the status is abnormal after the DSM connection is disconnected in the new state: %d", gpTwainApplicationCMD->m_DSMState);
-                printf("[DLL WARN] The connection to the DSM is successfully disconnected, and the status is abnormal after the DSM connection is disconnected in the new state: %d\n", gpTwainApplicationCMD->m_DSMState);
-            }
-        } else {
-            Logger::Log("@INFO Not currently connected to DSM, status: %d", gpTwainApplicationCMD->m_DSMState);
-            printf("[DLL INFO] Not currently connected to DSM, status: %d\n", gpTwainApplicationCMD->m_DSMState);
-        }
+        // 注意：这里刻意不断开 DSM。
+        // zhx_CloseDevice 的语义是"关闭当前扫描仪"，关完应停在状态 3(DSM 仍连接)，
+        // 这样才能接着 zhx_OpenDevice 打开下一台、或重新打开同一台。
+        // 之前这里会调 disconnectDSM() 把状态打到 2，导致关一次设备后
+        // 后续所有 zhx_OpenDevice 都报 "DSM is not connected"，无法连续扫描。
+        // 整个 TWAIN 环境的清理由 zhx_Exit 负责，它已包含 disconnectDSM。
+        Logger::Log("@INFO Device closed, DSM stays connected, state: %d", gpTwainApplicationCMD->m_DSMState);
+        printf("[DLL INFO] Device closed, DSM stays connected, state: %d\n", gpTwainApplicationCMD->m_DSMState);
     }
     catch (std::exception& e) {
         Logger::Log("@ERROR zhx_CloseDevice An exception has occurred: %s", e.what());

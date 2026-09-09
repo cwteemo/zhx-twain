@@ -130,8 +130,14 @@ func TwainScan(device, dir string, count int) ([]string, error) {
 		defer C.free(unsafe.Pointer(cDevice))
 
 		if C.zhx_OpenDevice(cDevice) == 0 {
-			opErr = fmt.Errorf("打开扫描仪失败: %s（确认设备已连接、驱动已安装、未被其他程序占用）", device)
-			return
+			// 兜底：DSM 掉线时(TWAIN 状态 < 3)打开必然失败，重连一次再试。
+			// 旧版 DLL 的 zhx_CloseDevice 会顺带断开 DSM，导致第二次扫描必失败；
+			// C++ 侧已修，这里留一层保险，也能应对扫描仪拔插导致的掉线。
+			C.zhx_Init()
+			if C.zhx_OpenDevice(cDevice) == 0 {
+				opErr = fmt.Errorf("打开扫描仪失败: %s（确认设备已连接、驱动已安装、未被其他程序占用）", device)
+				return
+			}
 		}
 		defer C.zhx_CloseDevice()
 
