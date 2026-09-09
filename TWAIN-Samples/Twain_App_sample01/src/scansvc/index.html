@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>扫描仪中间服务 · 最小闭环演示</title>
+<style>
+  body { font: 14px/1.6 system-ui, "Microsoft YaHei", sans-serif; margin: 0; padding: 24px; background: #f6f7f9; color: #1f2328; }
+  h1 { font-size: 18px; margin: 0 0 16px; }
+  .panel { background: #fff; border: 1px solid #d8dce0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  label { margin-right: 8px; }
+  select, input, button { font: inherit; padding: 6px 10px; border: 1px solid #c3c8ce; border-radius: 5px; background: #fff; }
+  button { cursor: pointer; background: #1f6feb; color: #fff; border-color: #1f6feb; }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { margin-left: 12px; color: #57606a; }
+  #shots { display: flex; flex-wrap: wrap; gap: 12px; }
+  figure { margin: 0; border: 1px solid #d8dce0; border-radius: 6px; padding: 8px; background: #fff; }
+  figure img { display: block; max-width: 320px; max-height: 420px; }
+  figcaption { font-size: 12px; color: #57606a; margin-top: 6px; word-break: break-all; }
+  .err { color: #cf222e; }
+</style>
+</head>
+<body>
+
+<h1>扫描仪中间服务 · 最小闭环演示</h1>
+
+<div class="panel">
+  <button id="btn-refresh">① 枚举扫描仪</button>
+  <label for="devices" style="margin-left:12px">设备</label>
+  <select id="devices"><option value="">（尚未枚举）</option></select>
+  <label for="count" style="margin-left:12px">页数</label>
+  <input id="count" type="number" value="1" min="0" style="width:70px">
+  <button id="btn-scan" style="margin-left:12px" disabled>② 开始扫描</button>
+  <span id="status"></span>
+  <p style="margin:10px 0 0;color:#57606a;font-size:12px">页数填 0 表示走送纸器一直扫到没纸。</p>
+</div>
+
+<div class="panel">
+  <div id="shots"><span style="color:#57606a">扫描结果会显示在这里</span></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const status = $('status');
+
+function setStatus(text, isErr) {
+  status.textContent = text;
+  status.className = isErr ? 'err' : '';
+}
+
+async function api(path, options) {
+  const res = await fetch(path, options);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+$('btn-refresh').onclick = async () => {
+  setStatus('枚举中…');
+  try {
+    const data = await api('/api/devices');
+    const sel = $('devices');
+    sel.innerHTML = '';
+    if (!data.devices.length) {
+      sel.innerHTML = '<option value="">未找到扫描仪</option>';
+      $('btn-scan').disabled = true;
+      setStatus('未找到扫描仪，确认驱动已安装且设备已连接', true);
+      return;
+    }
+    for (const name of data.devices) {
+      const opt = document.createElement('option');
+      opt.value = opt.textContent = name;
+      sel.appendChild(opt);
+    }
+    $('btn-scan').disabled = false;
+    setStatus('找到 ' + data.count + ' 台设备');
+  } catch (e) {
+    setStatus('枚举失败：' + e.message, true);
+  }
+};
+
+$('btn-scan').onclick = async () => {
+  const device = $('devices').value;
+  if (!device) return;
+
+  $('btn-scan').disabled = true;
+  setStatus('扫描中，请稍候…（扫描期间服务不响应其它请求）');
+
+  try {
+    const data = await api('/api/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device, count: Number($('count').value) }),
+    });
+
+    const shots = $('shots');
+    shots.innerHTML = '';
+    for (const img of data.images) {
+      const fig = document.createElement('figure');
+      const el = document.createElement('img');
+      el.src = img.url;
+      const cap = document.createElement('figcaption');
+      cap.textContent = img.name + ' · ' + (img.size / 1024 / 1024).toFixed(2) + ' MB';
+      fig.append(el, cap);
+      shots.appendChild(fig);
+    }
+    setStatus('完成，共 ' + data.count + ' 张');
+  } catch (e) {
+    setStatus('扫描失败：' + e.message, true);
+  } finally {
+    $('btn-scan').disabled = false;
+  }
+};
+</script>
+
+</body>
+</html>
