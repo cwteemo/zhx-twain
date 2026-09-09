@@ -11,7 +11,12 @@
 TWAIN_APP_CMD64.dll     运行期
 TWAIN_APP_CMD64.lib     链接期（导入库）
 FreeImage.dll           运行期
+TWAINDSM.dll            运行期（TWAIN 数据源管理器）
 ```
+
+`TWAINDSM.dll` 由 `releases/Twain_App_sample01_*/twainapp.win64.installer.msi` 安装（该 MSI 合入了
+`pub/external/bin/win64/TWAINDSM64.msm`）。装完如果它落在 `C:\Windows\twain_64\`，**必须拷到 exe 旁边**——
+代码里是裸 `LoadLibraryA("TWAINDSM.dll")`，只搜 exe 目录/系统目录/PATH，`twain_64` 不在其中。
 
 DLL 从 `visual_studio/TWAIN_APP_VS2017.sln`（Debug|x64）生成。
 

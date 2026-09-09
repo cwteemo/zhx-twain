@@ -16,7 +16,12 @@
 TWAIN_APP_CMD64.dll
 TWAIN_APP_CMD64.lib
 FreeImage.dll
+TWAINDSM.dll        ← TWAIN 数据源管理器，缺了它枚举不到任何设备
 ```
+
+`TWAINDSM.dll` 由 `releases/Twain_App_sample01_*/twainapp.win64.installer.msi` 安装。装完如果它在
+`C:\Windows\twain_64\`，**必须拷到 exe 旁边**——代码是裸 `LoadLibraryA("TWAINDSM.dll")`，
+只搜 exe 目录/系统目录/PATH，`twain_64` 不在其中。服务启动时会自检并在枚举不到设备时给出提示。
 
 `.lib` 是链接期需要的导入库，`.dll` 和 `FreeImage.dll` 是运行期需要的。
 

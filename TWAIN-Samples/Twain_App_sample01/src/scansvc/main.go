@@ -65,7 +65,18 @@ func main() {
 	log.Println("正在初始化 TWAIN 环境...")
 	startTwainThread()
 	defer TwainExit()
-	log.Println("TWAIN 环境就绪")
+
+	// zhx_Init 是 void 返回，拿不到成败，只能靠"能不能枚举出设备"反推。
+	// 不这么做的话，DSM 加载失败时服务照样打印"就绪"，排查起来很误导。
+	if devs := TwainDevices(); len(devs) == 0 {
+		log.Println("⚠ TWAIN 初始化后枚举不到任何扫描仪，服务仍会启动，但扫描一定失败。常见原因：")
+		log.Println("   1) 找不到 TWAINDSM.dll —— 它必须在 exe 同目录、系统目录或 PATH 里")
+		log.Println("      （注意：装在 C:\\Windows\\twain_64\\ 下不在默认搜索路径，需拷到 exe 旁边）")
+		log.Println("   2) 扫描仪驱动未安装，或设备未连接/未开机")
+		log.Println("   3) 设备只有 32 位 TWAIN 数据源，本服务是 64 位，加载不了")
+	} else {
+		log.Printf("TWAIN 环境就绪，发现 %d 台设备: %v", len(devs), devs)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleIndex)

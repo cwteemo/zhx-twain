@@ -177,7 +177,20 @@ func dispatch(line string) bool {
 	case "init":
 		logf("→ zhx_Init()")
 		timed("zhx_Init", func() { C.zhx_Init() })
-		logf("  完成。若后续 list 返回空，说明 DSM 没连上，查 twain.log 里的 @ERROR")
+		// zhx_Init 是 void 返回，拿不到成败，只能靠"能不能枚举出设备"反推
+		if probe := parseDevices(gostr(C.zhx_GetDevicesList())); len(probe) == 0 {
+			logf("  ⚠ 初始化后枚举不到设备。按可能性排序：")
+			logf("     1) 找不到 TWAINDSM.dll —— 必须在 exe 同目录/系统目录/PATH 里")
+			logf("        (装在 C:\\Windows\\twain_64\\ 下不在默认搜索路径，需拷到 exe 旁边)")
+			logf("     2) 扫描仪驱动未装，或设备未连接/未开机")
+			logf("     3) 设备只有 32 位数据源，本工具是 64 位，加载不了")
+		} else {
+			devices = probe
+			logf("  就绪，发现 %d 台设备（已缓存，可直接 open <序号>）:", len(probe))
+			for i, d := range probe {
+				logf("    [%d] %s", i, d)
+			}
+		}
 
 	case "list":
 		logf("→ zhx_GetDevicesList()")
@@ -357,6 +370,10 @@ func dispatch(line string) bool {
 		logf("  设备列表: %v", devices)
 
 	default:
+		// 列完设备后直接敲序号是最符合直觉的写法，这里等价于 open <序号>
+		if _, err := strconv.Atoi(cmd); err == nil && len(fields) == 1 {
+			return dispatch("open " + cmd)
+		}
 		logf("  未知命令 %q，输入 help 查看", cmd)
 	}
 	return true
