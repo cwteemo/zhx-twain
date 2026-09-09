@@ -67,4 +67,25 @@
 extern "C" void __declspec(dllexport) zhx_twain_test();
 
 extern "C" void __declspec(dllexport) zhx_twain();
+
+// 消息循环相关接口（供Go端调用）
+extern "C" int __declspec(dllexport) zhx_Init(HWND hWnd);
+extern "C" int __declspec(dllexport) zhx_LoadDS(int deviceId);
+extern "C" int __declspec(dllexport) zhx_Cleanup();
+extern "C" int __declspec(dllexport) zhx_ProcessEvent(MSG* msg);
+extern "C" int __declspec(dllexport) zhx_GetDSMessage();
+extern "C" int __declspec(dllexport) zhx_EnableDS(HWND hWnd);
+extern "C" int __declspec(dllexport) zhx_HandleScanReady();
+
+// 完整扫描接口（包含消息循环，推荐使用）
+extern "C" int __declspec(dllexport) zhx_ScanComplete(int deviceId, const char* outputPath, int timeoutMs);
+
+// 获取设备列表接口
+extern "C" int __declspec(dllexport) zhx_GetDevicesList(char* deviceList, int bufferSize);
+
+// HTTP服务器接口
+extern "C" int __declspec(dllexport) zhx_HttpServer_Start(int port);
+extern "C" void __declspec(dllexport) zhx_HttpServer_Stop();
+extern "C" int __declspec(dllexport) zhx_HttpServer_IsRunning();
+extern "C" int __declspec(dllexport) zhx_HttpServer_GetPort();
 #endif //__MAIN_H__

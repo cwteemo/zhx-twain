@@ -62,6 +62,9 @@ typedef union {
 #include "TwainAppCMD.h"
 #include "TwainApp_ui.h"
 #include "Logger.h"
+#ifdef TWH_CMP_MSC
+#include "http_server.h"
+#endif
 
 using namespace std;
 
@@ -267,6 +270,7 @@ void negotiateCaps()
 * Enables the source. The source will let us know when it is ready to scan by
 * calling our registered callback function.
 */
+// 旧版本的 EnableDS，保留用于向后兼容，但已移除消息循环
 void EnableDS()
 {
   gpTwainApplicationCMD->m_DSMessage = 0;
@@ -292,86 +296,43 @@ void EnableDS()
   // caps, only get ops.
   // -The scan will not start until the source calls the callback function
   // that was registered earlier.
+  // NOTE: 消息循环已移除，由Go端实现
 #ifdef TWNDS_OS_WIN
-  if(!gpTwainApplicationCMD->enableDS(GetDesktopWindow(), FALSE))
+  // 使用与初始化时相同的窗口获取逻辑（与 zhx_twain() 中一致）
+  // 先尝试 GetConsoleWindow()，失败则使用 GetDesktopWindow()
+  HWND hWnd = GetConsoleWindow();
+  if(!hWnd)
+  {
+    Logger::Log("EnableDS: No console window, using GetDesktopWindow()");
+    hWnd = GetDesktopWindow();
+  }
+  else
+  {
+    Logger::Log("EnableDS: Using console window: %p", (void*)hWnd);
+  }
+  
+  if(!hWnd)
+  {
+    Logger::Log("EnableDS: ERROR - Could not get valid window handle!");
+    return;
+  }
+  
+  Logger::Log("EnableDS: About to call enableDS with window handle: %p", (void*)hWnd);
+  if(!gpTwainApplicationCMD->enableDS(hWnd, FALSE))
+  {
+    Logger::Log("EnableDS: enableDS() returned false, exiting");
+    return;
+  }
+  Logger::Log("EnableDS: enableDS() returned true - message loop should be handled by Go side");
 #else
   if(!gpTwainApplicationCMD->enableDS(0, TRUE))
-#endif
   {
     return;
   }
-
-#ifdef TWNDS_OS_WIN
-  // now we have to wait until we hear something back from the DS.
-  while(!gpTwainApplicationCMD->m_DSMessage)
-  {
-    TW_EVENT twEvent = {0};
-
-    // If we are using callbacks, there is nothing to do here except sleep
-    // and wait for our callback from the DS.  If we are not using them, 
-    // then we have to poll the DSM.
-
-    // Pumping messages is for Windows only
-	  MSG Msg;
-	  if(!GetMessage((LPMSG)&Msg, NULL, 0, 0))
-    {
-      break;//WM_QUIT
-    }
-    twEvent.pEvent = (TW_MEMREF)&Msg;
-
-    twEvent.TWMessage = MSG_NULL;
-    TW_UINT16  twRC = TWRC_NOTDSEVENT;
-    twRC = _DSM_Entry( gpTwainApplicationCMD->getAppIdentity(),
-                gpTwainApplicationCMD->getDataSource(),
-                DG_CONTROL,
-                DAT_EVENT,
-                MSG_PROCESSEVENT,
-                (TW_MEMREF)&twEvent);
-
-    if(!gUSE_CALLBACKS && twRC==TWRC_DSEVENT)
-    {
-      // check for message from Source
-      switch (twEvent.TWMessage)
-      {
-        case MSG_XFERREADY:
-        case MSG_CLOSEDSREQ:
-        case MSG_CLOSEDSOK:
-        case MSG_NULL:
-          gpTwainApplicationCMD->m_DSMessage = twEvent.TWMessage;
-          break;
-
-        default:
-          cerr << "\nError - Unknown message in MSG_PROCESSEVENT loop\n" << endl;
-          break;
-      }
-    }
-    if(twRC!=TWRC_DSEVENT)
-    {   
-      TranslateMessage ((LPMSG)&Msg);
-      DispatchMessage ((LPMSG)&Msg);
-    }
-  }
-#elif defined(TWNDS_OS_LINUX)
-  // Wait for the event be signaled
-  sem_wait(&(gpTwainApplicationCMD->m_TwainEvent)); // event semaphore handle
-                            // Indefinite wait
 #endif
 
-  // At this point the source has sent us a callback saying that it is ready to
-  // transfer the image.
-
-  if(gpTwainApplicationCMD->m_DSMessage == MSG_XFERREADY)
-  {
-    // move to state 6 as a result of the data source. We can start a scan now.
-    gpTwainApplicationCMD->m_DSMState = 6;
-
-    gpTwainApplicationCMD->startScan();
-  }
-
-  // Scan is done, disable the ds, thus moving us back to state 4 where we
-  // can negotiate caps again.
-  gpTwainApplicationCMD->disableDS();
-
+  // 消息循环已移除，由Go端实现
+  // Go端需要调用 zhx_ProcessEvent() 来处理消息
   return;
 }
 
@@ -556,7 +517,18 @@ void zhx_twain() {
     std::cout << "A" << std::endl;
     Logger::Log("A");
     #ifdef TWH_CMP_MSC
-    parentWindow = GetDesktopWindow();
+    // 尝试获取控制台窗口（与原始项目一致）
+    parentWindow = GetConsoleWindow();
+    if(!parentWindow)
+    {
+        // 如果没有控制台窗口，尝试使用桌面窗口
+        Logger::Log("No console window found, using desktop window");
+        parentWindow = GetDesktopWindow();
+    }
+    else
+    {
+        Logger::Log("Using console window: %p", (void*)parentWindow);
+    }
     #endif
     std::cout << "B" << std::endl;
     Logger::Log("B");
@@ -599,3 +571,574 @@ void zhx_twain() {
     Logger::Log("N");
 }
 
+//////////////////////////////////////////////////////////////////////////////
+/**
+ * 处理单个Windows消息（供Go端调用）
+ * @param msg 指向MSG结构的指针
+ * @return 1表示需要继续消息循环，0表示可以退出循环
+ */
+extern "C" __declspec(dllexport) int zhx_ProcessEvent(MSG* msg)
+{
+    if(!gpTwainApplicationCMD)
+    {
+        Logger::Log("zhx_ProcessEvent: ERROR - gpTwainApplicationCMD is NULL!");
+        return 0;
+    }
+
+    if(!msg)
+    {
+        Logger::Log("zhx_ProcessEvent: ERROR - msg is NULL!");
+        return 0;
+    }
+
+    // 检查是否已有DS消息
+    if(gpTwainApplicationCMD->m_DSMessage)
+    {
+        Logger::Log("zhx_ProcessEvent: DS message already received: %d", gpTwainApplicationCMD->m_DSMessage);
+        return 0;  // 已有消息，可以退出循环
+    }
+
+    // 处理WM_QUIT消息
+    if(msg->message == WM_QUIT)
+    {
+        Logger::Log("zhx_ProcessEvent: Received WM_QUIT");
+        return 0;  // 退出循环
+    }
+
+    // 如果使用回调，只需要移除消息，不需要处理TWAIN事件
+    if(gUSE_CALLBACKS)
+    {
+        // 回调模式下，只移除消息，不处理
+        return 1;  // 继续循环，等待回调
+    }
+
+    // 非回调模式：需要调用 MSG_PROCESSEVENT
+    if(!gpTwainApplicationCMD->getAppIdentity() || !gpTwainApplicationCMD->getDataSource())
+    {
+        Logger::Log("zhx_ProcessEvent: Invalid pointers");
+        return 1;  // 继续循环
+    }
+
+    TW_EVENT twEvent = {0};
+    twEvent.pEvent = (TW_MEMREF)msg;
+    twEvent.TWMessage = MSG_NULL;
+    
+    TW_UINT16 twRC = _DSM_Entry(
+        gpTwainApplicationCMD->getAppIdentity(),
+        gpTwainApplicationCMD->getDataSource(),
+        DG_CONTROL,
+        DAT_EVENT,
+        MSG_PROCESSEVENT,
+        (TW_MEMREF)&twEvent);
+
+    // 处理TWAIN事件
+    if(twRC == TWRC_DSEVENT)
+    {
+        switch (twEvent.TWMessage)
+        {
+            case MSG_XFERREADY:
+            case MSG_CLOSEDSREQ:
+            case MSG_CLOSEDSOK:
+            case MSG_NULL:
+                gpTwainApplicationCMD->m_DSMessage = twEvent.TWMessage;
+                Logger::Log("zhx_ProcessEvent: TWAIN event received: %d", twEvent.TWMessage);
+                return 0;  // 收到TWAIN消息，可以退出循环
+            default:
+                Logger::Log("zhx_ProcessEvent: Unknown TWAIN message: %d", twEvent.TWMessage);
+                break;
+        }
+    }
+    
+    // 如果不是TWAIN事件，需要分发消息
+    if(twRC != TWRC_DSEVENT)
+    {
+        if(msg->hwnd != NULL)
+        {
+            TranslateMessage(msg);
+            DispatchMessage(msg);
+        }
+    }
+
+    return 1;  // 继续循环
+}
+
+//////////////////////////////////////////////////////////////////////////////
+/**
+ * 获取当前的DS消息状态
+ * @return DS消息值，0表示还没有消息
+ */
+extern "C" __declspec(dllexport) int zhx_GetDSMessage()
+{
+    if(!gpTwainApplicationCMD)
+    {
+        return 0;
+    }
+    return (int)gpTwainApplicationCMD->m_DSMessage;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+/**
+ * 启用DS（供Go端调用，不进入消息循环）
+ * @param hWnd 窗口句柄
+ * @return 1表示成功，0表示失败
+ */
+//////////////////////////////////////////////////////////////////////////////
+/**
+ * 初始化TWAIN环境（供Go端调用）
+ * @param hWnd 父窗口句柄，可以为NULL
+ * @return 1表示成功，0表示失败
+ */
+extern "C" __declspec(dllexport) int zhx_Init(HWND hWnd)
+{
+    if(gpTwainApplicationCMD)
+    {
+        Logger::Log("zhx_Init: WARNING - gpTwainApplicationCMD already exists, cleaning up first");
+        delete gpTwainApplicationCMD;
+        gpTwainApplicationCMD = 0;
+    }
+
+    Logger::Init();  // 初始化日志
+
+    if(!hWnd)
+    {
+        #ifdef TWH_CMP_MSC
+        hWnd = GetConsoleWindow();
+        if(!hWnd)
+        {
+            Logger::Log("zhx_Init: No console window, using GetDesktopWindow()");
+            hWnd = GetDesktopWindow();
+        }
+        else
+        {
+            Logger::Log("zhx_Init: Using console window: %p", (void*)hWnd);
+        }
+        #endif
+    }
+
+    Logger::Log("zhx_Init: Creating TwainAppCMD with window handle: %p", (void*)hWnd);
+    gpTwainApplicationCMD = new TwainAppCMD(hWnd);
+    
+    if(!gpTwainApplicationCMD)
+    {
+        Logger::Log("zhx_Init: ERROR - Failed to create TwainAppCMD!");
+        return 0;
+    }
+
+    Logger::Log("zhx_Init: Connecting to DSM...");
+    gpTwainApplicationCMD->connectDSM();
+    
+    Logger::Log("zhx_Init: Successfully initialized");
+    return 1;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+/**
+ * 加载数据源（供Go端调用）
+ * @param deviceId 设备ID（从1开始）
+ * @return 1表示成功，0表示失败
+ */
+extern "C" __declspec(dllexport) int zhx_LoadDS(int deviceId)
+{
+    if(!gpTwainApplicationCMD)
+    {
+        Logger::Log("zhx_LoadDS: ERROR - gpTwainApplicationCMD is NULL! Call zhx_Init first.");
+        return 0;
+    }
+
+    Logger::Log("zhx_LoadDS: Loading device with ID: %d", deviceId);
+    gpTwainApplicationCMD->loadDS(deviceId);
+    
+    Logger::Log("zhx_LoadDS: Device loaded");
+    return 1;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+/**
+ * 清理TWAIN环境（供Go端调用）
+ * @return 1表示成功，0表示失败
+ */
+extern "C" __declspec(dllexport) int zhx_Cleanup()
+{
+    if(!gpTwainApplicationCMD)
+    {
+        Logger::Log("zhx_Cleanup: WARNING - gpTwainApplicationCMD is NULL");
+        return 0;
+    }
+
+    Logger::Log("zhx_Cleanup: Exiting TWAIN...");
+    gpTwainApplicationCMD->exit();
+    
+    Logger::Log("zhx_Cleanup: Deleting TwainAppCMD...");
+    delete gpTwainApplicationCMD;
+    gpTwainApplicationCMD = 0;
+    
+    Logger::Log("zhx_Cleanup: Cleaning up logger...");
+    Logger::Cleanup();
+    
+    Logger::Log("zhx_Cleanup: Successfully cleaned up");
+    return 1;
+}
+
+extern "C" __declspec(dllexport) int zhx_EnableDS(HWND hWnd)
+{
+    if(!gpTwainApplicationCMD)
+    {
+        Logger::Log("zhx_EnableDS: ERROR - gpTwainApplicationCMD is NULL! Call zhx_Init first.");
+        return 0;
+    }
+
+    // 重置DS消息
+    gpTwainApplicationCMD->m_DSMessage = 0;
+
+    if(!hWnd)
+    {
+        Logger::Log("zhx_EnableDS: No window handle provided, trying to get one");
+        #ifdef TWH_CMP_MSC
+        hWnd = GetConsoleWindow();
+        if(!hWnd)
+        {
+            hWnd = GetDesktopWindow();
+        }
+        #endif
+    }
+
+    if(!hWnd)
+    {
+        Logger::Log("zhx_EnableDS: ERROR - Could not get valid window handle!");
+        return 0;
+    }
+
+    // 验证窗口句柄是否有效
+    #ifdef TWH_CMP_MSC
+    if(!IsWindow(hWnd))
+    {
+        Logger::Log("zhx_EnableDS: ERROR - Invalid window handle: %p", (void*)hWnd);
+        return 0;
+    }
+    #endif
+
+    Logger::Log("zhx_EnableDS: Calling enableDS with window handle: %p", (void*)hWnd);
+    if(!gpTwainApplicationCMD->enableDS(hWnd, FALSE))
+    {
+        Logger::Log("zhx_EnableDS: enableDS() returned false");
+        return 0;
+    }
+
+    Logger::Log("zhx_EnableDS: enableDS() returned true");
+    
+    // 在返回前处理一些消息，确保TWAIN消息能够被及时处理
+    // 这很重要，因为DSM_Entry可能会立即发送消息
+    #ifdef TWH_CMP_MSC
+    MSG msg;
+    int processed = 0;
+    while(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE) && processed < 10)
+    {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+        processed++;
+    }
+    if(processed > 0)
+    {
+        Logger::Log("zhx_EnableDS: Processed %d messages after enableDS", processed);
+    }
+    #endif
+    
+    return 1;  // 成功
+}
+
+//////////////////////////////////////////////////////////////////////////////
+/**
+ * 处理扫描完成后的操作（供Go端调用）
+ * @return 1表示成功，0表示失败
+ */
+extern "C" __declspec(dllexport) int zhx_HandleScanReady()
+{
+    if(!gpTwainApplicationCMD)
+    {
+        Logger::Log("zhx_HandleScanReady: ERROR - gpTwainApplicationCMD is NULL!");
+        return 0;
+    }
+
+    // 检查是否有XFERREADY消息
+    if(gpTwainApplicationCMD->m_DSMessage == MSG_XFERREADY)
+    {
+        // 移动到状态6并开始扫描
+        gpTwainApplicationCMD->m_DSMState = 6;
+        gpTwainApplicationCMD->startScan();
+        
+        // 扫描完成后，禁用DS
+        gpTwainApplicationCMD->disableDS();
+        
+        Logger::Log("zhx_HandleScanReady: Scan completed");
+        return 1;
+    }
+
+    Logger::Log("zhx_HandleScanReady: No XFERREADY message");
+    return 0;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+/**
+ * 获取设备列表（供HTTP服务器使用）
+ * @param deviceList 输出缓冲区，存储JSON格式的设备列表
+ * @param bufferSize 缓冲区大小
+ * @return 1表示成功，0表示失败
+ */
+extern "C" __declspec(dllexport) int zhx_GetDevicesList(char* deviceList, int bufferSize)
+{
+    if(!gpTwainApplicationCMD)
+    {
+        Logger::Log("zhx_GetDevicesList: ERROR - gpTwainApplicationCMD is NULL!");
+        if(deviceList && bufferSize > 0)
+        {
+            strncpy(deviceList, "{\"devices\":[],\"count\":0}", bufferSize - 1);
+            deviceList[bufferSize - 1] = '\0';
+        }
+        return 0;
+    }
+
+    // 确保DSM已连接
+    if(gpTwainApplicationCMD->m_DSMState < 3)
+    {
+        Logger::Log("zhx_GetDevicesList: Connecting to DSM...");
+        gpTwainApplicationCMD->connectDSM();
+    }
+
+    if(gpTwainApplicationCMD->m_DSMState < 3)
+    {
+        Logger::Log("zhx_GetDevicesList: ERROR - Failed to connect to DSM");
+        if(deviceList && bufferSize > 0)
+        {
+            strncpy(deviceList, "{\"devices\":[],\"count\":0,\"error\":\"DSM not connected\"}", bufferSize - 1);
+            deviceList[bufferSize - 1] = '\0';
+        }
+        return 0;
+    }
+
+    // 构建JSON响应
+    std::ostringstream json;
+    json << "{\"devices\":[";
+    
+    bool first = true;
+    int count = 0;
+    
+    // 访问基类的m_DataSources（通过getDataSource方法）
+    // 注意：我们需要通过TwainApp基类访问
+    for(unsigned int i = 0; i < gpTwainApplicationCMD->m_DataSources.size(); ++i)
+    {
+        if(!first) json << ",";
+        
+        const TW_IDENTITY& ds = gpTwainApplicationCMD->m_DataSources[i];
+        json << "{";
+        json << "\"id\":" << ds.Id << ",";
+        json << "\"manufacturer\":\"" << ds.Manufacturer << "\",";
+        json << "\"productFamily\":\"" << ds.ProductFamily << "\",";
+        json << "\"productName\":\"" << ds.ProductName << "\",";
+        json << "\"version\":\"" << (int)ds.Version.MajorNum << "." << (int)ds.Version.MinorNum << "\"";
+        json << "}";
+        
+        first = false;
+        count++;
+    }
+    
+    json << "],\"count\":" << count << "}";
+    
+    std::string jsonStr = json.str();
+    if(deviceList && bufferSize > 0)
+    {
+        strncpy(deviceList, jsonStr.c_str(), bufferSize - 1);
+        deviceList[bufferSize - 1] = '\0';
+    }
+    
+    Logger::Log("zhx_GetDevicesList: Found %d devices", count);
+    return 1;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+/**
+ * 完整的扫描函数（包含消息循环，供HTTP服务器和外部调用）
+ * 这个函数在C++中完成所有逻辑，包括消息循环，避免跨语言的线程问题
+ * @param deviceId 设备ID（从1开始）
+ * @param outputPath 输出路径（可以为NULL，使用默认路径）
+ * @param timeoutMs 超时时间（毫秒），0表示使用默认值（30秒）
+ * @return 1表示成功，0表示失败
+ */
+extern "C" __declspec(dllexport) int zhx_ScanComplete(int deviceId, const char* outputPath, int timeoutMs)
+{
+    if(!gpTwainApplicationCMD)
+    {
+        Logger::Log("zhx_ScanComplete: ERROR - gpTwainApplicationCMD is NULL! Call zhx_Init first.");
+        return 0;
+    }
+
+    // 设置输出路径（如果提供）
+    if(outputPath && strlen(outputPath) > 0)
+    {
+        gpTwainApplicationCMD->m_strSavePath = string(outputPath);
+        Logger::Log("zhx_ScanComplete: Output path set to: %s", outputPath);
+    }
+
+    // 加载数据源
+    Logger::Log("zhx_ScanComplete: Loading device with ID: %d", deviceId);
+    gpTwainApplicationCMD->loadDS(deviceId);
+    
+    if(gpTwainApplicationCMD->m_DSMState < 4)
+    {
+        Logger::Log("zhx_ScanComplete: ERROR - Failed to load data source");
+        return 0;
+    }
+
+    // 获取窗口句柄
+    HWND hWnd = NULL;
+    #ifdef TWH_CMP_MSC
+    hWnd = GetConsoleWindow();
+    if(!hWnd)
+    {
+        hWnd = GetDesktopWindow();
+    }
+    #endif
+
+    if(!hWnd)
+    {
+        Logger::Log("zhx_ScanComplete: ERROR - Could not get valid window handle!");
+        return 0;
+    }
+
+    // 启用DS
+    Logger::Log("zhx_ScanComplete: Enabling data source...");
+    gpTwainApplicationCMD->m_DSMessage = 0;
+    
+    if(!gpTwainApplicationCMD->enableDS(hWnd, FALSE))
+    {
+        Logger::Log("zhx_ScanComplete: ERROR - Failed to enable data source");
+        return 0;
+    }
+
+    // 设置超时时间（默认30秒）
+    if(timeoutMs <= 0)
+    {
+        timeoutMs = 30000;
+    }
+
+    // 运行消息循环（在C++中完成，避免跨语言的线程问题）
+    Logger::Log("zhx_ScanComplete: Starting message loop...");
+    DWORD startTime = GetTickCount();
+    const DWORD timeout = (DWORD)timeoutMs;
+    int loopCount = 0;
+    const int maxLoops = 100000;  // 防止无限循环
+
+    while(true)
+    {
+        loopCount++;
+        
+        // 超时检查
+        if(GetTickCount() - startTime > timeout)
+        {
+            Logger::Log("zhx_ScanComplete: Message loop timeout after %d ms", timeout);
+            gpTwainApplicationCMD->disableDS();
+            return 0;
+        }
+
+        // 检查循环次数
+        if(loopCount > maxLoops)
+        {
+            Logger::Log("zhx_ScanComplete: Message loop reached max loops: %d", maxLoops);
+            gpTwainApplicationCMD->disableDS();
+            return 0;
+        }
+
+        // 检查是否有DS消息
+        if(gpTwainApplicationCMD->m_DSMessage != 0)
+        {
+            Logger::Log("zhx_ScanComplete: DS message received: %d", gpTwainApplicationCMD->m_DSMessage);
+            
+            if(gpTwainApplicationCMD->m_DSMessage == MSG_XFERREADY)
+            {
+                // 开始扫描
+                Logger::Log("zhx_ScanComplete: Starting scan...");
+                gpTwainApplicationCMD->m_DSMState = 6;
+                gpTwainApplicationCMD->startScan();
+                
+                // 扫描完成后，禁用DS
+                gpTwainApplicationCMD->disableDS();
+                
+                Logger::Log("zhx_ScanComplete: Scan completed successfully");
+                return 1;
+            }
+            else if(gpTwainApplicationCMD->m_DSMessage == MSG_CLOSEDSREQ || 
+                    gpTwainApplicationCMD->m_DSMessage == MSG_CLOSEDSOK)
+            {
+                Logger::Log("zhx_ScanComplete: DS closed by user or source");
+                gpTwainApplicationCMD->disableDS();
+                return 0;
+            }
+            else
+            {
+                Logger::Log("zhx_ScanComplete: Unknown DS message: %d", gpTwainApplicationCMD->m_DSMessage);
+                gpTwainApplicationCMD->disableDS();
+                return 0;
+            }
+        }
+
+        // 处理Windows消息
+        MSG msg;
+        if(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+        {
+            if(msg.message == WM_QUIT)
+            {
+                Logger::Log("zhx_ScanComplete: Received WM_QUIT");
+                gpTwainApplicationCMD->disableDS();
+                return 0;
+            }
+
+            // 处理TWAIN事件
+            if(!gUSE_CALLBACKS && 
+               gpTwainApplicationCMD->getAppIdentity() && 
+               gpTwainApplicationCMD->getDataSource())
+            {
+                TW_EVENT twEvent = {0};
+                twEvent.pEvent = (TW_MEMREF)&msg;
+                twEvent.TWMessage = MSG_NULL;
+                
+                TW_UINT16 twRC = _DSM_Entry(
+                    gpTwainApplicationCMD->getAppIdentity(),
+                    gpTwainApplicationCMD->getDataSource(),
+                    DG_CONTROL,
+                    DAT_EVENT,
+                    MSG_PROCESSEVENT,
+                    (TW_MEMREF)&twEvent);
+
+                if(twRC == TWRC_DSEVENT)
+                {
+                    switch(twEvent.TWMessage)
+                    {
+                        case MSG_XFERREADY:
+                        case MSG_CLOSEDSREQ:
+                        case MSG_CLOSEDSOK:
+                        case MSG_NULL:
+                            gpTwainApplicationCMD->m_DSMessage = twEvent.TWMessage;
+                            Logger::Log("zhx_ScanComplete: TWAIN event received: %d", twEvent.TWMessage);
+                            continue;  // 继续循环，检查消息
+                        default:
+                            Logger::Log("zhx_ScanComplete: Unknown TWAIN message: %d", twEvent.TWMessage);
+                            break;
+                    }
+                }
+            }
+
+            // 分发普通Windows消息
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+        else
+        {
+            // 没有消息，短暂休眠
+            Sleep(10);
+        }
+    }
+
+    // 理论上不会到达这里
+    Logger::Log("zhx_ScanComplete: Unexpected exit from message loop");
+    gpTwainApplicationCMD->disableDS();
+    return 0;
+}

@@ -1,3 +1,16 @@
 EXPORTS
 zhx_twain_test
 zhx_twain
+zhx_Init
+zhx_LoadDS
+zhx_Cleanup
+zhx_ProcessEvent
+zhx_GetDSMessage
+zhx_EnableDS
+zhx_HandleScanReady
+zhx_ScanComplete
+zhx_GetDevicesList
+zhx_HttpServer_Start
+zhx_HttpServer_Stop
+zhx_HttpServer_IsRunning
+zhx_HttpServer_GetPort

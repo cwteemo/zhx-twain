@@ -47,6 +47,7 @@
 
 #include <iostream>
 #include <cstdlib>
+#include <cstring>
 #include <assert.h>
 #include <stdio.h>
 
@@ -802,8 +803,11 @@ bool TwainApp::enableDS(TW_HANDLE hWnd, BOOL bShowUI)
     return false;
   }
 
+  // 初始化 m_ui 结构体（确保所有字段都被正确初始化）
+  memset(&m_ui, 0, sizeof(TW_USERINTERFACE));
+  
   // 记录UI设置前的值
-  Logger::Log("Current UI Settings:");
+  Logger::Log("Current UI Settings (after memset):");
   Logger::Log("- ShowUI: %d", m_ui.ShowUI);
   Logger::Log("- ModalUI: %d", m_ui.ModalUI);
   Logger::Log("- hParent: %p", (void*)m_ui.hParent);
