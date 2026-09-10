@@ -108,6 +108,13 @@ func handleLegacyMessage(c *wsClient, raw map[string]any) {
 		// 前端只拿它关 loading，本服务不负责导入导出。
 		msg.send(c, legacyCodeOK)
 
+	case "rfidRead", "codePrintList", "codePrint":
+		// 被替换的那个 C# 服务端把 RFID 读卡（串口读卡器）和斑马打印机（ZPL）
+		// 也挂在同一条 WebSocket 上，但那两块和 TWAIN 没有任何关系。
+		// 本服务只做扫描，遇到它们给一句说得清的话，别让人对着"未实现"猜。
+		msg.fail(c, "本服务只提供扫描功能，%s 属于 RFID / 条码打印，"+
+			"这部分仍需原来的服务端（zhxserver）", msg.str("handle"))
+
 	default:
 		msg.fail(c, "本服务未实现的指令: %s", msg.str("handle"))
 	}

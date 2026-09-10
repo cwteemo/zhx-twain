@@ -211,6 +211,12 @@ GET  /api/image?id=xxx  → 图片字节流
 
 已实现：`scannerList`、`scan`、`show_setting`、`export`/`import`（前端只拿来关 loading）。
 
+**没有实现、也不打算实现的**：`rfidRead`、`codePrintList`、`codePrint`。被替换的那个
+C# 服务端把 RFID 读卡（串口读卡器）和斑马打印机（ZPL）也挂在同一条 WebSocket 上，
+但那两块和 TWAIN 没有任何关系。前端的 `PrintTags/`、`searchRfid/`、`boxManager/`、
+`warehouseManager/` 用得到它们——**要是那些功能还在用，就不能直接拿本服务顶替
+整个 zhxserver**（两者端口都是 5000，没法并存）。收到这三个指令会回一句明确的说明。
+
 `show_setting:true` 是前端"控制面板"按钮，打开扫描仪驱动自带的设置界面。
 顺序照搬旧服务端：先打开设备，再弹面板。**成功时不回任何响应**——回了的话前端会把它
 当成一条扫描结果去读 `data['base64']`，那是 undefined，紧接着的 `.slice()` 直接抛异常；
