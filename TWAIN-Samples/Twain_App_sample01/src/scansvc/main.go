@@ -12,6 +12,7 @@
 //	POST /api/config       设扫描参数（分辨率/色彩/ADF/双面…）
 //	GET  /api/capability   读一项 TWAIN 能力原始信息（?name=ICAP_PIXELTYPE）
 //	POST /api/capability   设一项 TWAIN 能力（JSON: {"name":"...","value":"..."}）
+//	POST /api/setting-ui   打开驱动自带的设置面板，阻塞到用户关闭
 //	POST /api/scan         扫描（JSON: {"device":"...","count":1}，count=0 扫到没纸）
 //	GET  /api/image?id=xx  取回扫描出的图片
 //	WS   /ws  和  WS  /    WebSocket。/ 上同时提供演示页和 WebSocket，按握手头分流，
@@ -143,6 +144,7 @@ func main() {
 	mux.HandleFunc("/api/reconnect", handleReconnect)
 	mux.HandleFunc("/api/config", handleConfig)
 	mux.HandleFunc("/api/capability", handleCapability)
+	mux.HandleFunc("/api/setting-ui", handleSettingUI)
 	mux.HandleFunc("/api/scan", handleScan(root))
 	mux.HandleFunc("/api/image", handleImage)
 	mux.HandleFunc("/ws", handleWS)
@@ -352,6 +354,20 @@ func handleReconnect(w http.ResponseWriter, r *http.Request) {
 		"deep":    req.Deep,
 		"status":  TwainStatus(),
 	})
+}
+
+// handleSettingUI 打开驱动自带的设置面板。
+// 请求会一直挂着直到用户关掉面板——这不是超时，是设计如此，面板本身就是模态的。
+// 调用方要么把超时放宽，要么改用 WebSocket 的 showSetting 指令。
+func handleSettingUI(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
+		return
+	}
+	if err := TwainShowSettingUI(); err != nil {
+		writeErr(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
 func handleConfig(w http.ResponseWriter, r *http.Request) {

@@ -140,6 +140,13 @@ POST /api/capability    {"name":"ICAP_PIXELTYPE","value":"2"}
   → {"success":true}
   设一项 TWAIN 能力，给 /api/config 没覆盖到的场景用。
   name 可以是能力名(ICAP_PIXELTYPE)，也可以是编号(0x0101 或 257)。
+
+POST /api/setting-ui
+  → {"success":true}
+  打开扫描仪驱动自带的设置面板（TWAIN 的 MSG_ENABLEDSUIONLY：只显示界面、
+  由数据源自己保存参数，不传输图像）。项比 /api/config 全得多，但内容由驱动决定。
+  ⚠ 请求会一直挂着直到用户关掉面板，这不是超时是设计如此——面板本身就是模态的。
+  调用方要么把超时放宽，要么改用 WebSocket 的 showSetting 指令。
 ```
 
 ### 扫描
@@ -202,12 +209,16 @@ GET  /api/image?id=xxx  → 图片字节流
 
 一次 `scan` 只扫一页——连续扫描由前端自己的定时器循环发起，和被替换的服务端一致。
 
-已实现：`scannerList`、`scan`、`export`/`import`（前端只拿来关 loading）。
+已实现：`scannerList`、`scan`、`show_setting`、`export`/`import`（前端只拿来关 loading）。
+
+`show_setting:true` 是前端"控制面板"按钮，打开扫描仪驱动自带的设置界面。
+顺序照搬旧服务端：先打开设备，再弹面板。**成功时不回任何响应**——回了的话前端会把它
+当成一条扫描结果去读 `data['base64']`，那是 undefined，紧接着的 `.slice()` 直接抛异常；
+前端本来就靠自己的定时器复位 loading。失败才回 `code:-1`。
+
 `getScannerOptions` 目前返回空数组：它的选项模型（`{"option":136,"name":"flip-side-rotation",
 "type":"str-list","list":[...]}`）是 `option` 编号 + 短横线命名的另一套体系，
 不是 TWAIN 的 CAP，参照实现不在手上。返回空数组前端只是参数面板空着，不报错。
-`show_setting:true`（打开驱动自带设置面板）会明确报错——DLL 里 `EnableDS` 的
-`ShowUI` 写死是 FALSE，没有导出参数可调。
 
 ### 4.2 本服务自己的协议（`protocol.go`）
 
@@ -221,7 +232,7 @@ GET  /api/image?id=xxx  → 图片字节流
 ```
 
 指令：`status` `devices` `connect` `disconnect` `reconnect` `config` `getConfig`
-`capability` `setCapability` `scan`。
+`capability` `setCapability` `showSetting` `scan`。
 
 ### 4.3 图片格式
 
@@ -249,6 +260,12 @@ BMP 解码是自己写的，没用 `golang.org/x/image/bmp`：那个包的新版
 而 `/api/status` 恰恰是扫描时最需要能立刻回答的接口。所以每次 TWAIN 操作结束时
 把 `zhx_GetState()` / `zhx_GetCurrentDevice()` 的结果刷进一份镜像（`twain.go` 的 `mirrorState`），
 `/api/status` 只读镜像。**不要**为了"更准"把它改成走 `inTwain()`——那样扫描期间就查不了状态了。
+
+**设置面板必须自己泵消息**。`zhx_ShowSettingUI()` 发完 `MSG_ENABLEDSUIONLY` 之后要跑
+`GetMessage`/`DispatchMessage` 循环，直到数据源发来 `MSG_CLOSEDSREQ`(取消) 或
+`MSG_CLOSEDSOK`(确定)。原因是那个对话框是数据源在**调用线程**上创建的，本进程是控制台程序、
+没有天然的消息循环，不泵它就是死的——点不动也关不掉，一直耗到驱动内部超时。
+被替换的那个 C# 服务端不需要操心这个，它跑在 WinForms 的 UI 线程上，消息泵是现成的。
 
 **扫完不要调 `zhx_EndScan()`**。名字像是"结束本次扫描"，实际上它内部会 `unloadDS()`
 把设备关掉、退回 state 3。会话模型下每次扫描后调它，等于每扫一批就断一次连接，

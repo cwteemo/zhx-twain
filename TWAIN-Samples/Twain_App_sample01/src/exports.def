@@ -11,6 +11,7 @@ EXPORTS
     zhx_Exit
     zhx_GetState
     zhx_GetCurrentDevice
+    zhx_ShowSettingUI
     zhx_SetTransferMechanism
     zhx_SetImageFileFormat
     zhx_GetCurrentFileFormat

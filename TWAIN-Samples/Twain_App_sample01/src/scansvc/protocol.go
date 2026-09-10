@@ -164,12 +164,20 @@ func handleWSMessage(c *wsClient, payload []byte) {
 		}
 		c.reply(req, nil)
 
+	case "showSetting":
+		// 会一直阻塞到用户关掉面板，期间这条连接的其它指令也排在后面。
+		if err := TwainShowSettingUI(); err != nil {
+			c.replyErr(req, err)
+			return
+		}
+		c.reply(req, nil)
+
 	case "scan":
 		c.handleScanCmd(req)
 
 	default:
 		c.replyErr(req, fmt.Errorf("未知指令 %q（支持：status devices connect disconnect "+
-			"reconnect config getConfig capability setCapability scan）", req.Cmd))
+			"reconnect config getConfig capability setCapability showSetting scan）", req.Cmd))
 	}
 }
 

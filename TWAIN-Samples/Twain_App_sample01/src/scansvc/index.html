@@ -71,9 +71,12 @@
     <label><input id="autoFeed" type="checkbox"> 自动进纸</label>
     <label><input id="duplex" type="checkbox"> 双面</label>
     <button id="btn-config" disabled>应用参数</button>
+    <button id="btn-setting-ui" class="ghost" disabled>驱动设置面板</button>
   </div>
   <div id="config-results"></div>
-  <p class="hint">参数只在连接之后才能下发（TWAIN 的能力协商要求数据源处于 state 4）。扫描仪不支持的项会单独标红，不影响其它项。</p>
+  <p class="hint">参数只在连接之后才能下发（TWAIN 的能力协商要求数据源处于 state 4）。扫描仪不支持的项会单独标红，不影响其它项。
+  "驱动设置面板"打开的是扫描仪厂商自己的设置界面（TWAIN 的 MSG_ENABLEDSUIONLY），里面的项比上面这几个全，
+  改完点确定由驱动自己保存；面板开着的时候服务在等它关闭，别的操作要排队。</p>
 </div>
 
 <div class="panel">
@@ -127,6 +130,7 @@ function applyStatus(st) {
   $('btn-disconnect').disabled = !st.connected;
   $('btn-reconnect').disabled = !st.connected;
   $('btn-config').disabled = !st.connected;
+  $('btn-setting-ui').disabled = !st.connected;
   $('btn-scan').disabled = !st.connected;
 }
 
@@ -233,6 +237,21 @@ $('btn-config').onclick = async () => {
     setMsg(data.success ? '参数已全部生效' : '部分参数未生效，见下表');
   } catch (e) {
     setMsg('设置失败：' + e.message, true);
+  }
+};
+
+$('btn-setting-ui').onclick = async () => {
+  $('btn-setting-ui').disabled = true;
+  setMsg('设置面板已打开，请在面板里改完后关闭它…');
+  const poll = setInterval(refreshStatus, 1000);
+  try {
+    await post('/api/setting-ui');
+    setMsg('设置面板已关闭，新参数由驱动自己保存');
+  } catch (e) {
+    setMsg('打开设置面板失败：' + e.message, true);
+  } finally {
+    clearInterval(poll);
+    await refreshStatus();
   }
 };
 

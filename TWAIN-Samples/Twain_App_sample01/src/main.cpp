@@ -1447,6 +1447,113 @@ void zhx_CloseDevice() {
  * @return 无返回值
  */
 /**
+ * @brief 打开扫描仪驱动自带的设置面板，等用户关掉后返回
+ *
+ * 走 DG_CONTROL / DAT_USERINTERFACE / MSG_ENABLEDSUIONLY：只显示设置界面，
+ * 用户点确定后由数据源自己保存参数，不传输图像。这和普通扫描的
+ * MSG_ENABLEDS 是两码事，后者会真的开始扫。
+ *
+ * 关键在消息泵：设置对话框是数据源在**调用本函数的这条线程**上创建的，
+ * 这条线程不跑 GetMessage/DispatchMessage，对话框就是死的——点不动、关不掉，
+ * 一直耗到驱动内部超时。本进程是控制台程序，没有天然的消息循环，所以这里自己泵，
+ * 直到数据源发来 MSG_CLOSEDSREQ(取消) 或 MSG_CLOSEDSOK(确定)。
+ *
+ * 函数会一直阻塞到用户关闭面板为止，这期间调用线程做不了别的事。
+ *
+ * @return 成功返回 1，失败返回 0
+ */
+int zhx_ShowSettingUI() {
+    Logger::Init();
+    Logger::Log("@INFO zhx_ShowSettingUI called");
+
+    if (!gpTwainApplicationCMD) {
+        Logger::Log("@ERROR The TWAIN environment is not initialized");
+        Logger::Cleanup();
+        return 0;
+    }
+
+    if (gpTwainApplicationCMD->m_DSMState < 4) {
+        Logger::Log("@ERROR No data source opened, current state: %d", gpTwainApplicationCMD->m_DSMState);
+        Logger::Cleanup();
+        return 0;
+    }
+
+    if (gpTwainApplicationCMD->m_DSMState > 4) {
+        // 已经 enable 过了（正在扫描，或上一次面板没退干净），这时再 enable 会拿到 SEQERROR。
+        Logger::Log("@ERROR Data source is already enabled, current state: %d", gpTwainApplicationCMD->m_DSMState);
+        Logger::Cleanup();
+        return 0;
+    }
+
+    gpTwainApplicationCMD->m_DSMessage = 0;
+
+#ifdef TWNDS_OS_WIN
+    if (!gpTwainApplicationCMD->enableDSUIOnly(GetDesktopWindow())) {
+        Logger::Log("@ERROR MSG_ENABLEDSUIONLY failed");
+        Logger::Cleanup();
+        return 0;
+    }
+
+    Logger::Log("@INFO Settings dialog is up, pumping messages until the user closes it");
+
+    while (!gpTwainApplicationCMD->m_DSMessage) {
+        MSG msg;
+        if (!GetMessage((LPMSG)&msg, NULL, 0, 0)) {
+            Logger::Log("@WARN WM_QUIT received while the settings dialog was open");
+            break;
+        }
+
+        TW_EVENT twEvent = {0};
+        twEvent.pEvent = (TW_MEMREF)&msg;
+        twEvent.TWMessage = MSG_NULL;
+
+        TW_UINT16 twRC = _DSM_Entry(
+            gpTwainApplicationCMD->getAppIdentity(),
+            gpTwainApplicationCMD->getDataSource(),
+            DG_CONTROL,
+            DAT_EVENT,
+            MSG_PROCESSEVENT,
+            (TW_MEMREF)&twEvent);
+
+        // 注册了回调时，关闭通知走回调设置 m_DSMessage；没注册就得从事件里取。
+        if (!gUSE_CALLBACKS && twRC == TWRC_DSEVENT) {
+            switch (twEvent.TWMessage) {
+                case MSG_CLOSEDSREQ:
+                case MSG_CLOSEDSOK:
+                case MSG_NULL:
+                    gpTwainApplicationCMD->m_DSMessage = twEvent.TWMessage;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // 不是数据源的消息就按普通窗口消息派发，否则对话框自己的按钮点不动。
+        if (twRC != TWRC_DSEVENT) {
+            TranslateMessage((LPMSG)&msg);
+            DispatchMessage((LPMSG)&msg);
+        }
+    }
+
+    Logger::Log("@INFO Settings dialog closed, DS message: %u", gpTwainApplicationCMD->m_DSMessage);
+#else
+    Logger::Log("@ERROR zhx_ShowSettingUI is only implemented for Windows");
+    Logger::Cleanup();
+    return 0;
+#endif
+
+    // 回到 state 4：面板关掉后数据源还开着，接下来就能按新参数扫描。
+    if (gpTwainApplicationCMD->m_DSMState >= 5) {
+        gpTwainApplicationCMD->disableDS();
+    }
+
+    Logger::Log("@INFO zhx_ShowSettingUI done, state: %d", gpTwainApplicationCMD->m_DSMState);
+    Logger::Cleanup();
+    return 1;
+}
+
+
+/**
  * @brief 返回当前 TWAIN 状态机所处的状态
  *
  * Go/其它语言侧要判断"环境在不在、设备连没连"，此前只能靠调用别的接口看它失败，

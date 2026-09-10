@@ -17,6 +17,7 @@ void  zhx_Exit(void);
 
 int         zhx_GetState(void);
 const char* zhx_GetCurrentDevice(void);
+int         zhx_ShowSettingUI(void);
 
 int   zhx_SetResolution(int dpi);
 int   zhx_GetCurrentResolution(void);
@@ -541,6 +542,33 @@ func TwainSetCapability(name, value string) error {
 		return fmt.Errorf("设置 %s = %s 失败: %s", name, value, res.Error)
 	}
 	return nil
+}
+
+// ---- 驱动自带的设置面板 ----
+
+// TwainShowSettingUI 打开扫描仪驱动自带的设置面板，阻塞到用户关闭它。
+//
+// 走的是 MSG_ENABLEDSUIONLY：只显示界面让数据源自己保存参数，不传输图像。
+// 面板开着的这段时间 TWAIN 线程被完全占住，其它请求都会排队——和扫描时一样，
+// 只有 /api/status 不受影响（读状态镜像，不进队列）。
+// 用户不关面板就会一直等下去，这里不设超时：强行关掉正在调参数的面板更糟。
+func TwainShowSettingUI() error {
+	var err error
+
+	setBusy(true)
+	defer setBusy(false)
+
+	inTwain(func() {
+		if int(C.zhx_GetState()) < StateDSOpen {
+			err = errors.New("尚未连接扫描仪，先调 /api/connect")
+			return
+		}
+		if C.zhx_ShowSettingUI() == 0 {
+			err = errors.New("打开扫描仪设置面板失败（可能是驱动不提供设置界面，详见 twain.log）")
+		}
+	})
+
+	return err
 }
 
 // ---- 扫描 ----

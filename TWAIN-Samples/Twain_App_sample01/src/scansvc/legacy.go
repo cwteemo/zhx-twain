@@ -114,21 +114,27 @@ func handleLegacyMessage(c *wsClient, raw map[string]any) {
 }
 
 func handleLegacyScan(c *wsClient, msg legacyMsg) {
-	if msg.boolean("show_setting") {
-		// 打开驱动自带的设置面板需要 EnableDS 时把 ShowUI 传 TRUE，
-		// 现在 DLL 里写死的是 FALSE，没有导出参数可调。明确报错，别让前端干等。
-		msg.fail(c, "本服务暂不支持打开扫描仪设置面板，请用页面上的参数设置")
-		return
-	}
-
 	device := msg.str("scanner")
 	if device == "" {
 		msg.fail(c, "未指定扫描仪")
 		return
 	}
 
+	// 顺序照搬旧服务端：先打开设备，再看是不是只要弹设置面板。
+	// 设置面板要在数据源已打开(state 4)的前提下才能开。
 	if err := TwainConnect(device); err != nil {
 		msg.fail(c, "%s", err.Error())
+		return
+	}
+
+	if msg.boolean("show_setting") {
+		if err := TwainShowSettingUI(); err != nil {
+			msg.fail(c, "%s", err.Error())
+		}
+		// 成功时**不回响应**，和旧服务端一致（那边是 deShowSettingUi() 后直接 return）。
+		// 不能回 code:0——前端会把它当成一条扫描结果去读 data['base64']，
+		// 那是 undefined，紧接着的 .slice() 会直接抛异常。
+		// 前端本来就靠 updateScanStatus 的定时器复位 loading，不需要这条响应。
 		return
 	}
 
