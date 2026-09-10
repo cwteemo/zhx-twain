@@ -39,7 +39,7 @@ go build -o scansvc.exe .
 
 参数：
 
-- `-port 8010`            监听端口（最常用；等价于 `-addr :8010`）
+- `-port 5000`            监听端口（默认 5000，等价于 `-addr :5000`）
 - `-addr 127.0.0.1:8010`  监听地址，想限制只允许本机访问时用；只写端口号（`-addr 8010`）也认
 - `-auto-port`            端口被占用时自动向后顺延（最多试 20 个），实际端口看启动日志
 - `-dir scans`            图片保存根目录（每次扫描一个时间戳子目录）
@@ -52,7 +52,10 @@ rem 或者 set SCANSVC_ADDR=127.0.0.1:8010
 .\scansvc.exe
 ```
 
-优先级：`-addr` > `-port` > `SCANSVC_ADDR` > `SCANSVC_PORT` > 默认 `:8000`。
+优先级：`-addr` > `-port` > `SCANSVC_ADDR` > `SCANSVC_PORT` > 默认 `:5000`。
+
+**默认端口是 5000**，因为既有前端把 `ws://127.0.0.1:5000/` 写死在代码里，
+本服务是去替换那个中间服务的，端口对不上前端连都连不上。
 
 **8000 端口被占用**时不再直接崩，日志会打出占用提示和排查命令：
 
@@ -165,7 +168,72 @@ GET  /api/image?id=xxx  → 图片字节流
 无限模式永远等不到结束条件，会一直空转。现在查不到送纸器状态就当作没纸了。
 无限模式另有 1000 页的兜底上限。
 
-## 4. 设计要点
+## 4. WebSocket
+
+两套协议共存在同一个端点上，按消息里的字段自动分流——发 `handle` 的走兼容协议，
+发 `cmd` 的走本服务自己的协议。端点有两个入口：`/ws`，以及根路径 `/`
+（`/` 上按握手头分流：带 `Upgrade: websocket` 的走 WebSocket，其余返回演示页），
+因为既有前端连的就是 `ws://127.0.0.1:5000/`。
+
+同一时刻只保留一条连接，新连接进来会把旧的关掉——和被替换的那个 C# 服务端行为一致。
+
+### 4.1 兼容既有前端（`legacy.go`）
+
+对接 `court-document-processing` 的 `加工/通用` 分支。协议最要命的特点是**回显**：
+服务端把收到的整个 JSON 原样带回，再补上 `code` / `data` / `message`。
+`scan` 请求里的 `sort`、`id` 就是靠这个原样回去的，前端拿它们把图对应到具体档案页。
+
+```
+→ {"handle":"scannerList"}
+← {"handle":"scannerList","code":0,"data":["Uniscan Q400","S8660"]}
+
+→ {"handle":"scan","sort":3,"id":88,"scanner":"Uniscan Q400","extension":"png","show_setting":false}
+← {"handle":"scan","sort":3,"id":88,"scanner":"Uniscan Q400","extension":"png",
+   "show_setting":false,"code":0,
+   "base64":"http://127.0.0.1:5000/file/20260910-114359-703/page1.png"}
+
+出错：{"...原字段...","code":-1,"message":"...","msg":"..."}
+```
+
+**`base64` 字段装的是 URL，不是 base64**（字段名是历史遗留）。前端用
+`base64.slice(base64.lastIndexOf('.') + 1)` 从中取扩展名，所以给的必须是
+**以扩展名结尾的地址**，`/api/image?id=xxx` 那种带查询串的形式它认不了。
+图片由 `/file/` 静态路由提供。
+
+一次 `scan` 只扫一页——连续扫描由前端自己的定时器循环发起，和被替换的服务端一致。
+
+已实现：`scannerList`、`scan`、`export`/`import`（前端只拿来关 loading）。
+`getScannerOptions` 目前返回空数组：它的选项模型（`{"option":136,"name":"flip-side-rotation",
+"type":"str-list","list":[...]}`）是 `option` 编号 + 短横线命名的另一套体系，
+不是 TWAIN 的 CAP，参照实现不在手上。返回空数组前端只是参数面板空着，不报错。
+`show_setting:true`（打开驱动自带设置面板）会明确报错——DLL 里 `EnableDS` 的
+`ShowUI` 写死是 FALSE，没有导出参数可调。
+
+### 4.2 本服务自己的协议（`protocol.go`）
+
+和 HTTP 接口一一对应，多了边扫边推：
+
+```
+→ {"id":"7","cmd":"scan","params":{"count":0}}
+← {"cmd":"scan.progress","data":{"page":1,"image":{...}}}
+← {"cmd":"scan.progress","data":{"page":2,"image":{...}}}
+← {"id":"7","cmd":"scan","success":true,"data":{"count":2,"images":[...]}}
+```
+
+指令：`status` `devices` `connect` `disconnect` `reconnect` `config` `getConfig`
+`capability` `setCapability` `scan`。
+
+### 4.3 图片格式
+
+DLL 只会吐 BMP——`zhx_Scan` 靠 `*.bmp` 通配符比对扫描前后的目录来认产物，换格式就认不出来。
+所以转换放在 Go 侧（`imageconv.go`）：按请求里的 `extension` 转成 png/jpg，转完删掉原 BMP
+（一张十几 MB，连扫几百页很快吃满盘）。不认识的格式原样保留 BMP——扩展名必须和实际内容一致，
+前端要拿它报给后端。
+
+BMP 解码是自己写的，没用 `golang.org/x/image/bmp`：那个包的新版本要求 Go 1.23+，
+引进来会把 `go.mod` 的版本要求抬上去。支持 1/4/8/24/32 位未压缩 BMP。
+
+## 5. 设计要点
 
 **TWAIN 单线程模型**是整个服务的地基。DLL 里的 `EnableDS()` 会在调用线程上跑 `GetMessage` 消息泵等待数据源事件，而数据源把事件投递到"打开它的那条线程"的消息队列。所以：
 
@@ -186,7 +254,7 @@ GET  /api/image?id=xxx  → 图片字节流
 把设备关掉、退回 state 3。会话模型下每次扫描后调它，等于每扫一批就断一次连接，
 下一批又要重新打开设备（几秒到几十秒）。真正要断开时用 `zhx_CloseDevice()`。
 
-## 5. 打不开设备时怎么查
+## 6. 打不开设备时怎么查
 
 症状：`/api/scan` 卡二三十秒，然后报打开失败，`twain.log` 里是
 
@@ -205,7 +273,7 @@ Error: Failed to open data source, condition code = 23 (TWCC_CHECKDEVICEONLINE)
 
 `MSG_OPENDS` 的耗时和条件码都在 `twain.log` 里，卡二三十秒基本都是驱动在等一台够不着的设备。
 
-## 6. 已知限制 / 下一步
+## 7. 已知限制 / 下一步
 
 - `zhx_GetDevicesList()` 返回的是 DLL 用 `_strdup` 分配的内存，而 DLL 静态链接了自己的 CRT，Go 侧 `C.free` 会跨堆释放导致崩溃，所以当前**不释放**（每次枚举泄漏一小段）。修法是在 C 侧补一个 `zhx_FreeString` 导出。
 - 图片按 BMP 原样回传，单张约 11 MB。后续应在服务端转 JPEG/PNG 再传。

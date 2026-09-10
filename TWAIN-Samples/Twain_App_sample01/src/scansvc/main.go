@@ -14,6 +14,9 @@
 //	POST /api/capability   设一项 TWAIN 能力（JSON: {"name":"...","value":"..."}）
 //	POST /api/scan         扫描（JSON: {"device":"...","count":1}，count=0 扫到没纸）
 //	GET  /api/image?id=xx  取回扫描出的图片
+//	WS   /ws  和  WS  /    WebSocket。/ 上同时提供演示页和 WebSocket，按握手头分流，
+//	                       因为既有前端把 ws://127.0.0.1:5000/ 写死了（见 legacy.go）
+//	GET  /file/<路径>      扫描图片的静态出口，URL 以扩展名结尾
 //
 // 监听端口可自定义（优先级：命令行 > 环境变量 > 默认 :8000）：
 //
@@ -40,6 +43,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 //go:embed index.html
@@ -47,7 +52,9 @@ var indexHTML []byte
 
 // 默认监听地址；端口被 -auto-port 顺延时最多向后试这么多个。
 const (
-	defaultAddr   = ":8000"
+	// 默认 5000：既有前端把 ws://127.0.0.1:5000/ 写死在代码里，本服务是去替换
+	// 那个中间服务的，端口对不上前端连都连不上。要改用 -port。
+	defaultAddr   = ":5000"
 	autoPortTries = 20
 )
 
@@ -61,9 +68,13 @@ var (
 // 扫描产物登记表：id -> 绝对路径。
 // 只有登记过的 id 才允许通过 /api/image 读取，避免路径穿越。
 var (
-	imageMu sync.RWMutex
-	images  = map[string]string{}
+	imageMu  sync.RWMutex
+	images   = map[string]string{}
+	imageSeq uint64
 )
+
+// scanRoot 是图片保存根目录的绝对路径，main 里算好后 WebSocket 那边也要用。
+var scanRoot string
 
 type scanRequest struct {
 	// Device 可以不传：不传就用当前已连接的设备（先调 /api/connect）。
@@ -102,6 +113,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("解析保存目录失败: %v", err)
 	}
+	scanRoot = root
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		log.Fatalf("创建保存目录失败: %v", err)
 	}
@@ -133,6 +145,10 @@ func main() {
 	mux.HandleFunc("/api/capability", handleCapability)
 	mux.HandleFunc("/api/scan", handleScan(root))
 	mux.HandleFunc("/api/image", handleImage)
+	mux.HandleFunc("/ws", handleWS)
+	// 图片的静态出口。既有前端是从 URL 结尾取扩展名的（xxx.png），
+	// /api/image?id=xxx 那种带查询串的形式它认不了，所以另开一条。
+	mux.Handle("/file/", http.StripPrefix("/file/", http.FileServer(http.Dir(root))))
 
 	listenAddr := resolveAddr()
 	ln, err := listenWithFallback(listenAddr, *autoPort)
@@ -235,6 +251,12 @@ func withCORS(next http.Handler) http.Handler {
 func handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
+		return
+	}
+	// 既有前端连的是 ws://127.0.0.1:5000/ ——根路径，没有子路径。
+	// 所以这里按握手头分流：带 Upgrade: websocket 的走 WebSocket，其余给演示页。
+	if websocket.IsWebSocketUpgrade(r) {
+		handleWS(w, r)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -444,15 +466,14 @@ func handleScan(root string) http.HandlerFunc {
 			}
 		}
 
-		// 每次扫描单独一个目录，DLL 靠"扫描前后目录里新增的文件"来识别产物，
-		// 目录隔离能避免多次扫描互相干扰。
-		dir := filepath.Join(root, time.Now().Format("20060102-150405.000"))
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			writeErr(w, http.StatusInternalServerError, "创建扫描目录失败: "+err.Error())
+		dir, err := newScanDir(root)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
-		files, err := TwainScan(req.Device, dir, req.Count)
+		// HTTP 是同步的，没有边扫边报的余地，进度传 nil。要进度用 WebSocket。
+		files, err := TwainScan(req.Device, dir, req.Count, nil)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
@@ -460,26 +481,7 @@ func handleScan(root string) http.HandlerFunc {
 
 		infos := make([]imageInfo, 0, len(files))
 		for _, f := range files {
-			abs, absErr := filepath.Abs(f)
-			if absErr != nil {
-				abs = f
-			}
-			id := fmt.Sprintf("%d-%d", time.Now().UnixNano(), len(infos))
-
-			imageMu.Lock()
-			images[id] = abs
-			imageMu.Unlock()
-
-			var size int64
-			if st, statErr := os.Stat(abs); statErr == nil {
-				size = st.Size()
-			}
-			infos = append(infos, imageInfo{
-				ID:   id,
-				Name: filepath.Base(abs),
-				Size: size,
-				URL:  "/api/image?id=" + id,
-			})
+			infos = append(infos, registerImage(f))
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -487,6 +489,44 @@ func handleScan(root string) http.HandlerFunc {
 			"count":   len(infos),
 			"images":  infos,
 		})
+	}
+}
+
+// newScanDir 为一次扫描开一个独立目录。
+// DLL 靠"扫描前后目录里新增的文件"来识别产物，目录隔离能避免多次扫描互相干扰。
+func newScanDir(root string) (string, error) {
+	// 目录名不带点：既有前端是用 lastIndexOf('.') 从图片 URL 取扩展名的，
+	// 路径里多一个点就多一分取错的风险。
+	dir := filepath.Join(root, time.Now().Format("20060102-150405-000"))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("创建扫描目录失败: %w", err)
+	}
+	return dir, nil
+}
+
+// registerImage 把一个扫描产物登记进内存表，返回给调用方用的元信息。
+// HTTP 和 WebSocket 两条路都走它，图片本身始终通过 GET /api/image 取。
+func registerImage(path string) imageInfo {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = path
+	}
+
+	imageMu.Lock()
+	imageSeq++
+	id := fmt.Sprintf("%d-%d", time.Now().UnixNano(), imageSeq)
+	images[id] = abs
+	imageMu.Unlock()
+
+	var size int64
+	if st, statErr := os.Stat(abs); statErr == nil {
+		size = st.Size()
+	}
+	return imageInfo{
+		ID:   id,
+		Name: filepath.Base(abs),
+		Size: size,
+		URL:  "/api/image?id=" + id,
 	}
 }
 

@@ -169,14 +169,24 @@ func TwainStatus() ScannerStatus {
 var (
 	scanMu      sync.Mutex
 	scanResults []string
+	// 扫描进度钩子。扫描全程独占 TWAIN 线程，同一时刻只可能有一个扫描在跑，
+	// 所以一个全局钩子就够；由 TwainScan 在扫描前设、扫描后清。
+	scanProgress func(page int, path string)
 )
 
 // onScannedFile 由 goScanCallback 调用（运行在 TWAIN 线程上，zhx_Scan 内部同步回调）。
-// 回调里只做登记，不做重活，更不能在这里写 HTTP 响应。
+// 回调里只做登记和一次非阻塞推送，不做重活，更不能在这里写 HTTP 响应——
+// 这条线程正被 DLL 的扫描流程占着，卡在这里就是卡住扫描本身。
 func onScannedFile(path string) {
 	scanMu.Lock()
-	defer scanMu.Unlock()
 	scanResults = append(scanResults, path)
+	page := len(scanResults)
+	notify := scanProgress
+	scanMu.Unlock()
+
+	if notify != nil {
+		notify(page, path)
+	}
 }
 
 // ---- 设备枚举 ----
@@ -541,7 +551,9 @@ func TwainSetCapability(name, value string) error {
 //
 // 扫描结束后**保持连接**，可以接着扫下一批——这正是 zhx_EndScan 不能在这里调的原因，
 // 它内部会 unloadDS() 把设备关掉，回到 state 3。
-func TwainScan(device, dir string, count int) ([]string, error) {
+// progress 可以为 nil；不为 nil 时每扫出一张图调一次，调用发生在 TWAIN 线程上，
+// 实现必须是非阻塞的（比如往 channel 里塞一条），否则会拖慢扫描。
+func TwainScan(device, dir string, count int, progress func(page int, path string)) ([]string, error) {
 	var files []string
 	var opErr error
 
@@ -561,7 +573,14 @@ func TwainScan(device, dir string, count int) ([]string, error) {
 
 		scanMu.Lock()
 		scanResults = nil
+		scanProgress = progress
 		scanMu.Unlock()
+
+		defer func() {
+			scanMu.Lock()
+			scanProgress = nil
+			scanMu.Unlock()
+		}()
 
 		cDir := C.CString(dir)
 		defer C.free(unsafe.Pointer(cDir))
