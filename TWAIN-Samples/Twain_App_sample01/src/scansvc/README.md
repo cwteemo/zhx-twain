@@ -72,19 +72,98 @@ rem 或者 set SCANSVC_ADDR=127.0.0.1:8010
 
 ## 3. HTTP 接口
 
+会话式：**连接一次，之后配置和扫描都复用这条连接**，直到显式断开。
+不像早期版本那样每扫一次就开关一遍设备（开设备本身就要几秒到几十秒）。
+
+### 设备
+
 ```
 GET  /api/devices
   → {"devices":["Scanner A","Scanner B"],"count":2}
+  注意：返回的是这台机器上**已安装的 TWAIN 驱动**，不是"当前连着的扫描仪"。
+  装了 8 个厂商的驱动就会返回 8 条，哪怕一台设备都没插。
+  TWAIN 没有便宜的在线探测：CAP_DEVICEONLINE 要先把数据源打开（state 4）才能查，
+  而打不开正是这里要判断的事情。
 
-POST /api/scan          {"device":"Scanner A","count":1}
+GET  /api/status
+  → {"state":4,"stateText":"已连接扫描仪","ready":true,
+     "connected":true,"device":"Scanner A","scanning":false}
+  state 就是 TWAIN 状态机：0=环境没起来 3=DSM 已连(能枚举) 4=设备已打开 5+=扫描中。
+  这个接口读的是状态镜像，不进 TWAIN 队列，**扫描期间也能立刻返回**。
+
+POST /api/connect       {"device":"Scanner A"}
+  → {"success":true,"status":{...}}
+  打开设备并保持。已经连着别的设备会先自动断开——TWAIN 一次只允许打开一个数据源。
+  重复连同一台是幂等的。
+
+POST /api/disconnect
+  → {"success":true,"status":{...}}
+  关掉当前设备，回到 state 3（DSM 仍连着，还能枚举、还能开别的设备）。
+
+POST /api/reconnect     {"deep":false}
+  → {"success":true,"device":"Scanner A","deep":false,"status":{...}}
+  重连当前设备。deep=true 时连整个 TWAIN 环境一起重建（zhx_Exit + zhx_Init），
+  用于设备拔插、驱动崩了这种光重开数据源救不回来的情况。
+```
+
+### 参数
+
+```
+GET  /api/config
+  → {"resolution":300,"applied":{"feeder":"1","pixelType":"2"}}
+  只实时读分辨率，其余是本服务设置过的值的回显。原因见下面的说明。
+
+POST /api/config        {"resolution":300,"pixelType":2,"feeder":true,
+                         "autoFeed":true,"duplex":false}
+  → {"success":true,"results":[
+       {"field":"resolution","cap":"ICAP_XRESOLUTION+ICAP_YRESOLUTION","value":"300","ok":true},
+       {"field":"duplex","cap":"CAP_DUPLEXENABLED","value":"0","ok":false,
+        "error":"扫描仪拒绝了这个取值"}]}
+  逐项下发、逐项返回结果。扫描仪支持哪些能力千差万别，一项不支持不该拖累其它项，
+  所以顶层 success 只表示"每一项都设上了"，具体看 results。
+  字段全是可选的，只传想改的那些。必须先 /api/connect —— TWAIN 的能力协商
+  只在数据源打开(state 4)之后有效，没连设备返回 409。
+
+  可选字段：resolution(DPI) pixelType(0黑白/1灰度/2彩色) feeder(用ADF)
+            autoFeed(自动进纸) duplex(双面) paperSize brightness contrast
+
+GET  /api/capability?name=ICAP_XRESOLUTION
+  → {"name":"ICAP_XRESOLUTION","capability":{"container":"ENUMERATION",...,"items":[100,200,300]}}
+  读一项能力的原始信息，用来查这台设备到底支持哪些取值。
+  ⚠ DLL 为了读能力会把数据源临时 enable 到 state 5，个别设备会因此空走一次纸或者亮灯。
+  正因如此 GET /api/config 没有顺带调它。
+
+POST /api/capability    {"name":"ICAP_PIXELTYPE","value":"2"}
+  → {"success":true}
+  设一项 TWAIN 能力，给 /api/config 没覆盖到的场景用。
+  name 可以是能力名(ICAP_PIXELTYPE)，也可以是编号(0x0101 或 257)。
+```
+
+### 扫描
+
+```
+POST /api/scan          {"count":1}
   → {"success":true,"count":1,
      "images":[{"id":"...","name":"xxx.bmp","size":11220054,"url":"/api/image?id=..."}]}
-  count = 0 表示走送纸器一直扫到没纸
+  用当前已连接的设备扫描。count=0 表示走送纸器一直扫到没纸。
+  可选 "device"：传了就先确保连上这台（省掉一次 /api/connect）。
+  可选 "config"：扫之前顺手把参数设了，内容同 POST /api/config。
+  扫完**保持连接**，可以接着扫下一批。
 
 GET  /api/image?id=xxx  → 图片字节流
 ```
 
 跨域已开（`Access-Control-Allow-Origin: *`），业务系统可以从别的域名直接调。
+
+### 连续扫描怎么开
+
+1. `POST /api/config` 带 `{"feeder":true,"autoFeed":true}`——先让设备走送纸器
+2. `POST /api/scan` 带 `{"count":0}`——一直扫到 `CAP_FEEDERLOADED` 报没纸为止
+
+设备不支持 `CAP_FEEDERLOADED`（平板扫描仪基本都不支持）时，`count=0` 只会扫一页就停。
+这是有意的：DLL 里 `checkIfMorePagesAvailable()` 原来写死 `return true`，
+无限模式永远等不到结束条件，会一直空转。现在查不到送纸器状态就当作没纸了。
+无限模式另有 1000 页的兜底上限。
 
 ## 4. 设计要点
 
@@ -98,9 +177,43 @@ GET  /api/image?id=xxx  → 图片字节流
 
 **扫描回调**（`callback.go` 的 `goScanCallback`）由 DLL 在扫描线程上同步调用，只做文件路径登记，不做重活。
 
-## 5. 已知限制 / 下一步
+**状态镜像**。扫描期间 TWAIN 线程被占满，任何走 `inTwain()` 的调用都得排队等扫描结束，
+而 `/api/status` 恰恰是扫描时最需要能立刻回答的接口。所以每次 TWAIN 操作结束时
+把 `zhx_GetState()` / `zhx_GetCurrentDevice()` 的结果刷进一份镜像（`twain.go` 的 `mirrorState`），
+`/api/status` 只读镜像。**不要**为了"更准"把它改成走 `inTwain()`——那样扫描期间就查不了状态了。
+
+**扫完不要调 `zhx_EndScan()`**。名字像是"结束本次扫描"，实际上它内部会 `unloadDS()`
+把设备关掉、退回 state 3。会话模型下每次扫描后调它，等于每扫一批就断一次连接，
+下一批又要重新打开设备（几秒到几十秒）。真正要断开时用 `zhx_CloseDevice()`。
+
+## 5. 打不开设备时怎么查
+
+症状：`/api/scan` 卡二三十秒，然后报打开失败，`twain.log` 里是
+
+```
+Error: Failed to open data source, condition code = 23 (TWCC_CHECKDEVICEONLINE)
+```
+
+**`TWCC_CHECKDEVICEONLINE` 字面是"设备不在线"，但设备被别的程序占用时报的也是它**
+（2026-09-10 实测：设备接着、开着机，被另一个程序占用，就是这个码，MSG_OPENDS 卡 24 秒）。
+所以别一上来就去查线和电源，按这个顺序：
+
+1. **被占用**——厂商自带的扫描工具、扫描仪托盘程序、上一个没退干净的 scansvc
+   （`tasklist | findstr /i scansvc`，8000/8010 端口被占用就是它还活着的信号）
+2. **型号选错**——设备列表是驱动列表，选了一台没插的设备，驱动会去找它直到超时
+3. **设备本身**——开机、连线、休眠、面板是否就绪
+
+`MSG_OPENDS` 的耗时和条件码都在 `twain.log` 里，卡二三十秒基本都是驱动在等一台够不着的设备。
+
+## 6. 已知限制 / 下一步
 
 - `zhx_GetDevicesList()` 返回的是 DLL 用 `_strdup` 分配的内存，而 DLL 静态链接了自己的 CRT，Go 侧 `C.free` 会跨堆释放导致崩溃，所以当前**不释放**（每次枚举泄漏一小段）。修法是在 C 侧补一个 `zhx_FreeString` 导出。
 - 图片按 BMP 原样回传，单张约 11 MB。后续应在服务端转 JPEG/PNG 再传。
 - 扫描是同步阻塞的，多页扫描时 HTTP 可能超时。下一步改成"提交任务返回 taskId + WebSocket 推进度"。
 - `images` 登记表只在内存里，服务重启后旧图片取不回来。
+- `GET /api/capability` 会让 DLL 把数据源临时 enable 到 state 5 才能读能力，个别设备
+  会因此空走一次纸。想干净地读能力，得在 C 侧补一条 state 4 就能查的实现。
+- `zhx_Init()` 里父窗口用的是 `GetDesktopWindow()`，`zhx_Scan` 的消息泵也用它。
+  TWAIN 要求应用传自己的窗口句柄，数据源拿它当模态框的 owner 并向该窗口所属线程投消息。
+  控制台程序压根没有窗口，DS 弹的框就成了没人处理的孤儿窗口。目前没发现它导致具体故障，
+  但这是个真隐患，正解是在 TWAIN 线程上建一个 `HWND_MESSAGE` 隐藏窗口顶上去。

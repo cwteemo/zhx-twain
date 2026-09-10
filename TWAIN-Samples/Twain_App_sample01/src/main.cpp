@@ -1073,10 +1073,19 @@ int zhx_Scan(char *path, ScanCallback cb, int count) {
     }
     
     int scannedPages = 0;
-    
+
+    // 无限模式的兜底上限：万一某台设备的 CAP_FEEDERLOADED 一直报"有纸"，
+    // 也不至于把服务扫到天荒地老。正常 ADF 作业远到不了这个量。
+    const int kMaxUnlimitedPages = 1000;
+
     try {
         // 多页扫描循环
         while (unlimitedScan || scannedPages < count) {
+            if (unlimitedScan && scannedPages >= kMaxUnlimitedPages) {
+                Logger::Log("@WARN Unlimited scan hit the %d page safety cap, stopping", kMaxUnlimitedPages);
+                break;
+            }
+
             Logger::Log("@INFO Starting scan for page %d %s", 
                         scannedPages + 1, 
                         unlimitedScan ? "(unlimited mode)" : "");
@@ -1151,9 +1160,11 @@ int zhx_Scan(char *path, ScanCallback cb, int count) {
                 scannedPages += (int)newFiles.size();
                 Logger::Log("@INFO Total pages scanned so far: %d", scannedPages);
             } else {
-                // 如果没有新文件但已执行扫描，增加计数并记录警告
-                scannedPages++;
-                Logger::Log("@WARN No new files detected, but counting page %d as scanned", scannedPages);
+                // 这一轮没有产出任何文件，多半是送纸器空了或者传输失败。
+                // 原来这里照样 scannedPages++ 接着扫下一轮，无限模式下就是纯空转，
+                // 还会把没扫到的页数算进返回值里。
+                Logger::Log("@WARN No new files produced by this pass, stopping scan loop");
+                break;
             }
             
             // 检查是否需要取消扫描
@@ -1261,27 +1272,38 @@ bool EnsureDirectoryExists(const char* path) {
  * @return 有更多页返回true，否则返回false
  */
 bool checkIfMorePagesAvailable() {
-    // 这个函数需要根据TWAIN API实现
-    // 可能需要查询CAP_FEEDERLOADED等能力
-    // 简化示例，总是返回false表示没有更多页
-    return true;
-    
-    // 实际实现可能类似:
-    /*
-    TW_CAPABILITY cap;
-    cap.Cap = CAP_FEEDERLOADED;
-    cap.ConType = TWON_ONEVALUE;
-    
-    if (gpTwainApplicationCMD->getScannerCapability(&cap) == TWRC_SUCCESS) {
-        TW_ONEVALUE* val = (TW_ONEVALUE*)_DSM_LockMemory(cap.hContainer);
-        bool hasMorePages = (val->Item != 0);
-        _DSM_UnlockMemory(cap.hContainer);
-        _DSM_Free(cap.hContainer);
-        return hasMorePages;
+    if (!gpTwainApplicationCMD || gpTwainApplicationCMD->m_DSMState < 4) {
+        return false;
     }
-    
-    return false; // 查询失败，假设没有更多页
-    */
+
+    TW_CAPABILITY cap;
+    memset(&cap, 0, sizeof(TW_CAPABILITY));
+    cap.Cap = CAP_FEEDERLOADED;
+    cap.ConType = TWON_DONTCARE16;
+
+    TW_UINT16 rc = gpTwainApplicationCMD->DSM_Entry(
+        DG_CONTROL, DAT_CAPABILITY, MSG_GET, (TW_MEMREF)&cap);
+
+    if (rc != TWRC_SUCCESS) {
+        // 平板扫描仪、以及一部分 ADF 机型不支持 CAP_FEEDERLOADED。
+        // 这里必须返回 false：这个函数原来写死 return true，
+        // 于是 zhx_Scan 的无限模式(count=0)永远等不到结束条件，一直空转。
+        Logger::Log("@INFO CAP_FEEDERLOADED unsupported (rc=%u), treat as no more pages", rc);
+        return false;
+    }
+
+    bool hasMorePages = false;
+    if (cap.ConType == TWON_ONEVALUE) {
+        pTW_ONEVALUE pVal = (pTW_ONEVALUE)_DSM_LockMemory(cap.hContainer);
+        if (pVal) {
+            hasMorePages = (pVal->Item != 0);
+            _DSM_UnlockMemory(cap.hContainer);
+        }
+    }
+    _DSM_Free(cap.hContainer);
+
+    Logger::Log("@INFO CAP_FEEDERLOADED = %s", hasMorePages ? "true (paper loaded)" : "false (feeder empty)");
+    return hasMorePages;
 }
 
 /**
@@ -1424,6 +1446,42 @@ void zhx_CloseDevice() {
  * 
  * @return 无返回值
  */
+/**
+ * @brief 返回当前 TWAIN 状态机所处的状态
+ *
+ * Go/其它语言侧要判断"环境在不在、设备连没连"，此前只能靠调用别的接口看它失败，
+ * 或者自己在外面记一份状态——一旦设备被拔掉、DS 自己关了，外面那份就是错的。
+ *
+ * @return 0 = TWAIN 环境未初始化；否则为 TWAIN 状态：
+ *         2 = DSM 已加载未打开，3 = DSM 已打开(可枚举设备)，
+ *         4 = 已打开某台扫描仪，5 = 数据源已启用，6/7 = 传输中
+ */
+int zhx_GetState() {
+    if (!gpTwainApplicationCMD) {
+        return 0;
+    }
+    return gpTwainApplicationCMD->m_DSMState;
+}
+
+/**
+ * @brief 返回当前已打开扫描仪的名称(ProductName)
+ *
+ * @return 未打开任何设备时返回空字符串。返回的是内部静态缓冲区，
+ *         调用方只读、不要释放，下次调用会被覆盖。
+ */
+const char* zhx_GetCurrentDevice() {
+    static char name[256] = {0};
+    name[0] = '\0';
+
+    if (gpTwainApplicationCMD && gpTwainApplicationCMD->m_DSMState >= 4) {
+        std::string product = gpTwainApplicationCMD->getSourceIdentity();
+        strncpy(name, product.c_str(), sizeof(name) - 1);
+        name[sizeof(name) - 1] = '\0';
+    }
+    return name;
+}
+
+
 void zhx_Exit() {
     Logger::Init();
     Logger::Log("@INFO zhx_Exit called");

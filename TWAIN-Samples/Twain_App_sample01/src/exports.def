@@ -9,6 +9,8 @@ EXPORTS
     zhx_EndScan
     zhx_CloseDevice
     zhx_Exit
+    zhx_GetState
+    zhx_GetCurrentDevice
     zhx_SetTransferMechanism
     zhx_SetImageFileFormat
     zhx_GetCurrentFileFormat

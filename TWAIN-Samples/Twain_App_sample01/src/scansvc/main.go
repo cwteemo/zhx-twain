@@ -3,8 +3,16 @@
 // 职责：把 TWAIN 扫描仪能力通过 HTTP 暴露给浏览器里的业务系统。
 //
 //	GET  /                 内置演示页面
-//	GET  /api/devices      枚举扫描仪
-//	POST /api/scan         扫描（JSON: {"device":"...","count":1}）
+//	GET  /api/devices      枚举扫描仪（返回的是已装驱动，不代表设备在线）
+//	GET  /api/status       当前连接状态，扫描期间也能立刻返回
+//	POST /api/connect      连接扫描仪并保持（JSON: {"device":"..."}）
+//	POST /api/disconnect   断开当前扫描仪
+//	POST /api/reconnect    重连（JSON: {"deep":true} 连 TWAIN 环境一起重建）
+//	GET  /api/config       读当前扫描参数
+//	POST /api/config       设扫描参数（分辨率/色彩/ADF/双面…）
+//	GET  /api/capability   读一项 TWAIN 能力原始信息（?name=ICAP_PIXELTYPE）
+//	POST /api/capability   设一项 TWAIN 能力（JSON: {"name":"...","value":"..."}）
+//	POST /api/scan         扫描（JSON: {"device":"...","count":1}，count=0 扫到没纸）
 //	GET  /api/image?id=xx  取回扫描出的图片
 //
 // 监听端口可自定义（优先级：命令行 > 环境变量 > 默认 :8000）：
@@ -22,6 +30,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -57,8 +66,26 @@ var (
 )
 
 type scanRequest struct {
+	// Device 可以不传：不传就用当前已连接的设备（先调 /api/connect）。
+	// 传了则先确保连上这台，方便"一把梭"的调用方。
+	Device string      `json:"device"`
+	Count  int         `json:"count"`
+	Config *ScanConfig `json:"config,omitempty"` // 可选：扫之前顺手把参数设了
+}
+
+type connectRequest struct {
 	Device string `json:"device"`
-	Count  int    `json:"count"`
+}
+
+type reconnectRequest struct {
+	// Deep = true 时连 TWAIN 环境一起重建，用于设备拔插、驱动崩溃这类
+	// 光重开数据源救不回来的情况。
+	Deep bool `json:"deep"`
+}
+
+type capabilityRequest struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 type imageInfo struct {
@@ -98,6 +125,12 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleIndex)
 	mux.HandleFunc("/api/devices", handleDevices)
+	mux.HandleFunc("/api/status", handleStatus)
+	mux.HandleFunc("/api/connect", handleConnect)
+	mux.HandleFunc("/api/disconnect", handleDisconnect)
+	mux.HandleFunc("/api/reconnect", handleReconnect)
+	mux.HandleFunc("/api/config", handleConfig)
+	mux.HandleFunc("/api/capability", handleCapability)
 	mux.HandleFunc("/api/scan", handleScan(root))
 	mux.HandleFunc("/api/image", handleImage)
 
@@ -216,6 +249,171 @@ func handleDevices(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// decodeJSON 读请求体。允许空体：连接/重连这类接口用默认值也说得通。
+func decodeJSON(r *http.Request, dst any) error {
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(dst); err != nil && err != io.EOF {
+		return err
+	}
+	return nil
+}
+
+func requirePOST(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "只支持 POST")
+		return false
+	}
+	return true
+}
+
+func handleStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, TwainStatus())
+}
+
+func handleConnect(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
+		return
+	}
+
+	var req connectRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "请求体不是合法 JSON: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Device) == "" {
+		writeErr(w, http.StatusBadRequest, "device 不能为空")
+		return
+	}
+	if err := TwainConnect(req.Device); err != nil {
+		// 打不开设备是设备侧的事，不是请求写错了，所以给 500 而不是 4xx。
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"status":  TwainStatus(),
+	})
+}
+
+func handleDisconnect(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
+		return
+	}
+	TwainDisconnect()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"status":  TwainStatus(),
+	})
+}
+
+func handleReconnect(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
+		return
+	}
+
+	var req reconnectRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "请求体不是合法 JSON: "+err.Error())
+		return
+	}
+
+	device, err := TwainReconnect(req.Deep)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"device":  device,
+		"deep":    req.Deep,
+		"status":  TwainStatus(),
+	})
+}
+
+func handleConfig(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		cfg, err := TwainCurrentConfig()
+		if err != nil {
+			writeErr(w, http.StatusConflict, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, cfg)
+
+	case http.MethodPost:
+		var cfg ScanConfig
+		if err := decodeJSON(r, &cfg); err != nil {
+			writeErr(w, http.StatusBadRequest, "请求体不是合法 JSON: "+err.Error())
+			return
+		}
+
+		results, err := TwainApplyConfig(cfg)
+		if err != nil {
+			writeErr(w, http.StatusConflict, err.Error())
+			return
+		}
+
+		// 逐项返回，整体 success 只表示"每一项都设上了"。
+		// 一项失败不影响其它项，调用方按 results 自己判断要不要继续。
+		allOK := true
+		for _, res := range results {
+			if !res.OK {
+				allOK = false
+				break
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"success": allOK,
+			"results": results,
+		})
+
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "只支持 GET / POST")
+	}
+}
+
+func handleCapability(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		name := strings.TrimSpace(r.URL.Query().Get("name"))
+		if name == "" {
+			writeErr(w, http.StatusBadRequest, "缺少参数 name，例如 /api/capability?name=ICAP_PIXELTYPE")
+			return
+		}
+		raw, err := TwainCapability(name)
+		if err != nil {
+			writeErr(w, http.StatusConflict, err.Error())
+			return
+		}
+		// raw 是 DLL 直接吐出来的 JSON 片段，原样塞进 capability 字段，
+		// 不在 Go 这边二次解析——容器类型有 ONEVALUE/ENUMERATION/RANGE 三种，
+		// 解析了反而丢信息。
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		fmt.Fprintf(w, `{"name":%q,"capability":%s}`, name, raw)
+
+	case http.MethodPost:
+		var req capabilityRequest
+		if err := decodeJSON(r, &req); err != nil {
+			writeErr(w, http.StatusBadRequest, "请求体不是合法 JSON: "+err.Error())
+			return
+		}
+		if strings.TrimSpace(req.Name) == "" {
+			writeErr(w, http.StatusBadRequest, "name 不能为空")
+			return
+		}
+		if err := TwainSetCapability(req.Name, req.Value); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"success": true})
+
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "只支持 GET / POST")
+	}
+}
+
 func handleScan(root string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -224,12 +422,26 @@ func handleScan(root string) http.HandlerFunc {
 		}
 
 		var req scanRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := decodeJSON(r, &req); err != nil {
 			writeErr(w, http.StatusBadRequest, "请求体不是合法 JSON: "+err.Error())
 			return
 		}
 		if req.Count < 0 {
 			req.Count = 1
+		}
+
+		// 先连上再设参数：TWAIN 的能力协商只在数据源打开(state 4)之后有效。
+		if req.Device != "" {
+			if err := TwainConnect(req.Device); err != nil {
+				writeErr(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
+		if req.Config != nil {
+			if _, err := TwainApplyConfig(*req.Config); err != nil {
+				writeErr(w, http.StatusConflict, err.Error())
+				return
+			}
 		}
 
 		// 每次扫描单独一个目录，DLL 靠"扫描前后目录里新增的文件"来识别产物，

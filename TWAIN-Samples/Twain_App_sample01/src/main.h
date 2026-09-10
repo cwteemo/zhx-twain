@@ -115,6 +115,9 @@ extern "C" __declspec(dllexport) int  zhx_Scan(char *path, ScanCallback cb, int 
 extern "C" __declspec(dllexport) void  zhx_EndScan();
 extern "C" __declspec(dllexport) void  zhx_CloseDevice();
 extern "C" __declspec(dllexport) void  zhx_Exit();
+// 状态查询：让调用方不必在外面自己记一份可能过期的连接状态
+extern "C" __declspec(dllexport) int   zhx_GetState();
+extern "C" __declspec(dllexport) const char* zhx_GetCurrentDevice();
 extern "C" __declspec(dllexport) int zhx_SetTransferMechanism(int mechanism);
 extern "C" __declspec(dllexport) int zhx_SetImageFileFormat(int format);
 extern "C" __declspec(dllexport) int zhx_GetCurrentFileFormat();

@@ -2,49 +2,103 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>扫描仪中间服务 · 最小闭环演示</title>
+<title>扫描仪中间服务 · 控制台</title>
 <style>
   body { font: 14px/1.6 system-ui, "Microsoft YaHei", sans-serif; margin: 0; padding: 24px; background: #f6f7f9; color: #1f2328; }
-  h1 { font-size: 18px; margin: 0 0 16px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: #57606a; font-size: 12px; margin: 0 0 16px; }
   .panel { background: #fff; border: 1px solid #d8dce0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-  label { margin-right: 8px; }
-  select, input, button { font: inherit; padding: 6px 10px; border: 1px solid #c3c8ce; border-radius: 5px; background: #fff; }
+  .panel h2 { font-size: 14px; margin: 0 0 12px; color: #57606a; font-weight: 600; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .row + .row { margin-top: 10px; }
+  label { color: #57606a; }
+  select, input, button { font: inherit; padding: 6px 10px; border: 1px solid #c3c8ce; border-radius: 5px; background: #fff; color: inherit; }
+  input[type=checkbox] { padding: 0; width: 15px; height: 15px; vertical-align: -2px; }
   button { cursor: pointer; background: #1f6feb; color: #fff; border-color: #1f6feb; }
-  button:disabled { opacity: .5; cursor: default; }
-  #status { margin-left: 12px; color: #57606a; }
+  button.ghost { background: #fff; color: #1f2328; border-color: #c3c8ce; }
+  button:disabled { opacity: .45; cursor: default; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; background: #eaeef2; color: #57606a; }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: #8c959f; }
+  .pill.on { background: #e6f4ea; color: #1a7f37; }
+  .pill.on .dot { background: #1a7f37; }
+  .pill.busy { background: #fff4e5; color: #9a6700; }
+  .pill.busy .dot { background: #9a6700; }
+  #msg { font-size: 13px; color: #57606a; min-height: 20px; }
+  #msg.err { color: #cf222e; }
   #shots { display: flex; flex-wrap: wrap; gap: 12px; }
   figure { margin: 0; border: 1px solid #d8dce0; border-radius: 6px; padding: 8px; background: #fff; }
-  figure img { display: block; max-width: 320px; max-height: 420px; }
+  figure img { display: block; max-width: 300px; max-height: 400px; }
   figcaption { font-size: 12px; color: #57606a; margin-top: 6px; word-break: break-all; }
-  .err { color: #cf222e; }
+  .hint { font-size: 12px; color: #8c959f; margin: 8px 0 0; }
+  table.results { border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+  table.results td { border: 1px solid #e1e4e8; padding: 3px 8px; }
+  table.results .bad { color: #cf222e; }
+  table.results .good { color: #1a7f37; }
 </style>
 </head>
 <body>
 
-<h1>扫描仪中间服务 · 最小闭环演示</h1>
+<h1>扫描仪中间服务 · 控制台</h1>
+<p class="sub">连接 → 配置 → 扫描。设备列表来自已安装的 TWAIN 驱动，不代表设备在线。</p>
 
 <div class="panel">
-  <button id="btn-refresh">① 枚举扫描仪</button>
-  <label for="devices" style="margin-left:12px">设备</label>
-  <select id="devices"><option value="">（尚未枚举）</option></select>
-  <label for="count" style="margin-left:12px">页数</label>
-  <input id="count" type="number" value="1" min="0" style="width:70px">
-  <button id="btn-scan" style="margin-left:12px" disabled>② 开始扫描</button>
-  <span id="status"></span>
-  <p style="margin:10px 0 0;color:#57606a;font-size:12px">页数填 0 表示走送纸器一直扫到没纸。</p>
+  <h2>1. 设备</h2>
+  <div class="row">
+    <button id="btn-refresh" class="ghost">枚举设备</button>
+    <select id="devices" style="min-width:220px"><option value="">（尚未枚举）</option></select>
+    <button id="btn-connect">连接</button>
+    <button id="btn-disconnect" class="ghost" disabled>断开</button>
+    <button id="btn-reconnect" class="ghost" disabled>重连</button>
+    <label style="margin-left:-4px"><input id="deep" type="checkbox"> 深度重连</label>
+    <span id="pill" class="pill"><span class="dot"></span><span id="pill-text">未连接</span></span>
+  </div>
+  <p class="hint">深度重连会把整个 TWAIN 环境重建一遍，用于设备拔插、驱动异常这类光重开数据源救不回来的情况。</p>
 </div>
 
 <div class="panel">
-  <div id="shots"><span style="color:#57606a">扫描结果会显示在这里</span></div>
+  <h2>2. 扫描参数</h2>
+  <div class="row">
+    <label>分辨率 <input id="resolution" type="number" value="200" min="50" max="1200" step="50" style="width:80px"> DPI</label>
+    <label>色彩
+      <select id="pixelType">
+        <option value="">不改</option>
+        <option value="0">黑白</option>
+        <option value="1">灰度</option>
+        <option value="2" selected>彩色</option>
+      </select>
+    </label>
+    <label><input id="feeder" type="checkbox"> 使用送纸器(ADF)</label>
+    <label><input id="autoFeed" type="checkbox"> 自动进纸</label>
+    <label><input id="duplex" type="checkbox"> 双面</label>
+    <button id="btn-config" disabled>应用参数</button>
+  </div>
+  <div id="config-results"></div>
+  <p class="hint">参数只在连接之后才能下发（TWAIN 的能力协商要求数据源处于 state 4）。扫描仪不支持的项会单独标红，不影响其它项。</p>
+</div>
+
+<div class="panel">
+  <h2>3. 扫描</h2>
+  <div class="row">
+    <label>页数 <input id="count" type="number" value="1" min="0" style="width:70px"></label>
+    <label><input id="continuous" type="checkbox"> 连续扫描（扫到没纸）</label>
+    <button id="btn-scan" disabled>开始扫描</button>
+    <span id="msg"></span>
+  </div>
+  <p class="hint">连续扫描需要设备支持 ADF，并且勾上"使用送纸器"和"自动进纸"再应用参数。扫描期间 TWAIN 线程被占满，其它请求会排队，只有状态查询不受影响。</p>
+</div>
+
+<div class="panel">
+  <h2>4. 结果</h2>
+  <div id="shots"><span style="color:#8c959f">扫描结果会显示在这里</span></div>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const status = $('status');
+let connected = false;
 
-function setStatus(text, isErr) {
-  status.textContent = text;
-  status.className = isErr ? 'err' : '';
+function setMsg(text, isErr) {
+  $('msg').textContent = text;
+  $('msg').className = isErr ? 'err' : '';
 }
 
 async function api(path, options) {
@@ -54,16 +108,45 @@ async function api(path, options) {
   return data;
 }
 
+function post(path, body) {
+  return api(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+}
+
+// 按连接状态开关按钮，避免在 state 3 上发只有 state 4 才接受的请求。
+function applyStatus(st) {
+  connected = st.connected;
+  const pill = $('pill');
+  pill.className = 'pill' + (st.scanning ? ' busy' : (st.connected ? ' on' : ''));
+  $('pill-text').textContent = st.scanning ? '扫描中'
+    : (st.connected ? '已连接 ' + st.device : st.stateText);
+
+  $('btn-disconnect').disabled = !st.connected;
+  $('btn-reconnect').disabled = !st.connected;
+  $('btn-config').disabled = !st.connected;
+  $('btn-scan').disabled = !st.connected;
+}
+
+async function refreshStatus() {
+  try {
+    applyStatus(await api('/api/status'));
+  } catch (e) {
+    // 状态查询不该打扰用户，服务没起来时页面本来也打不开
+  }
+}
+
 $('btn-refresh').onclick = async () => {
-  setStatus('枚举中…');
+  setMsg('枚举中…');
   try {
     const data = await api('/api/devices');
     const sel = $('devices');
     sel.innerHTML = '';
     if (!data.devices.length) {
-      sel.innerHTML = '<option value="">未找到扫描仪</option>';
-      $('btn-scan').disabled = true;
-      setStatus('未找到扫描仪，确认驱动已安装且设备已连接', true);
+      sel.innerHTML = '<option value="">未找到任何 TWAIN 驱动</option>';
+      setMsg('未找到扫描仪驱动，确认驱动已安装', true);
       return;
     }
     for (const name of data.devices) {
@@ -71,27 +154,107 @@ $('btn-refresh').onclick = async () => {
       opt.value = opt.textContent = name;
       sel.appendChild(opt);
     }
-    $('btn-scan').disabled = false;
-    setStatus('找到 ' + data.count + ' 台设备');
+    setMsg('找到 ' + data.count + ' 个驱动，选中当前实际接着的那台再连接');
   } catch (e) {
-    setStatus('枚举失败：' + e.message, true);
+    setMsg('枚举失败：' + e.message, true);
+  }
+};
+
+$('btn-connect').onclick = async () => {
+  const device = $('devices').value;
+  if (!device) { setMsg('先枚举并选一台设备', true); return; }
+
+  $('btn-connect').disabled = true;
+  setMsg('连接中…（设备不在线时驱动要等二十几秒才报错）');
+  try {
+    const data = await post('/api/connect', { device });
+    applyStatus(data.status);
+    setMsg('已连接 ' + device);
+  } catch (e) {
+    setMsg('连接失败：' + e.message, true);
+  } finally {
+    $('btn-connect').disabled = false;
+  }
+};
+
+$('btn-disconnect').onclick = async () => {
+  try {
+    applyStatus((await post('/api/disconnect')).status);
+    setMsg('已断开');
+  } catch (e) {
+    setMsg('断开失败：' + e.message, true);
+  }
+};
+
+$('btn-reconnect').onclick = async () => {
+  const deep = $('deep').checked;
+  setMsg(deep ? '深度重连中…' : '重连中…');
+  try {
+    const data = await post('/api/reconnect', { deep });
+    applyStatus(data.status);
+    setMsg('已重连 ' + data.device);
+  } catch (e) {
+    setMsg('重连失败：' + e.message, true);
+  }
+};
+
+function collectConfig() {
+  const cfg = {};
+  const dpi = Number($('resolution').value);
+  if (dpi > 0) cfg.resolution = dpi;
+  if ($('pixelType').value !== '') cfg.pixelType = Number($('pixelType').value);
+  cfg.feeder = $('feeder').checked;
+  cfg.autoFeed = $('autoFeed').checked;
+  cfg.duplex = $('duplex').checked;
+  return cfg;
+}
+
+function renderConfigResults(results) {
+  const box = $('config-results');
+  box.innerHTML = '';
+  if (!results || !results.length) return;
+
+  const table = document.createElement('table');
+  table.className = 'results';
+  for (const r of results) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + r.field + '</td><td>' + r.cap + '</td><td>' + r.value + '</td>' +
+      '<td class="' + (r.ok ? 'good' : 'bad') + '">' + (r.ok ? '已生效' : (r.error || '失败')) + '</td>';
+    table.appendChild(tr);
+  }
+  box.appendChild(table);
+}
+
+$('btn-config').onclick = async () => {
+  setMsg('下发参数…');
+  try {
+    const data = await post('/api/config', collectConfig());
+    renderConfigResults(data.results);
+    setMsg(data.success ? '参数已全部生效' : '部分参数未生效，见下表');
+  } catch (e) {
+    setMsg('设置失败：' + e.message, true);
+  }
+};
+
+$('continuous').onchange = () => {
+  if ($('continuous').checked) {
+    $('count').value = 0;
+    $('count').disabled = true;
+  } else {
+    $('count').disabled = false;
+    if (Number($('count').value) === 0) $('count').value = 1;
   }
 };
 
 $('btn-scan').onclick = async () => {
-  const device = $('devices').value;
-  if (!device) return;
+  const count = $('continuous').checked ? 0 : Number($('count').value);
 
   $('btn-scan').disabled = true;
-  setStatus('扫描中，请稍候…（扫描期间服务不响应其它请求）');
+  setMsg('扫描中，请稍候…');
+  const poll = setInterval(refreshStatus, 1000);
 
   try {
-    const data = await api('/api/scan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device, count: Number($('count').value) }),
-    });
-
+    const data = await post('/api/scan', { count });
     const shots = $('shots');
     shots.innerHTML = '';
     for (const img of data.images) {
@@ -103,13 +266,17 @@ $('btn-scan').onclick = async () => {
       fig.append(el, cap);
       shots.appendChild(fig);
     }
-    setStatus('完成，共 ' + data.count + ' 张');
+    setMsg('完成，共 ' + data.count + ' 张');
   } catch (e) {
-    setStatus('扫描失败：' + e.message, true);
+    setMsg('扫描失败：' + e.message, true);
   } finally {
-    $('btn-scan').disabled = false;
+    clearInterval(poll);
+    await refreshStatus();
   }
 };
+
+refreshStatus();
+$('btn-refresh').click();
 </script>
 
 </body>
