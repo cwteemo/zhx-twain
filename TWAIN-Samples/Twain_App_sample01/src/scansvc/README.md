@@ -39,10 +39,36 @@ go build -o scansvc.exe .
 
 参数：
 
-- `-addr :8000`  监听地址
-- `-dir scans`   图片保存根目录（每次扫描一个时间戳子目录）
+- `-port 8010`            监听端口（最常用；等价于 `-addr :8010`）
+- `-addr 127.0.0.1:8010`  监听地址，想限制只允许本机访问时用；只写端口号（`-addr 8010`）也认
+- `-auto-port`            端口被占用时自动向后顺延（最多试 20 个），实际端口看启动日志
+- `-dir scans`            图片保存根目录（每次扫描一个时间戳子目录）
 
-启动后浏览器打开 <http://localhost:8000> 即可点按钮跑通闭环。
+端口也可以用环境变量给，方便打包成服务/快捷方式：
+
+```powershell
+set SCANSVC_PORT=8010
+rem 或者 set SCANSVC_ADDR=127.0.0.1:8010
+.\scansvc.exe
+```
+
+优先级：`-addr` > `-port` > `SCANSVC_ADDR` > `SCANSVC_PORT` > 默认 `:8000`。
+
+**8000 端口被占用**时不再直接崩，日志会打出占用提示和排查命令：
+
+```
+监听 :8000 失败: listen tcp :8000: bind: address already in use
+端口多半已被别的程序占用，可以：
+  1) 换个端口启动：scansvc.exe -port 8010
+  2) 让它自动顺延：scansvc.exe -auto-port
+  3) 查是谁占着：netstat -ano | findstr :8000
+```
+
+拿 `netstat` 查出的 PID 再 `tasklist | findstr <PID>` 就能看到是哪个进程。注意 MFC 版应用
+（`TWAIN_App_mfc64.exe`）自带的 HTTP 服务器占的是 8080，跟这里不冲突。
+
+启动后浏览器按日志里打印的实际端口打开（默认 <http://localhost:8000>）即可点按钮跑通闭环。
+内置演示页用的是相对路径请求，换端口不用改页面。
 
 ## 3. HTTP 接口
 

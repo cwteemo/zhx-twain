@@ -7,6 +7,13 @@
 //	POST /api/scan         扫描（JSON: {"device":"...","count":1}）
 //	GET  /api/image?id=xx  取回扫描出的图片
 //
+// 监听端口可自定义（优先级：命令行 > 环境变量 > 默认 :8000）：
+//
+//	scansvc.exe -port 8010            指定端口
+//	scansvc.exe -addr 127.0.0.1:8010  指定地址+端口（只允许本机访问）
+//	scansvc.exe -auto-port            端口被占用时自动向后顺延
+//	set SCANSVC_PORT=8010             环境变量方式
+//
 // 编译运行见同目录 README.md。
 package main
 
@@ -16,9 +23,11 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,9 +36,17 @@ import (
 //go:embed index.html
 var indexHTML []byte
 
+// 默认监听地址；端口被 -auto-port 顺延时最多向后试这么多个。
+const (
+	defaultAddr   = ":8000"
+	autoPortTries = 20
+)
+
 var (
-	addr    = flag.String("addr", ":8000", "监听地址")
-	scanDir = flag.String("dir", "scans", "扫描图片保存根目录")
+	addr     = flag.String("addr", "", "监听地址，如 :8000 或 127.0.0.1:8000（留空则按 -port / 环境变量 / 默认值决定）")
+	port     = flag.Int("port", 0, "监听端口，等价于 -addr :<port>；0 表示不指定")
+	autoPort = flag.Bool("auto-port", false, "端口被占用时自动向后顺延寻找可用端口")
+	scanDir  = flag.String("dir", "scans", "扫描图片保存根目录")
 )
 
 // 扫描产物登记表：id -> 绝对路径。
@@ -84,10 +101,88 @@ func main() {
 	mux.HandleFunc("/api/scan", handleScan(root))
 	mux.HandleFunc("/api/image", handleImage)
 
-	log.Printf("扫描服务已启动: http://localhost%s  （图片保存于 %s）", *addr, root)
-	if err := http.ListenAndServe(*addr, withCORS(mux)); err != nil {
-		log.Fatalf("服务启动失败: %v", err)
+	listenAddr := resolveAddr()
+	ln, err := listenWithFallback(listenAddr, *autoPort)
+	if err != nil {
+		// 这里不用 log.Fatalf：它会跳过 defer TwainExit()，让 DSM/数据源没关干净。
+		log.Printf("监听 %s 失败: %v", listenAddr, err)
+		log.Printf("端口多半已被别的程序占用，可以：")
+		log.Printf("  1) 换个端口启动：scansvc.exe -port 8010")
+		log.Printf("  2) 让它自动顺延：scansvc.exe -auto-port")
+		log.Printf("  3) 查是谁占着：netstat -ano | findstr :%s", portOf(listenAddr))
+		return
 	}
+	defer ln.Close()
+
+	log.Printf("扫描服务已启动: http://localhost:%s  （图片保存于 %s）", portOf(ln.Addr().String()), root)
+	if err := http.Serve(ln, withCORS(mux)); err != nil {
+		log.Printf("服务异常退出: %v", err)
+	}
+}
+
+// resolveAddr 按 命令行 flag > 环境变量 > 默认值 的优先级决定监听地址。
+func resolveAddr() string {
+	if v := strings.TrimSpace(*addr); v != "" {
+		return normalizeAddr(v)
+	}
+	if *port > 0 {
+		return ":" + strconv.Itoa(*port)
+	}
+	if v := strings.TrimSpace(os.Getenv("SCANSVC_ADDR")); v != "" {
+		return normalizeAddr(v)
+	}
+	if v := strings.TrimSpace(os.Getenv("SCANSVC_PORT")); v != "" {
+		return normalizeAddr(v)
+	}
+	return defaultAddr
+}
+
+// normalizeAddr 允许只写端口号这种简写（"8010" → ":8010"）。
+func normalizeAddr(s string) string {
+	if !strings.Contains(s, ":") {
+		return ":" + s
+	}
+	return s
+}
+
+// portOf 从监听地址里取出端口号，取不到就原样返回，只用于日志和提示。
+func portOf(addr string) string {
+	if _, p, err := net.SplitHostPort(addr); err == nil {
+		return p
+	}
+	return addr
+}
+
+// listenWithFallback 在指定地址上监听；开了 auto 就在端口被占用时向后顺延，
+// 直到找到一个能用的（最多试 autoPortTries 个）。
+func listenWithFallback(addr string, auto bool) (net.Listener, error) {
+	ln, err := net.Listen("tcp", addr)
+	if err == nil || !auto {
+		return ln, err
+	}
+
+	host, portStr, splitErr := net.SplitHostPort(addr)
+	if splitErr != nil {
+		return nil, err
+	}
+	base, convErr := strconv.Atoi(portStr)
+	if convErr != nil {
+		return nil, err
+	}
+
+	firstErr := err
+	for i := 1; i <= autoPortTries; i++ {
+		next := base + i
+		if next > 65535 {
+			break
+		}
+		cand := net.JoinHostPort(host, strconv.Itoa(next))
+		if ln, err := net.Listen("tcp", cand); err == nil {
+			log.Printf("端口 %d 不可用（%v），已自动顺延到 %d", base, firstErr, next)
+			return ln, nil
+		}
+	}
+	return nil, firstErr
 }
 
 // withCORS 允许业务系统从其它域名调用本机服务。
