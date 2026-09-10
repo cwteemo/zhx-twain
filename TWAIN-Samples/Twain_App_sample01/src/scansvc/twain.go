@@ -87,16 +87,22 @@ func onScannedFile(path string) {
 
 // TwainDevices 返回可用扫描仪名称列表。
 func TwainDevices() []string {
+	var out []string
+	inTwain(func() { out = devicesOnTwainThread() })
+	return out
+}
+
+// devicesOnTwainThread 直接调 DLL 枚举设备，**必须已经在 TWAIN 线程上**执行
+// （从 inTwain 的 fn 里调）。在别处调会破坏 TWAIN 的单线程约束，
+// 从 TwainDevices 之外的地方套 inTwain 还会自己把自己锁死。
+func devicesOnTwainThread() []string {
 	var raw string
-	inTwain(func() {
-		// 注意：DLL 用 _strdup 分配，且 DLL 静态链接了自己的 CRT，
-		// 在 Go 这侧 C.free 会跨堆释放导致崩溃，所以这里不释放（每次调用泄漏一小段）。
-		// 后续应在 C 侧补一个 zhx_FreeString 导出再改成显式释放。
-		p := C.zhx_GetDevicesList()
-		if p != nil {
-			raw = C.GoString(p)
-		}
-	})
+	// 注意：DLL 用 _strdup 分配，且 DLL 静态链接了自己的 CRT，
+	// 在 Go 这侧 C.free 会跨堆释放导致崩溃，所以这里不释放（每次调用泄漏一小段）。
+	// 后续应在 C 侧补一个 zhx_FreeString 导出再改成显式释放。
+	if p := C.zhx_GetDevicesList(); p != nil {
+		raw = C.GoString(p)
+	}
 
 	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == "[]" {
@@ -130,12 +136,24 @@ func TwainScan(device, dir string, count int) ([]string, error) {
 		defer C.free(unsafe.Pointer(cDevice))
 
 		if C.zhx_OpenDevice(cDevice) == 0 {
-			// 兜底：DSM 掉线时(TWAIN 状态 < 3)打开必然失败，重连一次再试。
-			// 旧版 DLL 的 zhx_CloseDevice 会顺带断开 DSM，导致第二次扫描必失败；
-			// C++ 侧已修，这里留一层保险，也能应对扫描仪拔插导致的掉线。
+			// 打开失败分两类，处理方式正好相反：
+			//   1) DSM 掉线（扫描仪拔插、旧版 DLL 的 zhx_CloseDevice 顺带断了 DSM）
+			//      —— 环境已经废了，必须 zhx_Init 重连
+			//   2) 环境好好的，就是这台设备打不开（被别的程序占用、驱动报错）
+			//      —— 这时 zhx_Init 是帮倒忙：它 delete/new 整个 TwainApp，换一个新的
+			//         app identity 再去敲同一台设备，而 DS 侧上一条连接未必已经释放，
+			//         结果就是一路"扫描仪繁忙"，还把日志搅乱。
+			// 用"还枚举得到设备吗"来区分这两类。
+			if len(devicesOnTwainThread()) > 0 {
+				opErr = fmt.Errorf("打开扫描仪失败: %s（设备可能被其他程序占用、离线或驱动异常；"+
+					"具体原因看 twain.log 里的 condition code）", device)
+				return
+			}
+
 			C.zhx_Init()
 			if C.zhx_OpenDevice(cDevice) == 0 {
-				opErr = fmt.Errorf("打开扫描仪失败: %s（确认设备已连接、驱动已安装、未被其他程序占用）", device)
+				opErr = fmt.Errorf("打开扫描仪失败: %s（TWAIN 环境已重连仍打不开，"+
+					"确认设备已连接、驱动已安装；详见 twain.log）", device)
 				return
 			}
 		}
