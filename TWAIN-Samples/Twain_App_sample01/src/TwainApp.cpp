@@ -463,47 +463,6 @@ pTW_IDENTITY TwainApp::selectDefaultDataSource()
 
 
 //////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////
-// TWCC condition code -> text.  The upstream printError() calls a
-// convertConditionCode_toString() that does not exist anywhere in this tree --
-// it only ever compiled because the call sits inside an empty TRACE() macro.
-// This local table keeps the failure reason readable in twain.log.
-static const char* twccToString(TW_INT16 _cc)
-{
-  switch(_cc)
-  {
-    case TWCC_SUCCESS:           return "TWCC_SUCCESS";
-    case TWCC_BUMMER:            return "TWCC_BUMMER";
-    case TWCC_LOWMEMORY:         return "TWCC_LOWMEMORY";
-    case TWCC_NODS:              return "TWCC_NODS (data source not found)";
-    case TWCC_MAXCONNECTIONS:    return "TWCC_MAXCONNECTIONS (device already opened by someone else)";
-    case TWCC_OPERATIONERROR:    return "TWCC_OPERATIONERROR (DS internal error, often shown as its own dialog)";
-    case TWCC_BADCAP:            return "TWCC_BADCAP";
-    case TWCC_BADPROTOCOL:       return "TWCC_BADPROTOCOL";
-    case TWCC_BADVALUE:          return "TWCC_BADVALUE";
-    case TWCC_SEQERROR:          return "TWCC_SEQERROR (wrong TWAIN state)";
-    case TWCC_BADDEST:           return "TWCC_BADDEST";
-    case TWCC_CAPUNSUPPORTED:    return "TWCC_CAPUNSUPPORTED";
-    case TWCC_CAPBADOPERATION:   return "TWCC_CAPBADOPERATION";
-    case TWCC_CAPSEQERROR:       return "TWCC_CAPSEQERROR";
-    case TWCC_DENIED:            return "TWCC_DENIED";
-    case TWCC_FILEEXISTS:        return "TWCC_FILEEXISTS";
-    case TWCC_FILENOTFOUND:      return "TWCC_FILENOTFOUND";
-    case TWCC_NOTEMPTY:          return "TWCC_NOTEMPTY";
-    case TWCC_PAPERJAM:          return "TWCC_PAPERJAM";
-    case TWCC_PAPERDOUBLEFEED:   return "TWCC_PAPERDOUBLEFEED";
-    case TWCC_FILEWRITEERROR:    return "TWCC_FILEWRITEERROR";
-    case TWCC_CHECKDEVICEONLINE: return "TWCC_CHECKDEVICEONLINE (device offline, powered off or cable unplugged)";
-    case TWCC_INTERLOCK:         return "TWCC_INTERLOCK (cover open)";
-    case TWCC_DAMAGEDCORNER:     return "TWCC_DAMAGEDCORNER";
-    case TWCC_FOCUSERROR:        return "TWCC_FOCUSERROR";
-    case TWCC_DOCTOOLIGHT:       return "TWCC_DOCTOOLIGHT";
-    case TWCC_DOCTOODARK:        return "TWCC_DOCTOODARK";
-    case TWCC_NOMEDIA:           return "TWCC_NOMEDIA";
-    default:                     return "unknown condition code";
-  }
-}
-
 void TwainApp::loadDS(const TW_INT32 _dsID)
 {
   Logger::Log("=== Starting Data Source Loading Process ===");
@@ -626,20 +585,21 @@ void TwainApp::loadDS(const TW_INT32 _dsID)
 
   default:
     {
-      // Read the condition code exactly once: DG_CONTROL/DAT_STATUS/MSG_GET clears the
-      // current condition code, so a second read (printError does one of its own) would
-      // come back TWCC_SUCCESS. printError only TRACEs, which compiles away in Release --
-      // that is why the log used to stop at "Failed to open data source" with no reason.
+      // This replaces the printError() call that used to be here.  printError writes the
+      // condition code to stderr only, so it dies with the console window and never shows
+      // up in twain.log -- the log stopped at "Failed to open data source" with no reason.
+      // Read the status exactly once: DG_CONTROL/DAT_STATUS/MSG_GET clears the current
+      // condition code, so letting printError do a second read would report TWCC_SUCCESS.
       TW_INT16 cc = TWCC_SUCCESS;
+      const char *pszCC = "unavailable (DAT_STATUS/MSG_GET failed too)";
+
       if(TWRC_SUCCESS == getTWCC(m_pDataSource, cc))
       {
-        Logger::Log("Error: Failed to open data source, condition code = %d (%s)",
-                    (int)cc, twccToString(cc));
+        pszCC = convertConditionCode_toString(cc);
       }
-      else
-      {
-        Logger::Log("Error: Failed to open data source, and DG_CONTROL/DAT_STATUS/MSG_GET failed too");
-      }
+
+      Logger::Log("Error: Failed to open data source, condition code = %d (%s)", (int)cc, pszCC);
+      PrintCMDMessage("app: Failed to open data source. The condition code is: %s\n", pszCC);
       m_pDataSource = 0;
     }
     break;
