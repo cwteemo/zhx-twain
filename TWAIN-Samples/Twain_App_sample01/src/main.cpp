@@ -1009,6 +1009,51 @@ std::vector<std::string> GetDirectoryFiles(const std::string& path) {
 
 
 
+// 最近一次 zhx_Scan 没扫出图时的诊断信息，由 zhx_GetScanDiagnosis 取走。
+// 调用方拿"0 页"根本分不清是没放纸、设备掉线还是数据源状态不对，只能去翻日志。
+static int g_diagEnableFailed = 0;   // 1 = MSG_ENABLEDS 失败，扫描根本没开始
+static int g_diagConditionCode = -1; // MSG_ENABLEDS 失败时的 TWCC；-1 = 无
+static int g_diagFeederLoaded = -1;  // CAP_FEEDERLOADED：1 有纸 / 0 没纸 / -1 不支持或没读
+static int g_diagDeviceOnline = -1;  // CAP_DEVICEONLINE：1 在线 / 0 离线 / -1 不支持或没读
+
+// 读一个 BOOL 型能力的当前值：1 / 0，读不到返回 -1。需要 state >= 4。
+static int readBoolCapability(TW_UINT16 capId) {
+    if (!gpTwainApplicationCMD || gpTwainApplicationCMD->m_DSMState < 4) {
+        return -1;
+    }
+    TW_CAPABILITY cap;
+    memset(&cap, 0, sizeof(TW_CAPABILITY));
+    cap.Cap = capId;
+    cap.ConType = TWON_DONTCARE16;
+    TW_UINT16 rc = gpTwainApplicationCMD->DSM_Entry(DG_CONTROL, DAT_CAPABILITY, MSG_GET, (TW_MEMREF)&cap);
+    if (rc != TWRC_SUCCESS) {
+        return -1;
+    }
+    int value = -1;
+    if (cap.ConType == TWON_ONEVALUE) {
+        pTW_ONEVALUE pVal = (pTW_ONEVALUE)_DSM_LockMemory(cap.hContainer);
+        if (pVal) {
+            value = (pVal->Item != 0) ? 1 : 0;
+            _DSM_UnlockMemory(cap.hContainer);
+        }
+    }
+    _DSM_Free(cap.hContainer);
+    return value;
+}
+
+/**
+ * 取最近一次 zhx_Scan 的诊断信息（只在扫出 0 页时有意义）。
+ * 四个输出参数的含义见上面 g_diag* 的注释，传 NULL 表示不要这一项。
+ * @return 1 = 上次扫描出了问题、有诊断信息；0 = 上次正常或还没扫过
+ */
+int zhx_GetScanDiagnosis(int *enableFailed, int *conditionCode, int *feederLoaded, int *deviceOnline) {
+    if (enableFailed)  *enableFailed  = g_diagEnableFailed;
+    if (conditionCode) *conditionCode = g_diagConditionCode;
+    if (feederLoaded)  *feederLoaded  = g_diagFeederLoaded;
+    if (deviceOnline)  *deviceOnline  = g_diagDeviceOnline;
+    return (g_diagEnableFailed || g_diagFeederLoaded == 0 || g_diagDeviceOnline == 0) ? 1 : 0;
+}
+
  /**
  * @brief 执行扫描操作并保存图像
  * 
@@ -1024,6 +1069,10 @@ int zhx_Scan(char *path, ScanCallback cb, int count) {
     // 记录函数调用
     Logger::Init();
     Logger::Log("@INFO zhx_Scan is called, path: %s, pages: %d", path ? path : "default", count);
+    g_diagEnableFailed = 0;
+    g_diagConditionCode = -1;
+    g_diagFeederLoaded = -1;
+    g_diagDeviceOnline = -1;
     std::string serinumber = generateFilenameSafeSerialNumber(); // 例如：SCAN_20250422_213045_123
     // 检查TWAIN环境是否初始化
     if (!gpTwainApplicationCMD) {
@@ -1107,6 +1156,10 @@ int zhx_Scan(char *path, ScanCallback cb, int count) {
             
             // 启动扫描
             EnableDS();
+            if (gpTwainApplicationCMD->m_lastEnableCC != -1) {
+                g_diagEnableFailed = 1;
+                g_diagConditionCode = gpTwainApplicationCMD->m_lastEnableCC >= 0 ? gpTwainApplicationCMD->m_lastEnableCC : -1;
+            }
             
             // 获取扫描后的文件列表
             std::vector<std::string> filesAfter;
@@ -1188,7 +1241,16 @@ int zhx_Scan(char *path, ScanCallback cb, int count) {
             }
         }
         
-        Logger::Log("@INFO Scan completed successfully, total pages scanned: %d", scannedPages);
+        if (scannedPages == 0) {
+            // 一页都没扫出来：趁数据源还开着（state 4），把能分辨原因的状态读出来。
+            g_diagFeederLoaded = readBoolCapability(CAP_FEEDERLOADED);
+            g_diagDeviceOnline = readBoolCapability(CAP_DEVICEONLINE);
+            Logger::Log("@ERROR Scan produced no pages. diagnosis: enableFailed=%d, conditionCode=%d, "
+                        "CAP_FEEDERLOADED=%d, CAP_DEVICEONLINE=%d (1=true 0=false -1=unsupported)",
+                        g_diagEnableFailed, g_diagConditionCode, g_diagFeederLoaded, g_diagDeviceOnline);
+        } else {
+            Logger::Log("@INFO Scan completed successfully, total pages scanned: %d", scannedPages);
+        }
         Logger::Cleanup();
         return scannedPages;
     }
@@ -2767,33 +2829,15 @@ char* zhx_GetCapability_STR(char* capOrDevice) {
         return result;
     }
     
-    // 记录数据源当前状态
-    int originalState = gpTwainApplicationCMD->m_DSMState;
-    bool sourceWasEnabled = false;
-    
-    // 只有当状态为4时，才尝试激活数据源
-    if (originalState == 4) {
-        Logger::Log("@INFO Temporarily enabling data source to get capability");
-        
-        // 使用DSM_Entry直接调用TWAIN接口，而不是使用enableDS方法
-        TW_USERINTERFACE ui;
-        memset(&ui, 0, sizeof(TW_USERINTERFACE));
-        ui.ShowUI = FALSE;  // 不显示UI
-        ui.ModalUI = TRUE;  // 模态窗口
-        ui.hParent = NULL;  // 无父窗口
-        
-        TW_UINT16 rc = gpTwainApplicationCMD->DSM_Entry(
-            DG_CONTROL, DAT_USERINTERFACE, MSG_ENABLEDS, (TW_MEMREF)&ui);
-        
-        if (rc == TWRC_SUCCESS && gpTwainApplicationCMD->m_DSMState >= 5) {
-            sourceWasEnabled = true;
-            Logger::Log("@INFO Data source successfully enabled (state changed from 4 to %d)", 
-                      gpTwainApplicationCMD->m_DSMState);
-        } else {
-            Logger::Log("@WARNING Failed to enable data source, error code: %d", rc);
-        }
-    }
-    
+    // 这里原来会先 MSG_ENABLEDS 把数据源临时拉到 state 5 再读，读完 MSG_DISABLEDS。
+    // 问题有两个：
+    //   1) 成功判据写的是 rc == TWRC_SUCCESS && m_DSMState >= 5，而直接调 DSM_Entry
+    //      不会更新 m_DSMState，于是真启用成功了也被当成失败，后面的 MSG_DISABLEDS
+    //      就不发——数据源被永久卡在 state 5；
+    //   2) 卡住之后每次 MSG_ENABLEDS 都返回 TWRC_FAILURE，包括 zhx_Scan 里真正开扫那一次。
+    // 实测 Uniscan Q400：读完 getScannerOptions 之后扫描必然 "Failed to enable source"。
+    // TWAIN 规范里 MSG_GET 在 state 4 就合法，不需要 enable。
+
     // 确定是能力项名称还是设备名称
     // 先假设是能力项，尝试转换为能力ID
     TW_UINT16 capValue = 0;
@@ -3197,25 +3241,6 @@ char* zhx_GetCapability_STR(char* capOrDevice) {
         // 不是能力项（不再尝试当作设备名称处理）
         Logger::Log("@ERROR Unknown capability name or format: %s", capOrDevice);
         strcpy(result, "[]");
-    }
-    
-    // 如果之前临时激活了数据源，现在禁用它，恢复原始状态
-    if (sourceWasEnabled && gpTwainApplicationCMD->m_DSMState >= 5) {
-        Logger::Log("@INFO Disabling data source after capability retrieval");
-        
-        // 使用DSM_Entry直接调用TWAIN接口禁用数据源
-        TW_USERINTERFACE ui;
-        memset(&ui, 0, sizeof(TW_USERINTERFACE));
-        
-        TW_UINT16 rc = gpTwainApplicationCMD->DSM_Entry(
-            DG_CONTROL, DAT_USERINTERFACE, MSG_DISABLEDS, (TW_MEMREF)&ui);
-        
-        if (rc == TWRC_SUCCESS) {
-            Logger::Log("@INFO Data source disabled (state changed back to %d)", 
-                      gpTwainApplicationCMD->m_DSMState);
-        } else {
-            Logger::Log("@WARNING Failed to disable data source: %d", rc);
-        }
     }
     
     Logger::Cleanup();

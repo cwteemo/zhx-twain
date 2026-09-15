@@ -130,6 +130,7 @@ TwainApp::TwainApp(HWND parent /*=NULL*/)
 , m_pDataSource(NULL)
 , m_pExtImageInfo(NULL)
 , m_DSMessage((TW_UINT16)-1)
+, m_lastEnableCC(-1)
 , m_nGetLableSupported(TWCC_SUCCESS)
 , m_nGetHelpSupported(TWCC_SUCCESS)
 , m_strSavePath("")
@@ -853,6 +854,7 @@ bool TwainApp::enableDS(TW_HANDLE hWnd, BOOL bShowUI)
   Logger::Log("- MSG_ENABLEDS: %d", MSG_ENABLEDS);
   Logger::Log("Calling DSM_Entry...");
 
+  m_lastEnableCC = -1;
   TW_UINT16 twrc = DSM_Entry(DG_CONTROL, DAT_USERINTERFACE, MSG_ENABLEDS, (TW_MEMREF)&(m_ui));
   
   Logger::Log("DSM_Entry Return Code: %u", twrc);
@@ -862,7 +864,19 @@ bool TwainApp::enableDS(TW_HANDLE hWnd, BOOL bShowUI)
     Logger::Log("Error: Failed to enable source. Return code: %u", twrc);
     Logger::Log("Reverting DSM State back to 4");
     m_DSMState = 4;
-    printError(m_pDataSource, "Cannot enable source");
+    // 不再用 printError：它只 TRACE 到调试器，twain.log 里看不到原因。
+    // DAT_STATUS/MSG_GET 读一次就清零，所以只读这一次，记下来给 zhx_GetScanDiagnosis 用。
+    TW_INT16 cc = TWCC_SUCCESS;
+    m_lastEnableCC = -2;  // 失败了但读不到 condition code
+    if(TWRC_SUCCESS == getTWCC(m_pDataSource, cc))
+    {
+      m_lastEnableCC = cc;
+      Logger::Log("Error: MSG_ENABLEDS condition code = %d (%s)", cc, convertConditionCode_toString(cc));
+    }
+    else
+    {
+      Logger::Log("Error: MSG_ENABLEDS condition code unavailable (DAT_STATUS/MSG_GET failed too)");
+    }
     bret = false;
   }
   else

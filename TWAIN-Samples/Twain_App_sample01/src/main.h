@@ -120,6 +120,8 @@ extern "C" __declspec(dllexport) int   zhx_GetState();
 extern "C" __declspec(dllexport) const char* zhx_GetCurrentDevice();
 // 打开驱动自带的设置面板，阻塞到用户关闭
 extern "C" __declspec(dllexport) int   zhx_ShowSettingUI();
+// 最近一次 zhx_Scan 扫出 0 页时的原因诊断（MSG_ENABLEDS 的 condition code、送纸器有无纸、设备是否在线）
+extern "C" __declspec(dllexport) int   zhx_GetScanDiagnosis(int *enableFailed, int *conditionCode, int *feederLoaded, int *deviceOnline);
 extern "C" __declspec(dllexport) int zhx_SetTransferMechanism(int mechanism);
 extern "C" __declspec(dllexport) int zhx_SetImageFileFormat(int format);
 extern "C" __declspec(dllexport) int zhx_GetCurrentFileFormat();

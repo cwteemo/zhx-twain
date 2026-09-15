@@ -372,6 +372,7 @@ std::string getSourceIdentity() {
 
   int             m_DSMState;             /**< The current TWAIN state of the dsm (2-7) */
   TW_UINT16       m_DSMessage;            /**< Statis to indicate if we are waiting for DS */
+  int             m_lastEnableCC;         // 最近一次 enableDS 的结果：-1 成功；-2 失败但读不到 condition code；>=0 失败时的 condition code
 
   void setSavePath(const string &path) { m_strSavePath = path; }
   const string& getSavePath() const { return m_strSavePath; }
