@@ -18,6 +18,7 @@ void  zhx_Exit(void);
 int         zhx_GetState(void);
 const char* zhx_GetCurrentDevice(void);
 int         zhx_ShowSettingUI(void);
+int         zhx_GetScanDiagnosis(int *enableFailed, int *conditionCode, int *feederLoaded, int *deviceOnline);
 
 int   zhx_SetResolution(int dpi);
 int   zhx_GetCurrentResolution(void);
@@ -494,7 +495,6 @@ func TwainCurrentConfig() (map[string]any, error) {
 }
 
 // TwainCapability 读一项能力的原始信息（容器类型、当前值、可选值列表）。
-// 注意：DLL 为了读它会临时 enable 数据源，个别设备会有物理动作。
 func TwainCapability(name string) (string, error) {
 	if strings.TrimSpace(name) == "" {
 		return "", errors.New("name 不能为空")
@@ -521,10 +521,9 @@ func TwainCapability(name string) (string, error) {
 	return raw, nil
 }
 
-// TODO(TODO-settings.md #1 #2 #3): DLL 读取侧的名字表、临时 enable、缓冲区越界问题。
+// TODO(TODO-settings.md #1 #3): DLL 读取侧的名字表、缓冲区越界问题。
 // TwainReadCapabilities 在一次 TWAIN 任务里连续读多项能力，返回 编号 -> DLL 原始 JSON。
 // 读不到的项是 "[]"。编号按十进制传给 DLL：它读取侧的名字表残缺且有错，只有编号靠得住。
-// 和 TwainCapability 一样，DLL 每读一项都会临时 enable 数据源，个别设备会有物理动作。
 func TwainReadCapabilities(codes []uint16) (map[uint16]string, error) {
 	out := make(map[uint16]string, len(codes))
 	var err error
@@ -645,12 +644,76 @@ func TwainScan(device, dir string, count int, progress func(page int, path strin
 		scanMu.Unlock()
 
 		if pages == 0 && len(files) == 0 {
-			opErr = errors.New("扫描未产出任何图片（检查是否放纸、盖板是否合上、日志 twain.log）")
+			opErr = scanFailureOnTwainThread()
 		}
 	})
 
 	return files, opErr
 }
+
+// scanFailureOnTwainThread 在扫出 0 页之后，按 DLL 记下的诊断信息说清楚原因。
+// **必须在 TWAIN 线程上**、紧跟着 zhx_Scan 调用。
+//
+// 判断顺序有讲究：设备离线 > 启用失败的 condition code > 送纸器没纸。
+// 设备都不在线时 CAP_FEEDERLOADED 读出来的"没纸"是没有意义的。
+func scanFailureOnTwainThread() error {
+	var enableFailed, cc, feederLoaded, deviceOnline C.int
+	C.zhx_GetScanDiagnosis(&enableFailed, &cc, &feederLoaded, &deviceOnline)
+
+	return errors.New(scanFailureText(int(enableFailed) != 0, int(cc), int(feederLoaded), int(deviceOnline)))
+}
+
+// scanFailureText 是 scanFailureOnTwainThread 的纯函数部分，参数含义见 DLL 的 zhx_GetScanDiagnosis：
+// cc 为 -1 表示没有 condition code；feederLoaded / deviceOnline 为 1 / 0，-1 表示设备不支持该能力。
+func scanFailureText(enableFailed bool, cc, feederLoaded, deviceOnline int) string {
+	if deviceOnline == 0 || cc == twccCheckDeviceOnline {
+		return "扫描失败：扫描仪未连接或未开机（请检查电源、USB 线，或是否被其他扫描程序占用）"
+	}
+
+	if enableFailed {
+		switch cc {
+		case twccNoMedia:
+			return "扫描失败：送纸器里没有纸，请放纸后重试"
+		case twccPaperJam:
+			return "扫描失败：卡纸，请清除卡纸后重试"
+		case twccPaperDoubleFeed:
+			return "扫描失败：检测到重张进纸，请整理纸张后重试"
+		case twccInterlock:
+			return "扫描失败：扫描仪盖板或送纸器未合上"
+		case twccSeqError:
+			// 数据源停在了错误的状态（常见于上一次启用没有正常关闭），重连能恢复。
+			return "扫描失败：扫描仪状态异常（数据源未正常复位），请断开重连扫描仪后重试"
+		case twccDenied, twccMaxConnections:
+			return "扫描失败：扫描仪被其他程序占用，请关闭厂商扫描工具等程序后重试"
+		}
+		// 驱动在启用阶段就拒绝了，但没给出能识别的原因。没纸也可能走到这里，一并提示。
+		if feederLoaded == 0 {
+			return "扫描失败：送纸器里没有纸，请放纸后重试"
+		}
+		if cc >= 0 {
+			return fmt.Sprintf("扫描失败：扫描仪启动失败（TWAIN condition code %d），详见 twain.log", cc)
+		}
+		return "扫描失败：扫描仪启动失败，驱动未返回原因，详见 twain.log"
+	}
+
+	// 启用成功但没有图：多数是没纸，驱动直接结束了本次传输。
+	if feederLoaded == 0 {
+		return "扫描失败：送纸器里没有纸，请放纸后重试"
+	}
+	return "扫描未产出任何图片（检查是否放纸、盖板是否合上，详见 twain.log）"
+}
+
+// TWAIN condition code，取值见 twain.h 的 TWCC_*。
+const (
+	twccMaxConnections    = 4
+	twccSeqError          = 11
+	twccDenied            = 16
+	twccPaperJam          = 20
+	twccPaperDoubleFeed   = 21
+	twccCheckDeviceOnline = 23
+	twccInterlock         = 24
+	twccNoMedia           = 29
+)
 
 // TwainExit 释放 TWAIN 环境，进程退出前调用。
 func TwainExit() {

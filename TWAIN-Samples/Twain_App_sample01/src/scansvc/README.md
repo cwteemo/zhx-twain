@@ -220,8 +220,6 @@ GET  /api/capability?name=0x1118
   读一项能力的原始信息，用来查这台设备到底支持哪些取值。
   name 请用编号（0x1118 即 ICAP_XRESOLUTION）：DLL 读取侧的名字表残缺且有错，
   用名字读大多拿到空数组 []，且仍是 200。详见 SETTINGS_API.md 第 7 节。
-  ⚠ DLL 为了读能力会把数据源临时 enable 到 state 5，个别设备会因此空走一次纸或者亮灯。
-  正因如此 GET /api/config 没有顺带调它。
 
 POST /api/capability    {"name":"ICAP_PIXELTYPE","value":"2"}
   → {"success":true}
@@ -312,6 +310,12 @@ C# 服务端把 RFID 读卡（串口读卡器）和斑马打印机（ZPL）也�
 `getScannerOptions` 按前端的选项模型（`{"option":2,"name":"mode","type":"str-list","list":[...]}`，
 SANE 风格，不是 TWAIN 的 CAP）返回，项目照着虚拟扫描仪的设置面板来、取值现读设备，
 实现在 `scanopt/`（新增选项只改 `scanopt/defs.go`），结构见 [SETTINGS_API.md](SETTINGS_API.md) 8.3。目前只读不写。
+它**不会打开设备**：只有请求的正是已连接的那台才读，否则回空数组；设备在 `scan` 时才连接。
+
+`scan` 扫出 0 页时，`message` 会说明原因：扫描仪未连接/未开机、送纸器没纸、卡纸、重张、
+盖板未合上、被其他程序占用、数据源状态异常（需重连）。依据是 DLL 的 `zhx_GetScanDiagnosis`
+（`MSG_ENABLEDS` 失败时的 condition code + `CAP_FEEDERLOADED` + `CAP_DEVICEONLINE`），
+`twain.log` 里对应一行 `Scan produced no pages. diagnosis: ...`。
 
 ### 4.2 本服务自己的协议（`protocol.go`）
 
@@ -519,8 +523,6 @@ Error: Failed to open data source, condition code = 23 (TWCC_CHECKDEVICEONLINE)
 - 图片按 BMP 原样回传，单张约 11 MB。后续应在服务端转 JPEG/PNG 再传。
 - 扫描是同步阻塞的，多页扫描时 HTTP 可能超时。下一步改成"提交任务返回 taskId + WebSocket 推进度"。
 - `images` 登记表只在内存里，服务重启后旧图片取不回来。
-- `GET /api/capability` 会让 DLL 把数据源临时 enable 到 state 5 才能读能力，个别设备
-  会因此空走一次纸。想干净地读能力，得在 C 侧补一条 state 4 就能查的实现。
 - `zhx_Init()` 里父窗口用的是 `GetDesktopWindow()`，`zhx_Scan` 的消息泵也用它。
   TWAIN 要求应用传自己的窗口句柄，数据源拿它当模态框的 owner 并向该窗口所属线程投消息。
   控制台程序压根没有窗口，DS 弹的框就成了没人处理的孤儿窗口。目前没发现它导致具体故障，

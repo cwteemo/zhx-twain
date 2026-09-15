@@ -186,16 +186,23 @@ func handleLegacyScan(c *wsClient, msg legacyMsg) {
 // handleLegacyScannerOptions 返回扫描仪选项，模型见 options.go。
 //
 // 前端在切换扫描仪时就会自动发这条（ScanImageHeader.vue 监听 curScanner），
-// 所以这里会顺带把设备打开——读能力必须在 state 4。
+// 进页面时默认选中列表第一台，所以这里**绝不能去打开设备**：设备列表来自已安装的
+// 驱动，不代表设备接着——只装了驱动没接实体机，一进页面就会报"打开扫描仪失败"，
+// 打开一台不在线的设备还要卡住 TWAIN 队列好几秒（实测 S8660 MSG_OPENDS 4.2 秒）。
+// 设备只在用户点扫描时才连接（handleLegacyScan）。
 //
-// TODO(TODO-settings.md #12): 选中扫描仪就打开设备，没接的设备会卡住队列二十来秒。
+// 所以只有请求的正好是**已经连着**的那台时才读真实选项，否则回空数组。
+// 空数组而不是 null：前端判的是 `if (!options)`，null 会弹"请关闭其他扫描程序"，
+// 空数组只是面板空着。
+//
 // TODO(TODO-settings.md #14): 只读不写，scan 里还没接收 scannerOptions。
 func handleLegacyScannerOptions(c *wsClient, msg legacyMsg) {
-	if device := msg.str("scanner"); device != "" {
-		if err := TwainConnect(device); err != nil {
-			msg.fail(c, "%s", err.Error())
-			return
-		}
+	st := TwainStatus()
+	device := msg.str("scanner")
+	if !st.Connected || (device != "" && device != st.Device) {
+		msg["data"] = []any{}
+		msg.send(c, legacyCodeOK)
+		return
 	}
 
 	options, err := TwainScannerOptions()
@@ -203,8 +210,6 @@ func handleLegacyScannerOptions(c *wsClient, msg legacyMsg) {
 		msg.fail(c, "%s", err.Error())
 		return
 	}
-	// 读不到任何项也回空数组而不是 null：前端判的是 `if (!options)`，
-	// null 会弹"请关闭其他扫描程序"，空数组只是面板空着。
 	msg["data"] = options
 	msg.send(c, legacyCodeOK)
 }

@@ -6,7 +6,6 @@ package main
 import "scansvc/scanopt"
 
 // TwainScannerOptions 读当前已连接设备的选项。
-// 注意：DLL 每读一项都会把数据源临时 enable 再 disable，这里要读十来项。
 func TwainScannerOptions() ([]scanopt.Option, error) {
 	device := TwainStatus().Device
 

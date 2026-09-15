@@ -25,7 +25,11 @@ DLL 侧（`src/main.cpp`）没有加标记，按函数名找。
 - **现在的绕法**：一律按编号读（`?name=0x1118`）；scansvc 内部（`TwainReadCapabilities`）已经这么做了。
 - **建议修法**：抽一个 `名字 → 编号` 的公共函数，读和写都用它，名字直接用 `twain.h` 的宏。
 
-### #2 【中】读能力时每次都把数据源 enable 到 state 5
+### #2 【中】读能力时每次都把数据源 enable 到 state 5 —— ✅ 已修（2026-09-15）
+
+> 比原先估计的严重：成功判据多判了 `m_DSMState >= 5`（直接调 DSM_Entry 不会更新它），启用成功也被当成失败、
+> 不发 `MSG_DISABLEDS`，数据源卡在 state 5，之后扫描的 `MSG_ENABLEDS` 全部失败。实测 Uniscan Q400 读完
+> `getScannerOptions` 必然扫不了。已整段去掉临时 enable。
 
 - **位置**：`zhx_GetCapability_STR` 里 `MSG_ENABLEDS` / `MSG_DISABLEDS` 那两段
 - **现象**：TWAIN 规范里 `MSG_GET` 在 state 4 就合法，这里却先 enable 再 disable。
@@ -94,7 +98,9 @@ DLL 侧（`src/main.cpp`）没有加标记，按函数名找。
 
 ## 三、getScannerOptions（`scanopt/` + `legacy.go`）
 
-### #12 【高】选中扫描仪就会打开设备
+### #12 【高】选中扫描仪就会打开设备 —— ✅ 已修（2026-09-15）
+
+> 采用"只在已连接同一台设备时读，否则回空数组"；设备在 `scan` 时才连接。
 
 - **位置**：`legacy.go` 的 `handleLegacyScannerOptions`
 - **现象**：前端 `ScanImageHeader.vue` 监听 `curScanner`，一变就发 `getScannerOptions`，
