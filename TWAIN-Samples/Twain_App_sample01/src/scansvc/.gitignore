@@ -6,6 +6,9 @@
 # 扫描出的图片
 scans/
 
+# 导出的扫描仪能力结构（capdump.go）
+capdump/
+
 # 日志
 twain.log
 

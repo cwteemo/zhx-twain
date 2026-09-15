@@ -114,6 +114,20 @@ func handleWSMessage(c *wsClient, payload []byte) {
 		}
 		c.reply(req, map[string]any{"device": device, "status": TwainStatus()})
 
+	case "dumpCapabilities":
+		var p struct {
+			Device string `json:"device"`
+		}
+		if !c.bindParams(req, &p) {
+			return
+		}
+		dump, err := TwainDumpCapabilities(p.Device)
+		if err != nil {
+			c.replyErr(req, err)
+			return
+		}
+		c.reply(req, dump)
+
 	case "getConfig":
 		cfg, err := TwainCurrentConfig()
 		if err != nil {

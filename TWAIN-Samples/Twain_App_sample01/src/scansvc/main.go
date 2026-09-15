@@ -11,6 +11,7 @@
 //	GET  /api/config       读当前扫描参数
 //	POST /api/config       设扫描参数（分辨率/色彩/ADF/双面…）
 //	GET  /api/capability   读一项 TWAIN 能力原始信息（?name=ICAP_PIXELTYPE）
+//	GET  /api/capabilities/dump?device=xx  导出设备全部能力的原始结构并存盘（见 capdump.go）
 //	POST /api/capability   设一项 TWAIN 能力（JSON: {"name":"...","value":"..."}）
 //	POST /api/setting-ui   打开驱动自带的设置面板，阻塞到用户关闭
 //	POST /api/scan         扫描（JSON: {"device":"...","count":1}，count=0 扫到没纸）
@@ -165,6 +166,7 @@ func main() {
 	mux.HandleFunc("/api/reconnect", handleReconnect)
 	mux.HandleFunc("/api/config", handleConfig)
 	mux.HandleFunc("/api/capability", handleCapability)
+	mux.HandleFunc("/api/capabilities/dump", handleCapabilityDump)
 	mux.HandleFunc("/api/setting-ui", handleSettingUI)
 	mux.HandleFunc("/api/scan", handleScan(root))
 	mux.HandleFunc("/api/image", handleImage)

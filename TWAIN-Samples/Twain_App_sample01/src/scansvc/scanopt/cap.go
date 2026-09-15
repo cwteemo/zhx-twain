@@ -11,7 +11,7 @@ import (
 // Cap 对应 zhx_GetCapability_STR 输出数组里的那一个对象。
 // 三种容器的字段混在一起，按 Container 取用。输出格式见 src/main.cpp。
 type Cap struct {
-	Container    string          `json:"container"` // ONEVALUE / ENUMERATION / RANGE
+	Container    string          `json:"container"` // ONEVALUE / ENUMERATION / RANGE / ARRAY
 	ItemType     int             `json:"itemType"`
 	Value        json.RawMessage `json:"value"`        // ONEVALUE
 	CurrentIndex int             `json:"currentIndex"` // ENUMERATION
@@ -62,13 +62,13 @@ func (c *Cap) Current() (float64, bool) {
 	return 0, false
 }
 
-// Choices 取可选值列表。RANGE 没有列表，返回 nil。
+// Choices 取可选值列表（ARRAY 取全部项）。RANGE 没有列表，返回 nil。
 func (c *Cap) Choices() []float64 {
 	if c == nil {
 		return nil
 	}
 	switch c.Container {
-	case "ENUMERATION":
+	case "ENUMERATION", "ARRAY":
 		out := make([]float64, 0, len(c.Items))
 		for _, it := range c.Items {
 			if v, ok := rawNumber(it.Value); ok {

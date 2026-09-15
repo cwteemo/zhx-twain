@@ -36,7 +36,9 @@ DLL 侧（`src/main.cpp`）没有加标记，按函数名找。
 - **影响**：个别设备会亮灯、空走纸。`getScannerOptions` 一次读十来项，就是十来次 enable/disable。
 - **建议修法**：去掉临时 enable；如果某台设备确实只在 state 5 才肯答，再针对它加回来。
 
-### #3 【中】读能力的结果缓冲区可能写穿
+### #3 【中】读能力的结果缓冲区可能写穿 —— ✅ 已修（2026-09-15）
+
+> 改成 `std::string` 拼接，顺带支持 ARRAY 容器、字符串 JSON 转义。
 
 - **位置**：`zhx_GetCapability_STR` 的 `static char result[4096]` + 一路 `sprintf`
 - **现象**：没有越界检查。FIX32 枚举每项约 90 字节，超过 40 来项就溢出。

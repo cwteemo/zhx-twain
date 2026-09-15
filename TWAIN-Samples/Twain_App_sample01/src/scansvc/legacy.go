@@ -102,6 +102,16 @@ func handleLegacyMessage(c *wsClient, raw map[string]any) {
 	case "getScannerOptions":
 		handleLegacyScannerOptions(c, msg)
 
+	case "dumpCapabilities":
+		// 不是旧服务端的指令，是给适配新扫描仪抓真实能力结构用的，见 capdump.go。
+		dump, err := TwainDumpCapabilities(msg.str("scanner"))
+		if err != nil {
+			msg.fail(c, "%s", err.Error())
+			return
+		}
+		msg["data"] = dump
+		msg.send(c, legacyCodeOK)
+
 	case "export", "import":
 		// 前端只拿它关 loading，本服务不负责导入导出。
 		msg.send(c, legacyCodeOK)

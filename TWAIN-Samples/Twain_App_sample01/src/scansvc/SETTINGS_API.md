@@ -291,6 +291,32 @@ FIX32 类型（每个值都额外带 `xxxWhole` / `xxxFrac`）：
 | 400 | 缺少 `name` |
 | 409 | 未连接扫描仪 |
 
+### 3.3 导出设备全部能力（适配新扫描仪用）
+
+```
+GET /api/capabilities/dump?device=<设备名>
+WebSocket: {"cmd":"dumpCapabilities","params":{"device":"..."}}
+           {"handle":"dumpCapabilities","scanner":"..."}
+```
+
+会先连上设备，读 `CAP_SUPPORTEDCAPS`，把设备报的每一项都读出来（设备不报就把 `twain.h` 里的
+标准能力逐项试读），结果在响应里返回，同时存到 exe 旁边的 `capdump\<设备名>_<时间>.json`：
+
+```json
+{
+  "device": "Uniscan Q400",
+  "supportedCapsReported": true,
+  "caps": [
+    {"code": "0x0101", "name": "ICAP_PIXELTYPE", "raw": [{"container":"ENUMERATION", ...}]}
+  ],
+  "unreadable": ["0x1234 CAP_XXX"],
+  "options": [ /* 按现有 scanopt 规则拼出的 getScannerOptions 结果，对照用 */ ]
+}
+```
+
+DLL 同时会给每一项在 `twain.log` 里写一行 `@CAP <编号> (0x....) = <原始 JSON>`。
+实现见 `capdump.go`。
+
 ---
 
 ## 4. 驱动自带设置面板
@@ -406,8 +432,8 @@ DLL 靠固定的传输方式和 `*.bmp` 产物来识别扫描结果，改了扫�
    不认识就返回 `[]`，外面还是 200。**README 第 3 章里 `?name=ICAP_XRESOLUTION` 的示例实际拿到的是空数组。**
    按设备动态补全名字表的 `updateCapabilityMapFromDevice` 调用处被注释掉了。
    在修 DLL 之前，读取一律用编号。
-2. **读取结果缓冲区只有 4096 字节且不做越界检查。** FIX32 类型的枚举每项约 90 字节，
-   超过 40 来项就会写穿缓冲区。DPI、纸张尺寸这类一般到不了，`CAP_SUPPORTEDCAPS` 这种长列表要当心。
+2. ~~读取结果缓冲区只有 4096 字节且不做越界检查。~~ 已改成 `std::string` 拼接，长度不限（需要用新 DLL）；
+   同时支持了 ARRAY 容器（`CAP_SUPPORTEDCAPS` 就是这种），字符串值会做 JSON 转义。
 3. **读取失败和“读到空”无法区分**，都是 `capability: []`，具体原因只能看 `twain.log`。
 4. **未连接时状态码不一致**：`/api/config`、`GET /api/capability`、`/api/setting-ui` 给 409，
    `POST /api/capability` 给 500。
