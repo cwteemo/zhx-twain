@@ -8,3 +8,6 @@ scans/
 
 # 日志
 twain.log
+
+# 运行时生成的配置（含本机路径，不进仓库）
+scansvc.conf

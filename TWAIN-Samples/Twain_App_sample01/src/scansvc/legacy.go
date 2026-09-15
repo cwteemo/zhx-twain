@@ -97,12 +97,7 @@ func handleLegacyMessage(c *wsClient, raw map[string]any) {
 		handleLegacyScan(c, msg)
 
 	case "getScannerOptions":
-		// 先给空数组占位。前端判的是 `if (!options)` —— 空数组是 truthy，
-		// 只会让参数面板空着，不会弹"请关闭其他扫描程序"。
-		// 真正的选项模型（option 编号 + name + type + list）是另一套体系，
-		// 不是 TWAIN 的 CAP，等拿到定义再补。
-		msg["data"] = []any{}
-		msg.send(c, legacyCodeOK)
+		handleLegacyScannerOptions(c, msg)
 
 	case "export", "import":
 		// 前端只拿它关 loading，本服务不负责导入导出。
@@ -188,8 +183,35 @@ func handleLegacyScan(c *wsClient, msg legacyMsg) {
 	}
 }
 
+// handleLegacyScannerOptions 返回扫描仪选项，模型见 options.go。
+//
+// 前端在切换扫描仪时就会自动发这条（ScanImageHeader.vue 监听 curScanner），
+// 所以这里会顺带把设备打开——读能力必须在 state 4。
+//
+// TODO(TODO-settings.md #12): 选中扫描仪就打开设备，没接的设备会卡住队列二十来秒。
+// TODO(TODO-settings.md #14): 只读不写，scan 里还没接收 scannerOptions。
+func handleLegacyScannerOptions(c *wsClient, msg legacyMsg) {
+	if device := msg.str("scanner"); device != "" {
+		if err := TwainConnect(device); err != nil {
+			msg.fail(c, "%s", err.Error())
+			return
+		}
+	}
+
+	options, err := TwainScannerOptions()
+	if err != nil {
+		msg.fail(c, "%s", err.Error())
+		return
+	}
+	// 读不到任何项也回空数组而不是 null：前端判的是 `if (!options)`，
+	// null 会弹"请关闭其他扫描程序"，空数组只是面板空着。
+	msg["data"] = options
+	msg.send(c, legacyCodeOK)
+}
+
 // fileURL 把落盘路径转成前端能取的 URL。
 // 必须以扩展名结尾——前端就是从最后一个点之后取扩展名的。
+// host 是 WebSocket 握手请求里的 Host，用来定主机名；端口见 fileHost()。
 func fileURL(host, path string) (string, error) {
 	rel, err := filepath.Rel(scanRoot, path)
 	if err != nil {
@@ -199,8 +221,6 @@ func fileURL(host, path string) (string, error) {
 	if strings.HasPrefix(rel, "../") {
 		return "", fmt.Errorf("文件 %s 不在扫描目录内", path)
 	}
-	if host == "" {
-		host = "127.0.0.1:5000"
-	}
-	return "http://" + host + "/file/" + rel, nil
+	// 指向 HTTP 端口，和原服务一致（它推的是写死的 http://127.0.0.1:18080/file/...）。
+	return "http://" + fileHost(host) + "/file/" + rel, nil
 }

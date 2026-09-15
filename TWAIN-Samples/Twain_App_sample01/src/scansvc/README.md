@@ -2,8 +2,11 @@
 
 浏览器 → HTTP → Go 中间服务 → cgo → `TWAIN_APP_CMD64.dll` → TWAIN DSM → 扫描仪。
 
-当前范围：**枚举设备 → 打开设备 → 扫描 → 图片回传网页显示**。
-不含能力配置（分辨率/纸张/色彩）、WebSocket 推送、32 位设备支持——留到下一阶段。
+当前范围：**枚举设备 → 打开设备 → 配置参数 → 扫描 → 图片回传网页显示**，
+HTTP 和 WebSocket 两条路都通。另外带一组文件 / 目录管理接口（见第 5 章），
+是从既有的那个 Go 转发服务搬来的，好让这一个进程把前端要的都供上。
+不含 RFID 读卡、条码打印（那两块只有 zhxserver 有，见
+[TODO-rfid-zebra.md](TODO-rfid-zebra.md)）和 32 位设备支持。
 
 ## 1. 先编出 DLL
 
@@ -37,41 +40,120 @@ go build -o scansvc.exe .
 .\scansvc.exe
 ```
 
-参数：
+### 2.1 两个端口
 
-- `-port 5000`            监听端口（默认 5000，等价于 `-addr :5000`）
-- `-addr 127.0.0.1:8010`  监听地址，想限制只允许本机访问时用；只写端口号（`-addr 8010`）也认
-- `-auto-port`            端口被占用时自动向后顺延（最多试 20 个），实际端口看启动日志
-- `-dir scans`            图片保存根目录（每次扫描一个时间戳子目录）
+服务监听两个端口，和被替换掉的那个转发服务保持一致——它本来就是一个进程开两个
+（`StartWebsocket` 占 5000、`StartHttpServer` 占 18080）：
 
-端口也可以用环境变量给，方便打包成服务/快捷方式：
+| | 默认端口 | 前端写死的地址 |
+|---|---|---|
+| WebSocket | **5000** | `new WebSocket("ws://127.0.0.1:5000/")` |
+| HTTP | **18080** | `POST "http://127.0.0.1:18080/dir/verify"` 等 |
 
-```powershell
-set SCANSVC_PORT=8010
-rem 或者 set SCANSVC_ADDR=127.0.0.1:8010
-.\scansvc.exe
+两个地址都编译进打包好的 js 里，改不动：
+
+```js
+new WebSocket("ws://127.0.0.1:5000/")                    // 扫描：scannerList / scan
+POST "http://127.0.0.1:18080/dir/verify"                 // 文件 / 目录管理全是 HTTP
+formatLocalUrl: "http://127.0.0.1:18080/file/" + encodeURIComponent(名字) + "?t=" + Date
 ```
 
-优先级：`-addr` > `-port` > `SCANSVC_ADDR` > `SCANSVC_PORT` > 默认 `:5000`。
+所以两个默认值都不能随便改。但**两个端口供的是同一套路由**，谁也不比谁特殊——
+分开只是为了对齐前端写死的那两个地址，从哪个端口调什么都通，不用记。
 
-**默认端口是 5000**，因为既有前端把 `ws://127.0.0.1:5000/` 写死在代码里，
-本服务是去替换那个中间服务的，端口对不上前端连都连不上。
-
-**8000 端口被占用**时不再直接崩，日志会打出占用提示和排查命令：
+启动日志会把实际端口打出来：
 
 ```
-监听 :8000 失败: listen tcp :8000: bind: address already in use
-端口多半已被别的程序占用，可以：
-  1) 换个端口启动：scansvc.exe -port 8010
-  2) 让它自动顺延：scansvc.exe -auto-port
-  3) 查是谁占着：netstat -ano | findstr :8000
+WebSocket 端口已启动: ws://localhost:5000/  （既有前端写死的地址）
+HTTP 端口已启动: http://localhost:18080  （既有前端写死的地址）
+扫描服务就绪，图片保存于 D:\scansvc\scans
 ```
 
-拿 `netstat` 查出的 PID 再 `tasklist | findstr <PID>` 就能看到是哪个进程。注意 MFC 版应用
-（`TWAIN_App_mfc64.exe`）自带的 HTTP 服务器占的是 8080，跟这里不冲突。
+### 2.2 配置文件（推荐）
 
-启动后浏览器按日志里打印的实际端口打开（默认 <http://localhost:8000>）即可点按钮跑通闭环。
-内置演示页用的是相对路径请求，换端口不用改页面。
+第一次启动时会在 **exe 旁边**自动生成 `scansvc.conf`，所有能自定义的项都在里面，
+带注释，改完重启生效：
+
+```ini
+# WebSocket 端口。前端把 ws://127.0.0.1:5000/ 写死在代码里了，
+# 除非端口冲突否则别改——改了前端那边也得跟着改才连得上。
+# 填 0 表示不监听。
+ws-port = 5000
+
+# HTTP 端口。前端把 http://127.0.0.1:18080 写死在代码里了，同上。
+http-port = 18080
+
+# 监听地址。留空监听所有网卡；只允许本机访问就填 127.0.0.1。
+host =
+
+# 端口被占用时自动向后顺延（最多试 20 个）。
+auto-port = false
+
+# 扫描图片保存根目录。建议写绝对路径。
+dir = scans
+
+# 自动清掉扫描目录下超过 N 小时的图片，0 表示不清理。
+clean-hours = 0
+```
+
+几条规矩：
+
+- **键名和命令行参数一模一样**（去掉前面的 `-`），不用记两套
+- 整行以 `#` 或 `;` 开头的是注释；**行尾不支持注释**——路径里就可能带 `#` 号
+- 文件存成 **UTF-8**。记事本「另存为」时可以选编码；存成 ANSI(GBK) 的话中文路径会乱码，
+  服务启动时会警告。记事本加的 BOM 会自动去掉，CRLF / LF 都认
+- 键名拼错（比如写成 `ws_port`）会在启动日志里点名警告，不会静悄悄地按默认值跑
+- 值不合法（端口越界、该填数字填了字母）也会警告并退回默认值，不会因此起不来
+- 想把配置放别处：`scansvc.exe -config D:\conf\scansvc.conf`
+
+配置文件放 **exe 所在目录**而不是当前工作目录：从快捷方式、计划任务、别的程序拉起
+`scansvc.exe` 时，工作目录是什么全看调用方，配置得跟着 exe 走才稳。
+
+### 2.3 命令行参数与环境变量
+
+配置文件之外，同样的东西也能用命令行或环境变量给，适合临时试一下、或者打包成服务：
+
+| 配置项 | 命令行 | 环境变量 | 默认 |
+|---|---|---|---|
+| WebSocket 端口 | `-ws-port 5000` | `SCANSVC_WS_PORT` | 5000 |
+| HTTP 端口 | `-http-port 18080` | `SCANSVC_HTTP_PORT` | 18080 |
+| 监听地址 | `-host 127.0.0.1` | `SCANSVC_HOST` | 空（所有网卡） |
+| 端口顺延 | `-auto-port` | `SCANSVC_AUTO_PORT` | false |
+| 图片保存目录 | `-dir scans` | `SCANSVC_DIR` | scans |
+| 自动清理 | `-clean-hours 24` | `SCANSVC_CLEAN_HOURS` | 0（不清理） |
+| 配置文件路径 | `-config <路径>` | — | exe 旁边的 `scansvc.conf` |
+
+优先级：**命令行 > 环境变量 > 配置文件 > 内置默认值**。
+
+判的是命令行有没有**显式给过**这个参数，不是拿值和默认值比——`-http-port 0`
+（显式关掉）和"没给"是两回事，拿值去比会被配置文件覆盖回去，等于关不掉。
+
+两个端口设成同一个值时只监听一次（本来就是同一套路由，不会冲突）。
+
+### 2.4 端口被占用
+
+一个端口起不来不影响另一个，日志会说清楚是哪个、怎么查：
+
+```
+WebSocket 端口已启动: ws://localhost:5000/  （既有前端写死的地址）
+⚠ HTTP 端口 18080 监听失败: listen tcp :18080: bind: address already in use
+  端口多半被别的程序占着，可以：
+    1) 查是谁占着：netstat -ano | findstr :18080
+    2) 换个端口：scansvc.exe -ws-port 5001 -http-port 18081
+    3) 让它自动顺延：scansvc.exe -auto-port
+  注意：既有前端把文件管理接口写死成 http://127.0.0.1:18080，这个端口起不来它就调不通。
+  多半是旧的转发服务还开着，关掉它再启动本服务。
+```
+
+拿 `netstat` 查出的 PID 再 `tasklist | findstr <PID>` 就能看到是哪个进程。
+
+**18080 被占最常见的原因就是旧的转发服务还开着**。那种情况最难查：前端的文件管理接口
+照样打得通（打到旧服务上了），但扫描不通——半通不通的状态。启动前先确认一下。
+
+注意 MFC 版应用（`TWAIN_App_mfc64.exe`）自带的 HTTP 服务器占的是 8080，跟这里不冲突。
+
+启动后浏览器打开 <http://localhost:18080> 或 <http://localhost:5000> 都能看到内置演示页，
+点按钮就能跑通闭环。演示页用的是相对路径请求，换端口不用改页面。
 
 ## 3. HTTP 接口
 
@@ -111,6 +193,8 @@ POST /api/reconnect     {"deep":false}
 
 ### 参数
 
+完整的设置 / 获取说明（字段、返回结构、错误码、取值表、已知问题）见 [SETTINGS_API.md](SETTINGS_API.md)。
+
 ```
 GET  /api/config
   → {"resolution":300,"applied":{"feeder":"1","pixelType":"2"}}
@@ -130,9 +214,12 @@ POST /api/config        {"resolution":300,"pixelType":2,"feeder":true,
   可选字段：resolution(DPI) pixelType(0黑白/1灰度/2彩色) feeder(用ADF)
             autoFeed(自动进纸) duplex(双面) paperSize brightness contrast
 
-GET  /api/capability?name=ICAP_XRESOLUTION
-  → {"name":"ICAP_XRESOLUTION","capability":{"container":"ENUMERATION",...,"items":[100,200,300]}}
+GET  /api/capability?name=0x1118
+  → {"name":"0x1118","capability":[{"container":"ENUMERATION",...,
+     "items":[{"index":0,"value":200.0000,...,"isCurrent":false},...]}]}
   读一项能力的原始信息，用来查这台设备到底支持哪些取值。
+  name 请用编号（0x1118 即 ICAP_XRESOLUTION）：DLL 读取侧的名字表残缺且有错，
+  用名字读大多拿到空数组 []，且仍是 200。详见 SETTINGS_API.md 第 7 节。
   ⚠ DLL 为了读能力会把数据源临时 enable 到 state 5，个别设备会因此空走一次纸或者亮灯。
   正因如此 GET /api/config 没有顺带调它。
 
@@ -222,9 +309,9 @@ C# 服务端把 RFID 读卡（串口读卡器）和斑马打印机（ZPL）也�
 当成一条扫描结果去读 `data['base64']`，那是 undefined，紧接着的 `.slice()` 直接抛异常；
 前端本来就靠自己的定时器复位 loading。失败才回 `code:-1`。
 
-`getScannerOptions` 目前返回空数组：它的选项模型（`{"option":136,"name":"flip-side-rotation",
-"type":"str-list","list":[...]}`）是 `option` 编号 + 短横线命名的另一套体系，
-不是 TWAIN 的 CAP，参照实现不在手上。返回空数组前端只是参数面板空着，不报错。
+`getScannerOptions` 按前端的选项模型（`{"option":2,"name":"mode","type":"str-list","list":[...]}`，
+SANE 风格，不是 TWAIN 的 CAP）返回，项目照着虚拟扫描仪的设置面板来、取值现读设备，
+实现在 `scanopt/`（新增选项只改 `scanopt/defs.go`），结构见 [SETTINGS_API.md](SETTINGS_API.md) 8.3。目前只读不写。
 
 ### 4.2 本服务自己的协议（`protocol.go`）
 
@@ -250,7 +337,129 @@ DLL 只会吐 BMP——`zhx_Scan` 靠 `*.bmp` 通配符比对扫描前后的目�
 BMP 解码是自己写的，没用 `golang.org/x/image/bmp`：那个包的新版本要求 Go 1.23+，
 引进来会把 `go.mod` 的版本要求抬上去。支持 1/4/8/24/32 位未压缩 BMP。
 
-## 5. 设计要点
+## 5. 文件 / 目录管理接口（从既有转发服务搬来）
+
+这一组接口是把既有的那个 Go 转发服务（`filemanager` 仓库的 `扫描工具` 分支）照搬过来的，
+路径、表单字段、错误码全部对齐，目的是让 scansvc 一个进程顶掉它，前端不用改一行。
+实现在 `files.go` + `fileutil.go`，两个文件都不碰 TWAIN。
+
+和 `/api/*` 那组的区别，别混：
+
+| | `/api/*` | 本组（`/version`、`/file/*`、`/dir/*`） |
+|---|---|---|
+| 请求体 | JSON | 表单（multipart 或 urlencoded 都认） |
+| 响应体 | `{"success":true,...}` | `{"errorCode":0,"msg":"","data":...}` |
+| HTTP 状态码 | 按语义给 4xx/5xx | **永远 200**，成败看 `errorCode` |
+
+错误码沿用原服务的编号：`1` 通用失败 / `2` 备份目录失败 / `3` 保存上传文件失败 /
+`4` 路径不存在 / `5` 选中的是文件而不是目录。
+
+### 5.1 前端连的是哪个端口
+
+| 前端调用 | 地址 | 谁来应答 |
+|---|---|---|
+| `new WebSocket(...)` | `ws://127.0.0.1:5000/` | `legacy.go`，指令 `scannerList` / `scan` |
+| `dirVerify` / `dirChildren` / `dirOpen` / `dirUpload` | `http://127.0.0.1:18080/dir/*` | `files.go` |
+| `restore` / `upload` | `http://127.0.0.1:18080/file/*` | `files.go` |
+| `formatLocalUrl`（显示图片） | `http://127.0.0.1:18080/file/<编码过的相对路径>?t=` | `files.go` |
+
+两个端口是同一套路由，所以上表的地址换成任意一个端口都通。
+
+**注意有两个不同的前端，别混**：
+
+- `court-document-processing`（部署在 80 端口，日常用的那个）只调两样东西：
+  WebSocket 的 `scannerList` / `scan`，和 `http://127.0.0.1:18080/file/upload`
+  （`src/api/base.js:128`，`localUpload=true` 时走本机转发上传）。**它不从 18080 取页面。**
+- filemanager 内嵌的那个"数字化加工系统"页面才是 `/dir/verify`、`/dir/children`、
+  `/file/restore` 这些接口的调用方。那个页面没有搬进来（见 5.4）。
+
+也就是说第 5 章这一整套接口里，日常那个前端只用得到 `/file/upload` 一个。
+其余的是为了顶替 filemanager 而搬的，用不上也不碍事。
+
+`formatLocalUrl` 用的是 `encodeURIComponent`，会把路径分隔符也编进去
+（`/` → `%2F`、Windows 相对路径的 `\` → `%5C`）。两种都认：`%5C` 直接命中，
+`%2F` 会被 Go 的 ServeMux 规范化成一次 301，浏览器自动跟随，对前端透明。
+
+### 5.2 工作目录
+
+原服务里有个全局可变的 "temp path"，一切文件操作都以它为根。本服务照搬这个概念，
+叫**工作目录**：启动时等于扫描保存目录（`-dir`），前端调 `/dir/verify` 选中档案目录后切过去。
+
+`GET /file/<相对路径>` 找不到文件时，会**回头再到扫描目录下找一遍**。因为工作目录被切走以后，
+之前扫出来的图（URL 形如 `/file/20260911-153000-000/1.png`）还得能打开。
+
+### 5.3 接口清单
+
+```
+GET  /version
+  → 文本：scansvc v2.1-scansvc 工作目录: D:\档案 进程目录: D:\scansvc
+
+GET  /file/<相对路径>[?thumbnail=1]
+  → 文件内容，带 Cache-Control: max-age=7200
+  thumbnail=1 时先找同名的 .jpeg（加工流程另外生成的缩略图），没有才回原图。
+
+POST /file/restore          name=<相对路径>
+  从 <工作目录>_备份 把原图复制回来，覆盖加工过的那份。
+
+POST /file/upload           filename=<相对路径>&server=<业务系统地址>&<其余字段原样透传>
+     header: token
+  → 业务系统的响应原样转回
+  浏览器传不了本地磁盘上的图，所以由本服务读出文件、以 multipart（文件字段名 image）
+  发给业务系统。这就是"转发"二字的由来。
+
+POST /file/temp/path/update path=<目录>
+  直接切工作目录，不备份也不列文件。
+
+POST /dir/verify            dir=<目录>&filenameIgnorePattern=<正则>&filenameOnlyPattern=<正则>
+  → data: ["001.png", "第一卷\002.png", ...]
+  前端进加工流程的第一步：整目录备份到 <目录>_备份（已存在就不动，否则第二次进来会拿
+  加工结果盖掉原图），递归列出文件，并把工作目录切到这里。
+  ignore 命中就跳过；ignore 为空时才看 only，后者反过来——没命中的才跳过。
+
+POST /dir/children          dir=<目录>&filenameIgnorePattern=<正则>
+  → data: {"folders":[...], "files":[...], "dir":"..."}
+  只看一层，给目录树用。不动工作目录。
+
+POST /dir/open              dir=<目录>
+  用资源管理器打开它。
+
+POST /dir/upload            dir=<目录>&filepath=<相对路径>&file=<文件>
+  → data: {"path":"落盘的绝对路径"}
+  不带 file 也算成功，只把目标路径回一遍——前端对没动过的图不会重复上传。
+```
+
+### 5.4 没有搬过来的部分
+
+- **fsnotify 监听目录**。原服务自己不驱动扫描仪，是让厂商驱动把图写进 temp 目录，
+  再靠文件系统事件发现新图、推给前端。scansvc 直接通过 TWAIN 拿图（`legacy.go`），
+  不需要靠猜，那套监听连同"请设置驱动输出为 png/jpeg"的提示一起没搬。
+- **激活码 / 机器码校验**（`middlewares/TokenVerify.go`、`utils/Keychain.go`）。
+  scansvc 是本机扫描服务，不上锁。
+- **filemanager 内嵌的那个前端 SPA**（"数字化加工系统"页面，4.5 MB）。
+  日常用的前端是 `court-document-processing`，部署在 80 端口，页面不从本服务取，
+  搬过来纯属多余。`/` 上是 scansvc 自己的演示页，撇开前端单独试扫描时用。
+- **每小时清 temp 的定时任务**（`modules/crontab.go`）。它在原服务里本来就是注释掉的：
+  它清的是"当前工作目录"，而工作目录会被 `/dir/verify` 切到用户的档案目录去，
+  真跑起来就是在删用户的档案。这里保留能力但只清扫描目录，且默认关闭，见 `-clean-hours`。
+
+### 5.5 和原服务刻意不一致的地方
+
+- **路径穿越**。原服务对 `name` / `filepath` 这类前端传来的相对路径完全不校验，
+  一个 `../..` 就能读写到目录外面。这里统一过 `safeJoin()` 收敛回根目录内。
+- **`/dir/children` 不传忽略规则时返回空**。原服务对空正则没判空，而空正则匹配任何字符串，
+  结果是目录和文件全被过滤掉。这里补了判空。
+- **`/dir/open` 在 Windows 上根本打不开**。原服务是 `exec.Command("cmd /c start", uri)`，
+  把 `"cmd /c start"` 整个当成可执行文件名。这里拆成了正确的参数形式。
+- **转发上传的错误处理**。原服务对网络错误一律忽略，`resp` 为 nil 时直接 panic 掉整个进程；
+  而且它把业务系统的响应 `Unmarshal` 成 map 再重新序列化，19 位的档案 id 会被当成 float64，
+  回到前端变成 `1.2345678901234568e+18`。这里改成错误如实回报、响应体**字节透传**。
+- **`/file/temp/path/update` 加了目录存在校验**。原服务不校验就直接设，
+  设成一个不存在的目录后，之后每次读文件都会莫名其妙地 404。
+
+有一处**明知有问题也照搬了**：`/file/restore` 在备份里找不到原图时，原服务只填 `msg`、
+`errorCode` 仍是 0，前端会当成还原成功。前端的判断逻辑就建在这个行为上，改了反而出事。
+
+## 6. 设计要点
 
 **TWAIN 单线程模型**是整个服务的地基。DLL 里的 `EnableDS()` 会在调用线程上跑 `GetMessage` 消息泵等待数据源事件，而数据源把事件投递到"打开它的那条线程"的消息队列。所以：
 
@@ -277,7 +486,7 @@ BMP 解码是自己写的，没用 `golang.org/x/image/bmp`：那个包的新版
 把设备关掉、退回 state 3。会话模型下每次扫描后调它，等于每扫一批就断一次连接，
 下一批又要重新打开设备（几秒到几十秒）。真正要断开时用 `zhx_CloseDevice()`。
 
-## 6. 打不开设备时怎么查
+## 7. 打不开设备时怎么查
 
 症状：`/api/scan` 卡二三十秒，然后报打开失败，`twain.log` 里是
 
@@ -296,7 +505,15 @@ Error: Failed to open data source, condition code = 23 (TWCC_CHECKDEVICEONLINE)
 
 `MSG_OPENDS` 的耗时和条件码都在 `twain.log` 里，卡二三十秒基本都是驱动在等一台够不着的设备。
 
-## 7. 已知限制 / 下一步
+## 8. 已知限制 / 下一步
+
+- **扫描仪设置相关的待办**（DLL 读能力的 bug、接口不一致、getScannerOptions 的遗留）汇总在
+  [TODO-settings.md](TODO-settings.md)，代码里标了 `TODO(TODO-settings.md #编号)`。
+
+- **RFID 读卡和条码打印没有搬**，前端 `searchRfid/`、`boxManager/`、`warehouseManager/`、
+  `list/` 这几处在用它们，目前只能靠 zhxserver。而 zhxserver 也监听 5000
+  （`zhxserver/Socket/MySocket.cs:39`），和本服务抢端口，两者只能二选一——
+  所以"用 scansvc 顶掉 zhxserver"要等这两块搬完。摸底见 [TODO-rfid-zebra.md](TODO-rfid-zebra.md)。
 
 - `zhx_GetDevicesList()` 返回的是 DLL 用 `_strdup` 分配的内存，而 DLL 静态链接了自己的 CRT，Go 侧 `C.free` 会跨堆释放导致崩溃，所以当前**不释放**（每次枚举泄漏一小段）。修法是在 C 侧补一个 `zhx_FreeString` 导出。
 - 图片按 BMP 原样回传，单张约 11 MB。后续应在服务端转 JPEG/PNG 再传。

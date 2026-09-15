@@ -123,6 +123,7 @@ func handleWSMessage(c *wsClient, payload []byte) {
 		c.reply(req, cfg)
 
 	case "config":
+		// TODO(TODO-settings.md #8): 顶层 success 没按"每项都 ok"算，和 HTTP 版不一致。
 		var cfg ScanConfig
 		if !c.bindParams(req, &cfg) {
 			return
@@ -153,7 +154,7 @@ func handleWSMessage(c *wsClient, payload []byte) {
 	case "setCapability":
 		var p struct {
 			Name  string `json:"name"`
-			Value string `json:"value"`
+			Value string `json:"value"` // TODO(TODO-settings.md #10): 传数字会 bindParams 失败
 		}
 		if !c.bindParams(req, &p) {
 			return
@@ -215,6 +216,7 @@ func (c *wsClient) handleScanCmd(req wsRequest) {
 		}
 	}
 	if p.Config != nil {
+		// TODO(TODO-settings.md #9): 单项失败被忽略，照常开扫。
 		if _, err := TwainApplyConfig(*p.Config); err != nil {
 			c.replyErr(req, err)
 			return

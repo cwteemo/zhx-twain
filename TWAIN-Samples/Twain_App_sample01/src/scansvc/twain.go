@@ -71,6 +71,7 @@ var (
 	mirrorState int
 	mirrorDev   string
 	mirrorBusy  bool
+	// TODO(TODO-settings.md #7): 换设备 / 断开 / 重连都不清空。
 	lastApplied = map[string]string{} // 本服务设置成功过的能力，供 GET /api/config 回显
 )
 
@@ -420,6 +421,7 @@ func TwainApplyConfig(cfg ScanConfig) ([]ConfigResult, error) {
 			} else {
 				// DLL 里设完会读回校验，不等值就算失败。多数扫描仪只支持固定几档 DPI，
 				// 支持哪些看 /api/capability?name=ICAP_XRESOLUTION。
+				// TODO(TODO-settings.md #11): 文案里的 ?name=ICAP_XRESOLUTION 实际读不出来，应为 0x1118。
 				res.Error = "扫描仪未接受这个 DPI（多数设备只支持固定档位，可用 /api/capability?name=ICAP_XRESOLUTION 查）"
 			}
 			results = append(results, res)
@@ -517,6 +519,28 @@ func TwainCapability(name string) (string, error) {
 		raw = "[]"
 	}
 	return raw, nil
+}
+
+// TODO(TODO-settings.md #1 #2 #3): DLL 读取侧的名字表、临时 enable、缓冲区越界问题。
+// TwainReadCapabilities 在一次 TWAIN 任务里连续读多项能力，返回 编号 -> DLL 原始 JSON。
+// 读不到的项是 "[]"。编号按十进制传给 DLL：它读取侧的名字表残缺且有错，只有编号靠得住。
+// 和 TwainCapability 一样，DLL 每读一项都会临时 enable 数据源，个别设备会有物理动作。
+func TwainReadCapabilities(codes []uint16) (map[uint16]string, error) {
+	out := make(map[uint16]string, len(codes))
+	var err error
+	inTwain(func() {
+		if int(C.zhx_GetState()) < StateDSOpen {
+			err = errors.New("尚未连接扫描仪，先调 /api/connect")
+			return
+		}
+		for _, code := range codes {
+			cName := C.CString(fmt.Sprintf("%d", code))
+			// 返回的是 DLL 内部静态缓冲区，下一次调用就会被覆盖，所以立刻拷成 Go 字符串。
+			out[code] = C.GoString(C.zhx_GetCapability_STR(cName))
+			C.free(unsafe.Pointer(cName))
+		}
+	})
+	return out, err
 }
 
 // TwainSetCapability 直接设一项 TWAIN 能力，给 ScanConfig 没覆盖到的场景用。

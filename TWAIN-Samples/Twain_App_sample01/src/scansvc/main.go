@@ -17,14 +17,25 @@
 //	GET  /api/image?id=xx  取回扫描出的图片
 //	WS   /ws  和  WS  /    WebSocket。/ 上同时提供演示页和 WebSocket，按握手头分流，
 //	                       因为既有前端把 ws://127.0.0.1:5000/ 写死了（见 legacy.go）
-//	GET  /file/<路径>      扫描图片的静态出口，URL 以扩展名结尾
 //
-// 监听端口可自定义（优先级：命令行 > 环境变量 > 默认 :8000）：
+// 另有一组文件/目录管理接口（/version、/file/*、/dir/*），是从既有的 Go 转发服务
+// 搬过来的，收表单、回 {"errorCode":...}，见 files.go。
 //
-//	scansvc.exe -port 8010            指定端口
-//	scansvc.exe -addr 127.0.0.1:8010  指定地址+端口（只允许本机访问）
-//	scansvc.exe -auto-port            端口被占用时自动向后顺延
-//	set SCANSVC_PORT=8010             环境变量方式
+// 服务监听两个端口，和被替换掉的那个转发服务保持一致：
+//
+//	5000    WebSocket 端口   前端写死 ws://127.0.0.1:5000/
+//	18080   HTTP 端口        前端写死 http://127.0.0.1:18080/dir/*、/file/*
+//
+// 两个端口供的是**同一套路由**，谁也不比谁特殊——分开只是因为前端把两个地址都
+// 编译进打包好的 js 里了，改不动。两个端口都能自定义：
+//
+//	scansvc.exe -ws-port 5001            改 WebSocket 端口
+//	scansvc.exe -http-port 18081         改 HTTP 端口
+//	scansvc.exe -host 127.0.0.1          只允许本机访问（默认监听所有网卡）
+//	scansvc.exe -auto-port               端口被占用时自动向后顺延
+//	scansvc.exe -http-port 0             不监听 HTTP 端口
+//	set SCANSVC_WS_PORT=5001             环境变量方式
+//	set SCANSVC_HTTP_PORT=18081
 //
 // 编译运行见同目录 README.md。
 package main
@@ -36,11 +47,9 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -51,19 +60,21 @@ import (
 //go:embed index.html
 var indexHTML []byte
 
-// 默认监听地址；端口被 -auto-port 顺延时最多向后试这么多个。
 const (
-	// 默认 5000：既有前端把 ws://127.0.0.1:5000/ 写死在代码里，本服务是去替换
-	// 那个中间服务的，端口对不上前端连都连不上。要改用 -port。
-	defaultAddr   = ":5000"
-	autoPortTries = 20
+	// serviceVersion 由 GET /version 返回。被替换掉的那个转发服务报的是 v2.1，
+	// 前端没有据此分支的逻辑，这里带上自己的名字方便一眼看出连的是哪个服务。
+	serviceVersion = "v2.1-scansvc"
+
+	// defaultScanDir 是扫描图片的默认保存目录，相对启动时的工作目录。
+	defaultScanDir = "scans"
 )
 
 var (
-	addr     = flag.String("addr", "", "监听地址，如 :8000 或 127.0.0.1:8000（留空则按 -port / 环境变量 / 默认值决定）")
-	port     = flag.Int("port", 0, "监听端口，等价于 -addr :<port>；0 表示不指定")
-	autoPort = flag.Bool("auto-port", false, "端口被占用时自动向后顺延寻找可用端口")
-	scanDir  = flag.String("dir", "scans", "扫描图片保存根目录")
+	scanDir = flag.String("dir", defaultScanDir, "扫描图片保存根目录")
+	// 原转发服务有个每小时清一次 temp 的定时任务，但在源码里是注释掉的——
+	// 它清的是"当前工作目录"，而工作目录会被 /dir/verify 切到用户的档案目录去，
+	// 真跑起来就是在删用户的档案。这里保留这个能力但只清扫描根目录，且默认关闭。
+	cleanHours = flag.Int("clean-hours", 0, "自动清理扫描目录下超过多少小时的图片；0 表示不清理")
 )
 
 // 扫描产物登记表：id -> 绝对路径。
@@ -97,7 +108,7 @@ type reconnectRequest struct {
 
 type capabilityRequest struct {
 	Name  string `json:"name"`
-	Value string `json:"value"`
+	Value string `json:"value"` // TODO(TODO-settings.md #10): 传数字会 400
 }
 
 type imageInfo struct {
@@ -109,14 +120,24 @@ type imageInfo struct {
 
 func main() {
 	flag.Parse()
+	// 命令行 > 环境变量 > 配置文件 > 默认值，解析细节见 config.go。
+	// 配置文件不存在时会在 exe 旁边生成一份带注释的模板。
+	cfg = loadSettings()
 
-	root, err := filepath.Abs(*scanDir)
+	root, err := filepath.Abs(cfg.ScanDir)
 	if err != nil {
 		log.Fatalf("解析保存目录失败: %v", err)
 	}
 	scanRoot = root
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		log.Fatalf("创建保存目录失败: %v", err)
+	}
+	// 工作目录（对应原转发服务的 temp path）先指向扫描目录，
+	// 前端调 /dir/verify 选中档案目录后会被换掉。
+	setWorkDir(root)
+
+	if cfg.CleanHours > 0 {
+		go startCleaner(root, time.Duration(cfg.CleanHours)*time.Hour)
 	}
 
 	log.Println("正在初始化 TWAIN 环境...")
@@ -148,115 +169,38 @@ func main() {
 	mux.HandleFunc("/api/scan", handleScan(root))
 	mux.HandleFunc("/api/image", handleImage)
 	mux.HandleFunc("/ws", handleWS)
-	// 图片的静态出口。既有前端是从 URL 结尾取扩展名的（xxx.png），
-	// /api/image?id=xxx 那种带查询串的形式它认不了，所以另开一条。
-	mux.Handle("/file/", http.StripPrefix("/file/", http.FileServer(http.Dir(root))))
+	// 文件 / 目录管理那一组（含 /file/，图片的静态出口也在里面）。
+	// 既有前端是从 URL 结尾取扩展名的（xxx.png），/api/image?id=xxx 那种
+	// 带查询串的形式它认不了，所以图片始终有 /file/ 这条以扩展名结尾的出口。
+	registerFileRoutes(mux)
 
-	listenAddr := resolveAddr()
-	ln, err := listenWithFallback(listenAddr, *autoPort)
-	if err != nil {
-		// 这里不用 log.Fatalf：它会跳过 defer TwainExit()，让 DSM/数据源没关干净。
-		log.Printf("监听 %s 失败: %v", listenAddr, err)
-		log.Printf("端口多半已被别的程序占用，可以：")
-		log.Printf("  1) 换个端口启动：scansvc.exe -port 8010")
-		log.Printf("  2) 让它自动顺延：scansvc.exe -auto-port")
-		log.Printf("  3) 查是谁占着：netstat -ano | findstr :%s", portOf(listenAddr))
+	// 两个端口（WebSocket 5000 / HTTP 18080）供同一套路由，见 serve.go。
+	serveErr, listening, closeAll := startServers(withCORS(mux))
+	defer closeAll()
+	if listening == 0 {
+		log.Printf("没有任何端口监听成功，服务退出")
 		return
 	}
-	defer ln.Close()
 
-	log.Printf("扫描服务已启动: http://localhost:%s  （图片保存于 %s）", portOf(ln.Addr().String()), root)
-	if err := http.Serve(ln, withCORS(mux)); err != nil {
+	log.Printf("扫描服务就绪，图片保存于 %s", root)
+
+	// 任一监听挂掉就整体退出：前端两个端口都要用，剩一个也是半残状态，
+	// 与其让它带病运行不如退干净，让人一眼看出要重启。
+	if err := <-serveErr; err != nil {
 		log.Printf("服务异常退出: %v", err)
 	}
 }
 
-// resolveAddr 按 命令行 flag > 环境变量 > 默认值 的优先级决定监听地址。
-func resolveAddr() string {
-	if v := strings.TrimSpace(*addr); v != "" {
-		return normalizeAddr(v)
-	}
-	if *port > 0 {
-		return ":" + strconv.Itoa(*port)
-	}
-	if v := strings.TrimSpace(os.Getenv("SCANSVC_ADDR")); v != "" {
-		return normalizeAddr(v)
-	}
-	if v := strings.TrimSpace(os.Getenv("SCANSVC_PORT")); v != "" {
-		return normalizeAddr(v)
-	}
-	return defaultAddr
-}
-
-// normalizeAddr 允许只写端口号这种简写（"8010" → ":8010"）。
-func normalizeAddr(s string) string {
-	if !strings.Contains(s, ":") {
-		return ":" + s
-	}
-	return s
-}
-
-// portOf 从监听地址里取出端口号，取不到就原样返回，只用于日志和提示。
-func portOf(addr string) string {
-	if _, p, err := net.SplitHostPort(addr); err == nil {
-		return p
-	}
-	return addr
-}
-
-// listenWithFallback 在指定地址上监听；开了 auto 就在端口被占用时向后顺延，
-// 直到找到一个能用的（最多试 autoPortTries 个）。
-func listenWithFallback(addr string, auto bool) (net.Listener, error) {
-	ln, err := net.Listen("tcp", addr)
-	if err == nil || !auto {
-		return ln, err
-	}
-
-	host, portStr, splitErr := net.SplitHostPort(addr)
-	if splitErr != nil {
-		return nil, err
-	}
-	base, convErr := strconv.Atoi(portStr)
-	if convErr != nil {
-		return nil, err
-	}
-
-	firstErr := err
-	for i := 1; i <= autoPortTries; i++ {
-		next := base + i
-		if next > 65535 {
-			break
-		}
-		cand := net.JoinHostPort(host, strconv.Itoa(next))
-		if ln, err := net.Listen("tcp", cand); err == nil {
-			log.Printf("端口 %d 不可用（%v），已自动顺延到 %d", base, firstErr, next)
-			return ln, nil
-		}
-	}
-	return nil, firstErr
-}
-
-// withCORS 允许业务系统从其它域名调用本机服务。
-func withCORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
+// handleIndex 是根路径：WebSocket 握手走 WebSocket，普通请求给内置演示页。
+//
+// 既有前端连的是 ws://127.0.0.1:5000/ ——根路径，没有子路径，所以只能按握手头分流。
+// 日常用的前端（court-document-processing）部署在 80 端口，页面不从这里取，
+// 这个演示页是撇开前端单独试扫描时用的。
 func handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
-	// 既有前端连的是 ws://127.0.0.1:5000/ ——根路径，没有子路径。
-	// 所以这里按握手头分流：带 Upgrade: websocket 的走 WebSocket，其余给演示页。
 	if websocket.IsWebSocketUpgrade(r) {
 		handleWS(w, r)
 		return
@@ -441,6 +385,7 @@ func handleCapability(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "name 不能为空")
 			return
 		}
+		// TODO(TODO-settings.md #6): 未连接时这里给 500，其它设置接口给 409。
 		if err := TwainSetCapability(req.Name, req.Value); err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
@@ -476,6 +421,7 @@ func handleScan(root string) http.HandlerFunc {
 			}
 		}
 		if req.Config != nil {
+			// TODO(TODO-settings.md #9): 单项失败被忽略，照常开扫。
 			if _, err := TwainApplyConfig(*req.Config); err != nil {
 				writeErr(w, http.StatusConflict, err.Error())
 				return
