@@ -16,11 +16,14 @@ package main
 // 图片不内联：前端 uploadFile 里是 `base64.slice(base64.lastIndexOf('.') + 1)`
 // 这样取扩展名的，所以给的必须是**以扩展名结尾的 URL**（.../xxx.png），
 // 不能是 /api/image?id=123 这种查询串。图片由本服务的 /file/ 静态路由提供。
+// 而且 URL 里 /file/ 后面只能有文件名、不能带子目录，前端上传时只取最后一段，
+// 见 moveToScanRoot。
 
 import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -160,7 +163,13 @@ func handleLegacyScan(c *wsClient, msg legacyMsg) {
 			log.Printf("第 %d 页格式转换失败: %v", page, convErr)
 		}
 
-		url, urlErr := fileURL(c.host, converted)
+		flat, moveErr := moveToScanRoot(converted)
+		if moveErr != nil {
+			log.Printf("第 %d 页移到扫描根目录失败: %v", page, moveErr)
+			return
+		}
+
+		url, urlErr := fileURL(c.host, flat)
 		if urlErr != nil {
 			log.Printf("第 %d 页生成访问地址失败: %v", page, urlErr)
 			return
@@ -177,10 +186,44 @@ func handleLegacyScan(c *wsClient, msg legacyMsg) {
 
 	// 前端自己控制连续扫描（定时器循环发 scan），所以这里一次只扫一页，
 	// 和旧服务端的 deRunScan 行为对齐。
-	if _, err := TwainScan("", dir, 1, progress); err != nil {
+	_, err = TwainScan("", dir, 1, progress)
+	// 图都已经挪到扫描根目录了，临时目录空了就删掉；没空（有页处理失败）就留着备查。
+	os.Remove(dir)
+	if err != nil {
 		msg.fail(c, "%s", err.Error())
 		return
 	}
+}
+
+// moveToScanRoot 把扫描出的图从本次扫描的临时目录挪到扫描根目录，返回新路径。
+//
+// 为什么要平铺：前端上传时是 `url.substring(url.lastIndexOf('/') + 1)` 只取 URL
+// 最后一段当 filename 传给 /file/upload 的（court-document-processing 加工/通用分支
+// ScanCom/Updata.js）。原服务的图就平铺在 temp 根目录下，最后一段就是完整相对路径；
+// 这里要是留在时间戳子目录里，子目录就被前端丢掉了，上传时找不到文件。
+//
+// 临时目录本身不能省：DLL 靠"扫描前后目录里新增的 .bmp"识别产物，要一个干净目录。
+//
+// 重名时加 _1、_2 后缀，绝不覆盖：DLL 的文件名是 进程内固定的批次号 + 序号，
+// 而原 BMP 转换后会被删掉，DLL 在目录里找不到旧文件，序号会从 1 重新数，
+// 同一次运行里前后两次扫描产出同名文件是常态。覆盖掉的话，前端已显示、
+// 还没上传完的那页就被换成了新扫的图。扫描在 TWAIN 线程上串行，查了再挪不会有竞争。
+func moveToScanRoot(path string) (string, error) {
+	if filepath.Dir(path) == scanRoot {
+		return path, nil
+	}
+
+	ext := filepath.Ext(path)
+	stem := strings.TrimSuffix(filepath.Base(path), ext)
+	dst := filepath.Join(scanRoot, stem+ext)
+	for i := 1; fileExist(dst); i++ {
+		dst = filepath.Join(scanRoot, fmt.Sprintf("%s_%d%s", stem, i, ext))
+	}
+
+	if err := os.Rename(path, dst); err != nil {
+		return "", err
+	}
+	return dst, nil
 }
 
 // handleLegacyScannerOptions 返回扫描仪选项，模型见 options.go。

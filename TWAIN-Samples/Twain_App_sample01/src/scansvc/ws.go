@@ -46,8 +46,14 @@ type wsClient struct {
 	conn *websocket.Conn
 	send chan []byte
 	// host 是握手请求里的 Host（如 127.0.0.1:5000），用来拼图片的访问地址。
-	host     string
-	closeOne sync.Once
+	host string
+
+	// mu 保护 closed 和"往 send 里塞 / 关掉 send"这两个动作。
+	// 不能只靠 sync.Once 关 channel：往已关闭的 channel 发送会直接 panic，
+	// 而 select + default 挡不住这个 panic。扫描回调在 TWAIN 线程（cgo 回调）里 Push，
+	// 那边一 panic 整个进程就没了——扫描期间刷新页面（新连接顶掉旧连接）就能触发。
+	mu     sync.Mutex
+	closed bool
 }
 
 // 旧的 C# 服务端只保留一条连接：新连接进来就把之前的全部关掉。前端很可能依赖
@@ -61,16 +67,34 @@ var (
 // 队列满（对端消费不动）时丢弃并断开，不阻塞调用方——绝不能让一条卡死的
 // WebSocket 把 TWAIN 线程拖住。
 func (c *wsClient) Push(payload []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.closed {
+		// 连接已经断了（页面刷新、被新连接顶掉），这条丢掉。
+		log.Printf("WebSocket 连接已关闭，丢弃一条出站消息（%d 字节）", len(payload))
+		return
+	}
 	select {
 	case c.send <- payload:
 	default:
 		log.Printf("WebSocket 出站队列已满，断开该连接（对端消费不过来）")
-		c.close()
+		c.closeLocked()
 	}
 }
 
 func (c *wsClient) close() {
-	c.closeOne.Do(func() { close(c.send) })
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.closeLocked()
+}
+
+// closeLocked 关掉出站队列，调用方必须持有 c.mu。
+func (c *wsClient) closeLocked() {
+	if !c.closed {
+		c.closed = true
+		close(c.send)
+	}
 }
 
 // handleWS 是 WebSocket 端点。

@@ -149,7 +149,7 @@ func handleVersion(w http.ResponseWriter, r *http.Request) {
 // handleFileGet 读工作目录下的文件。
 //
 // 找不到时还会去扫描根目录下再找一遍：工作目录被 /dir/verify 换到别的档案目录之后，
-// 之前扫出来的图（URL 是 /file/<时间戳目录>/<页号>.png）仍然要能打开。
+// 之前扫出来的图（URL 是 /file/<文件名>，平铺在扫描目录根下）仍然要能打开。
 func handleFileGet(w http.ResponseWriter, r *http.Request) {
 	rel := strings.TrimPrefix(r.URL.Path, "/file/")
 	if rel == "" {
@@ -263,8 +263,23 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	full, ok := safeJoin(getWorkDir(), name)
-	if !ok {
+	// 和 GET /file/ 一样先找工作目录、再找扫描目录：工作目录被 /dir/verify 切走以后，
+	// 扫描出来的图还得能传。都找不到时用第一个候选的路径，让报错里带上实际找的位置。
+	full := ""
+	for _, root := range candidateRoots() {
+		p, ok := safeJoin(root, name)
+		if !ok {
+			continue
+		}
+		if full == "" {
+			full = p
+		}
+		if fileExist(p) && !isDir(p) {
+			full = p
+			break
+		}
+	}
+	if full == "" {
 		writeAPIErr(w, errCodeFail, "文件名无效【%s】", name)
 		return
 	}
