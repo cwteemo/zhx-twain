@@ -8,6 +8,15 @@ HTTP 和 WebSocket 两条路都通。另外带一组文件 / 目录管理接口�
 不含 RFID 读卡、条码打印（那两块只有 zhxserver 有，见
 [TODO-rfid-zebra.md](TODO-rfid-zebra.md)）和 32 位设备支持。
 
+**文档分工**：本文是给开发和运维看的（编译、部署、全部接口、内部设计）。
+**发给客户端（业务系统前端）的是这两份**：
+
+- [CLIENT_API.md](CLIENT_API.md) —— 对接说明：WebSocket 扫描协议、取图、转发上传、错误提示、对接约定
+- [SCANNER_OPTIONS_API.md](SCANNER_OPTIONS_API.md) —— 扫描仪设置项协议
+
+维护用的还有 [SCANNER_OPTIONS_CONFIG.md](SCANNER_OPTIONS_CONFIG.md)（设置项配置怎么写）、
+[SETTINGS_API.md](SETTINGS_API.md)（直接读写 TWAIN 能力的底层接口）。
+
 ## 1. 先编出 DLL
 
 用 VS 打开 `TWAIN-Samples/Twain_App_sample01/visual_studio/TWAIN_APP_VS2017.sln`：
