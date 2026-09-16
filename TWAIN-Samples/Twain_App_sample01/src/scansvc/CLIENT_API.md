@@ -17,6 +17,7 @@
 | HTTP | `http://127.0.0.1:18080` | 取图片、转发上传、查状态；也能扫描（异步任务，见第 7 章） |
 
 - 两个端口供的是**同一套路由**，功能上不分主次；分成两个只是为了兼容既有前端写死的地址。
+- WebSocket 连根路径 `/` 即可；`ws://127.0.0.1:5000/ws` 也是同一个端点。
 - 已开 CORS（`Access-Control-Allow-Origin: *`），业务系统部署在哪个域名都能调。
 - 服务没启动时，WebSocket 连不上、HTTP 请求直接失败，前端要给出"请启动扫描服务"之类的提示。
 
@@ -53,6 +54,8 @@
 - `code`：`0` 成功，`-1` 失败。失败原因在 `msg` 和 `message` 里（两个字段内容一样，取哪个都行），
   是中文，可以直接显示给用户。
 - 同一时刻**只保留一条连接**：新连接接入时旧连接会被关掉（页面刷新后不会残留）。
+- 发过去的内容**不是合法 JSON** 时，回的是 `{"cmd":"error","success":false,"error":"消息不是合法 JSON: ..."}`，
+  这条没有 `handle` 也没有 `code`。按 `data.code !== 0` 判断仍然安全，但日志里看到它就是消息拼错了。
 - 服务端会定期发 ping，客户端用标准 WebSocket API 即可，不用额外处理。
 
 ### 3.2 scannerList —— 扫描仪列表
@@ -108,6 +111,7 @@
 | 指令 | 行为 |
 |---|---|
 | `{"handle":"export"}` / `{"handle":"import"}` | 直接回 `code:0`，本服务不负责导入导出（老前端拿它关 loading） |
+| `{"handle":"dumpCapabilities","scanner":"设备名"}` | 导出这台扫描仪支持的全部 TWAIN 能力并存盘，回 `code:0`。**排查问题时服务方会让你发这个**，客户端日常不用 |
 | `{"handle":"rfidRead"}`、`codePrintList`、`codePrint` | 回 `code:-1` 并说明：RFID 读卡和条码打印不在本服务范围内 |
 | 其它没实现的 | 回 `code:-1`，`msg` 里写明指令名 |
 
@@ -167,12 +171,13 @@ server   = https://业务系统/api/file/upload         # 目标地址，完整 
 
 | 接口 | 用途 |
 |---|---|
-| `GET /version` | 一行文本：服务版本 + 工作目录。用来探测服务在不在 |
+| `GET /version` | 一行文本：服务版本 + 工作目录 + 进程目录。用来探测服务在不在 |
 | `GET /api/devices` | `{"devices":[...],"count":2}`，和 `scannerList` 等价 |
-| `GET /api/status` | 当前状态：`{"ready":true,"connected":true,"device":"...","scanning":false}`，扫描期间也能立刻返回 |
+| `GET /api/status` | 当前状态：`{"state":4,"stateText":"已连接扫描仪","ready":true,"connected":true,"device":"...","scanning":false}`，扫描期间也能立刻返回 |
 | `GET /api/scanner-options?device=<设备名>` | 设置项，和 `getScannerOptions` 等价 |
 | `POST /api/scanner-options` | 下发设置项，和 `setScannerOptions` 等价，body `{"device":"...","scannerOptions":{...}}` |
 | `POST /file/restore` | 从备份目录还原原图（`name=<相对路径>`） |
+| `POST /file/temp/path/update` | 切换服务的工作目录（`path=<目录>`），影响 `/file/` 的查找起点 |
 | `POST /dir/verify`、`/dir/children`、`/dir/open`、`/dir/upload` | 目录浏览 / 备份 / 打开，给"数字化加工"那类页面用 |
 
 扫描本身也能走 HTTP，见下一节。（`POST /api/scan` 是早期留下的调试接口，产出是原始 BMP、
@@ -189,7 +194,32 @@ server   = https://业务系统/api/file/upload         # 目标地址，完整 
 扫描是**异步任务**：发起后立刻返回 `jobId`，扫描在后台跑，客户端轮询进度。
 这样不受浏览器和中间代理的超时限制——走送纸器扫一叠纸挂几分钟很正常。
 
-### 7.1 发起扫描
+### 7.1 取扫描仪列表
+
+纯 HTTP 对接时，设备列表和设置项都有对应的接口，不需要 WebSocket：
+
+```
+GET http://127.0.0.1:18080/api/devices
+← {"devices":["Uniscan Q400","KODAK Scanner: S2000"],"count":2}
+
+GET http://127.0.0.1:18080/api/scanner-options?device=Uniscan%20Q400     # 取设置项
+POST http://127.0.0.1:18080/api/scanner-options                          # 下发设置项
+     {"device":"Uniscan Q400","scannerOptions":{"dpi":300}}
+```
+
+和 WebSocket 的 `scannerList` / `getScannerOptions` / `setScannerOptions` 完全等价，
+返回结构也一样（设置项的结构见 [SCANNER_OPTIONS_API.md](SCANNER_OPTIONS_API.md)）。
+所以走 HTTP 的完整流程是：
+
+```
+GET  /api/devices                 → 让用户选一台
+GET  /api/scanner-options?device= → 画设置面板（可选）
+POST /api/scan/start              → 拿 jobId
+GET  /api/scan/status?job=        → 轮询，拿到每页的 url
+POST /file/upload                 → 转发上传
+```
+
+### 7.2 发起扫描
 
 ```
 POST http://127.0.0.1:18080/api/scan/start
@@ -198,7 +228,7 @@ Content-Type: application/json
 {
   "device": "Uniscan Q400",       // 设备名；不传则用当前已连接的那台
   "extension": "jpeg",            // 图片格式：jpeg / jpg / png，默认 png
-  "count": 1,                     // 扫几页；0 表示走送纸器一直扫到没纸。默认 1
+  "count": 1,                     // 扫几页；不传按 1 算，显式传 0 表示走送纸器一直扫到没纸
   "scannerOptions": {"dpi": 300}  // 可选，同 SCANNER_OPTIONS_API.md
 }
 ```
@@ -216,7 +246,7 @@ Content-Type: application/json
 | 409 | 上一次扫描还没结束；或 `scannerOptions` 有项设不上（这时 `results` 里是逐项结果，**不会开始扫描**） |
 | 500 | 打开扫描仪失败（设备没接、被占用、选错型号…） |
 
-### 7.2 查进度
+### 7.3 查进度
 
 ```
 GET http://127.0.0.1:18080/api/scan/status?job=<id>     # 不带 job 参数时给最近一次任务
@@ -238,7 +268,7 @@ GET http://127.0.0.1:18080/api/scan/status?job=<id>     # 不带 job 参数时�
 - `url` 直接用；`file` 就是 `/file/upload` 要的 `filename`。
 - 查不到任务返回 404：只保留最近 20 次任务的结果，扫完及时取走。
 
-### 7.3 一次连续扫描怎么写
+### 7.4 一次连续扫描怎么写
 
 ```
 POST /api/scan/start {"device":"...","extension":"jpeg","count":0}   // 0 = 扫到没纸
@@ -256,7 +286,9 @@ POST /api/scan/start {"device":"...","extension":"jpeg","count":0}   // 0 = 扫�
 
 ### 8.1 扫描失败
 
-`scan` 回 `code:-1` 时，`msg` 已经是可以直接显示的中文，常见几种：
+`scan` 回 `code:-1` 时，`msg` 已经是可以直接显示的中文。下表列的是**关键词**，
+实际字符串通常带"扫描失败："前缀，"打开扫描仪失败: ..."后面还跟着一段排查提示——
+**直接把 `msg` 原样显示即可，不要按关键词做匹配替换**：
 
 | 提示 | 客户端建议动作 |
 |---|---|
@@ -288,8 +320,9 @@ POST /api/scan/start {"device":"...","extension":"jpeg","count":0}   // 0 = 扫�
 - **设置项不要写死**：数量、顺序、可选值都由服务端给，按控件类型通用渲染，
   遇到不认识的控件类型跳过即可（详见设置项文档）。
 - **连续扫描由客户端控制节奏**，服务端一次 `scan`（或一次 `/api/scan/start`）只做一轮。
-- **同一时刻只能有一次扫描**：WebSocket 和 HTTP 两条路共用一台扫描仪，HTTP 发起时
-  如果上一次还没结束会直接返回 409。
+- **不要并发扫描**：一台扫描仪同一时刻只能扫一件事。HTTP 方式发起时，如果**上一次 HTTP 任务**
+  还没结束会返回 409；但 WebSocket 和 HTTP 混用时服务端**不会**互相拦截，
+  请求会排队等前一次扫完（表现为卡住很久），所以两条路不要同时用。
 - **上传一律走 `/file/upload` 转发**，不要尝试在浏览器里读本地文件。
 - 请求里的自定义字段会原样回显，用它把异步返回的图片对应回业务数据（页序号、档案 id 等）。
 
@@ -382,6 +415,8 @@ async function uploadPage(url, sort) {
 ### A.2 HTTP（不方便用 WebSocket 时）
 
 ```js
+// 设备列表：const { devices } = await fetch(HTTP_URL + '/api/devices').then(r => r.json())
+
 async function scanOnce(device, sort) {
   const started = await fetch(HTTP_URL + '/api/scan/start', {
     method: 'POST',
@@ -424,4 +459,4 @@ async function scanOnce(device, sort) {
 - [ ] 上传走 `/file/upload`，业务字段随表单透传
 - [ ] 失败时直接显示服务返回的 `msg` / `error`，没有替换成"操作失败"这种笼统文案
 - [ ] 连续扫描的节奏由客户端控制，上一轮结束才发下一轮
-- [ ] 同一时刻没有并发发起两次扫描（HTTP 方式会直接返回 409）
+- [ ] 同一时刻没有并发发起两次扫描（同一条路的 HTTP 任务会被 409 挡住；WS 和 HTTP 混用不会拦，要自己保证）

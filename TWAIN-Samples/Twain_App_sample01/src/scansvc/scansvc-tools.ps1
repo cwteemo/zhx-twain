@@ -10,6 +10,8 @@ scansvc 维护小工具：导出扫描仪能力、查看设置项、查看配置
   scansvc-tools.bat devices             扫描仪列表
   scansvc-tools.bat dump [设备名]        导出扫描仪能力（不带设备名会让你选）
   scansvc-tools.bat options [设备名]     查看设置项
+  scansvc-tools.bat set [设备名] -Set "dpi=300,colorMode=gray"     修改设置项（不带 -Set 会让你挑）
+  scansvc-tools.bat scan [设备名] -Count 1 -Extension jpeg -Set "dpi=300"   扫描测试（HTTP 异步接口）
   scansvc-tools.bat config              设置项配置状态（内置 / 现场覆盖）
   scansvc-tools.bat builtin-config      下载内置设置项配置，存成 scanner-options.jsonc
   scansvc-tools.bat start / stop        启动 / 停止 scansvc.exe
@@ -23,7 +25,12 @@ scansvc 维护小工具：导出扫描仪能力、查看设置项、查看配置
 param(
     [string] $Command = '',
     [string] $Device = '',
-    [int] $Port = 0
+    [int] $Port = 0,
+    # set / scan 用：设置项，形如 "dpi=300,colorMode=gray"
+    [string] $Set = '',
+    # scan 用：扫几页（0 = 走送纸器扫到没纸）、图片格式
+    [int] $Count = 1,
+    [string] $Extension = 'jpeg'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -109,6 +116,53 @@ function Invoke-Api {
         }
         return $null
     }
+}
+
+# Invoke-ApiPost 发 JSON 请求。失败时同样把服务端给的中文原因带出来。
+function Invoke-ApiPost {
+    param(
+        [string] $Path,
+        $Body,
+        [int] $TimeoutSec = 60
+    )
+    $url = $script:BaseUrl + $Path
+    try {
+        $json = $Body | ConvertTo-Json -Depth 6 -Compress
+        return Invoke-RestMethod -Uri $url -Method Post -Body $json -ContentType 'application/json; charset=utf-8' -TimeoutSec $TimeoutSec @script:HttpArgs
+    } catch {
+        Write-Host ''
+        Write-Host ('请求失败: ' + $url) -ForegroundColor Red
+        $detail = Get-ErrorDetail $_
+        if ($detail) {
+            Write-Host ('  服务返回: ' + $detail) -ForegroundColor Red
+        } else {
+            Write-Host ('  ' + $_.Exception.Message) -ForegroundColor Red
+        }
+        return $null
+    }
+}
+
+# ParseOptionPairs 把 "dpi=300,colorMode=gray" 解析成哈希表。
+# 纯数字按数字发，true/false 按布尔发——服务端两种都认，但发对类型更贴近前端的真实用法。
+function ParseOptionPairs {
+    param([string] $Text)
+    $out = @{}
+    if (-not $Text) { return $out }
+    foreach ($pair in $Text.Split(',')) {
+        $kv = $pair.Split('=', 2)
+        if ($kv.Count -ne 2) {
+            Write-Host ('忽略写法不对的设置项: ' + $pair + '（应为 key=value）') -ForegroundColor Yellow
+            continue
+        }
+        $key = $kv[0].Trim()
+        $val = $kv[1].Trim()
+        if ($val -match '^-?\d+$')            { $out[$key] = [int] $val }
+        elseif ($val -match '^-?\d+\.\d+$')  { $out[$key] = [double] $val }
+        elseif ($val -eq 'true')             { $out[$key] = $true }
+        elseif ($val -eq 'false')            { $out[$key] = $false }
+        else                                 { $out[$key] = $val }
+    }
+    return $out
 }
 
 # ---- 各项功能 ----
@@ -230,6 +284,136 @@ function Show-Options {
         }
         if ($null -ne $opt.min) {
             Write-Host ('               范围: ' + $opt.min + ' ~ ' + $opt.max + '  步长 ' + $opt.step)
+        }
+    }
+}
+
+# Set-Options 下发设置项。不带 -Set 时列出当前设置项，让用户挑一项改。
+function Set-Options {
+    param([string] $Name, [string] $Pairs)
+
+    $device = Select-Device -Name $Name
+    if (-not $device) { return }
+
+    $values = ParseOptionPairs $Pairs
+    if ($values.Count -eq 0) {
+        $res = Invoke-Api -Path ('/api/scanner-options?device=' + [uri]::EscapeDataString($device)) -TimeoutSec 60
+        if ($null -eq $res) { return }
+        if ($res.options.Count -eq 0) {
+            Write-Host '这台设备还没有设置项（先扫一次，或用菜单里的"查看设置项"确认）。' -ForegroundColor Yellow
+            return
+        }
+
+        Write-Host ''
+        for ($i = 0; $i -lt $res.options.Count; $i++) {
+            $o = $res.options[$i]
+            Write-Host ('  [' + ($i + 1) + '] ' + $o.label + ' (' + $o.key + ')  当前: ' + $o.value)
+        }
+        $pick = Read-Host '选要修改的项（直接回车取消）'
+        if (-not $pick) { return }
+        $idx = $pick -as [int]
+        if ($null -eq $idx -or $idx -lt 1 -or $idx -gt $res.options.Count) {
+            Write-Host '编号不对。' -ForegroundColor Yellow
+            return
+        }
+
+        $opt = $res.options[$idx - 1]
+        Write-Host ''
+        if ($opt.choices) {
+            for ($i = 0; $i -lt $opt.choices.Count; $i++) {
+                Write-Host ('  [' + ($i + 1) + '] ' + $opt.choices[$i].label + '  (' + $opt.choices[$i].value + ')')
+            }
+            $vp = Read-Host '选取值编号'
+            $vi = $vp -as [int]
+            if ($null -eq $vi -or $vi -lt 1 -or $vi -gt $opt.choices.Count) {
+                Write-Host '编号不对。' -ForegroundColor Yellow
+                return
+            }
+            $values[$opt.key] = $opt.choices[$vi - 1].value
+        } elseif ($opt.control -eq 'switch') {
+            $vp = Read-Host '开(1) 还是关(0)'
+            $values[$opt.key] = ($vp -eq '1')
+        } else {
+            $hint = '输入数值'
+            if ($null -ne $opt.min) { $hint += ('（' + $opt.min + ' ~ ' + $opt.max + '，步长 ' + $opt.step + '）') }
+            $vp = Read-Host $hint
+            $num = $vp -as [double]
+            if ($null -eq $num) { Write-Host '不是数字。' -ForegroundColor Yellow; return }
+            $values[$opt.key] = $num
+        }
+    }
+
+    Write-Host ''
+    Write-Host ('下发: ' + (($values.Keys | ForEach-Object { $_ + '=' + $values[$_] }) -join '  '))
+    Write-Host '（会连接扫描仪）'
+    $res = Invoke-ApiPost -Path '/api/scanner-options' -Body @{ device = $device; scannerOptions = $values }
+    if ($null -eq $res) { return }
+
+    Write-Host ''
+    foreach ($r in $res.results) {
+        if ($r.ok) {
+            Write-Host ('  ' + $r.key + ' = ' + $r.value + '  成功') -ForegroundColor Green
+        } elseif ($r.skipped) {
+            Write-Host ('  ' + $r.key + '  已忽略：' + $r.error) -ForegroundColor Yellow
+        } else {
+            Write-Host ('  ' + $r.key + ' = ' + $r.value + '  失败：' + $r.error) -ForegroundColor Red
+        }
+    }
+    if ($res.success) {
+        Write-Host ''
+        Write-Host '全部生效。下面是下发后现读的设置项：' -ForegroundColor Green
+        foreach ($o in $res.options.options) {
+            Write-Host ('  ' + $o.key.PadRight(12) + ' 当前: ' + $o.value)
+        }
+    }
+}
+
+# Invoke-HttpScan 走 HTTP 异步扫描：发起任务，然后每秒轮询，把扫出来的页打印出来。
+# 和客户端文档第 7 章描述的流程完全一致，可以拿它验证服务端这条链路。
+function Invoke-HttpScan {
+    param([string] $Name, [string] $Pairs, [int] $Pages, [string] $Ext)
+
+    $device = Select-Device -Name $Name
+    if (-not $device) { return }
+
+    $body = @{ device = $device; extension = $Ext; count = $Pages }
+    $values = ParseOptionPairs $Pairs
+    if ($values.Count -gt 0) { $body['scannerOptions'] = $values }
+
+    Write-Host ''
+    Write-Host ('发起扫描: ' + $device + '  格式 ' + $Ext + '  页数 ' + $(if ($Pages -eq 0) { '扫到没纸' } else { $Pages }))
+    $started = Invoke-ApiPost -Path '/api/scan/start' -Body $body -TimeoutSec 120
+    if ($null -eq $started) { return }
+
+    $jobId = $started.job.id
+    Write-Host ('任务 ' + $jobId + ' 已发起，轮询中（Ctrl+C 可以停止轮询，扫描不受影响）...')
+
+    $shown = 0
+    while ($true) {
+        Start-Sleep -Seconds 1
+        $res = Invoke-Api -Path ('/api/scan/status?job=' + [uri]::EscapeDataString($jobId)) -TimeoutSec 30
+        if ($null -eq $res) { return }
+        $job = $res.job
+
+        while ($shown -lt $job.pages.Count) {
+            $p = $job.pages[$shown]
+            Write-Host ('  第 ' + $p.page + ' 页: ' + $p.url) -ForegroundColor Green
+            $shown++
+        }
+
+        if ($job.state -eq 'done') {
+            Write-Host ''
+            Write-Host ('扫描完成，共 ' + $job.pages.Count + ' 页（' + $job.startedAt + ' ~ ' + $job.endedAt + '）') -ForegroundColor Green
+            if ($job.pages.Count -gt 0) {
+                $open = Read-Host '在浏览器里打开第一张？(y/N)'
+                if ($open -eq 'y' -or $open -eq 'Y') { Start-Process $job.pages[0].url }
+            }
+            return
+        }
+        if ($job.state -eq 'failed') {
+            Write-Host ''
+            Write-Host ('扫描失败: ' + $job.error) -ForegroundColor Red
+            return
         }
     }
 }
@@ -384,12 +568,15 @@ function Show-Menu {
         Write-Host '  2) 扫描仪列表'
         Write-Host '  3) 导出扫描仪能力（适配新扫描仪时发给开发）'
         Write-Host '  4) 查看某台扫描仪的设置项'
-        Write-Host '  5) 设置项配置状态'
-        Write-Host '  6) 下载内置设置项配置（应急覆盖用）'
+        Write-Host '  5) 修改设置项（会连接扫描仪）'
+        Write-Host '  6) 扫描测试（走 HTTP 异步接口，客户端文档第 7 章那套）'
         Write-Host '  ---'
-        Write-Host '  7) 启动 scansvc'
-        Write-Host '  8) 停止 scansvc'
-        Write-Host '  9) 开机自启设置'
+        Write-Host '  7) 设置项配置状态'
+        Write-Host '  8) 下载内置设置项配置（应急覆盖用）'
+        Write-Host '  ---'
+        Write-Host '  9) 启动 scansvc'
+        Write-Host ' 10) 停止 scansvc'
+        Write-Host ' 11) 开机自启设置'
         Write-Host '  0) 退出'
         Write-Host ''
         $choice = Read-Host '请选择'
@@ -398,11 +585,13 @@ function Show-Menu {
             '2' { Show-Devices }
             '3' { Invoke-Dump -Name '' }
             '4' { Show-Options -Name '' }
-            '5' { Show-Config }
-            '6' { Save-BuiltinConfig }
-            '7' { Start-Scansvc }
-            '8' { Stop-Scansvc }
-            '9' { Set-Autostart }
+            '5' { Set-Options -Name '' -Pairs '' }
+            '6' { Invoke-HttpScan -Name '' -Pairs '' -Pages 1 -Ext 'jpeg' }
+            '7' { Show-Config }
+            '8' { Save-BuiltinConfig }
+            '9' { Start-Scansvc }
+            '10' { Stop-Scansvc }
+            '11' { Set-Autostart }
             '0' { return }
             default { Write-Host '没有这个选项。' -ForegroundColor Yellow }
         }
@@ -418,6 +607,8 @@ switch ($Command.ToLower()) {
     'devices'         { Show-Devices }
     'dump'            { Invoke-Dump -Name $Device }
     'options'         { Show-Options -Name $Device }
+    'set'             { Set-Options -Name $Device -Pairs $Set }
+    'scan'            { Invoke-HttpScan -Name $Device -Pairs $Set -Pages $Count -Ext $Extension }
     'config'          { Show-Config }
     'builtin-config'  { Save-BuiltinConfig }
     'start'           { Start-Scansvc }
@@ -425,7 +616,7 @@ switch ($Command.ToLower()) {
     'autostart'       { Set-Autostart }
     default {
         Write-Host ('不认识的命令: ' + $Command) -ForegroundColor Yellow
-        Write-Host '可用: status | devices | dump [设备名] | options [设备名] | config | builtin-config | start | stop | autostart'
+        Write-Host '可用: status | devices | dump [设备名] | options [设备名] | set [设备名] | scan [设备名] | config | builtin-config | start | stop | autostart'
         exit 1
     }
 }
