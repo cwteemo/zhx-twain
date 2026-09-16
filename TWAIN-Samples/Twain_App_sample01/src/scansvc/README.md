@@ -17,6 +17,36 @@ HTTP 和 WebSocket 两条路都通。另外带一组文件 / 目录管理接口�
 维护用的还有 [SCANNER_OPTIONS_CONFIG.md](SCANNER_OPTIONS_CONFIG.md)（设置项配置怎么写）、
 [SETTINGS_API.md](SETTINGS_API.md)（直接读写 TWAIN 能力的底层接口）。
 
+## 0. 一条命令编完（推荐）
+
+仓库根目录的 `build.bat`：编 DLL + 编服务 + 把交付要的文件拷到 `dist\`。
+
+```powershell
+build.bat                  rem DLL(Release|x64) + scansvc.exe(无控制台窗口) -> dist\
+build.bat dll              rem 只编 DLL
+build.bat go               rem 只编 scansvc.exe
+build.bat -debug           rem DLL 用 Debug 配置
+build.bat -console         rem exe 带控制台窗口（调试用）
+build.bat -notest          rem 跳过 Go 单元测试
+build.bat -out D:\deploy    rem 换个输出目录
+```
+
+它会做这些事，任一步失败就停下并说清楚原因：
+
+1. 用 `vswhere` 找 MSBuild（找不到就提示装 VS 的 C++ 工作负载，或从"VS 开发人员命令提示"里跑）
+2. 编 DLL，把 `TWAIN_APP_CMD64.dll` / `.lib` 拷到 `src\scansvc\`（cgo 链接要用）
+3. 检查 Go 和 **64 位** gcc（`gcc -dumpmachine` 不是 `x86_64-*` 直接报错——装成 32 位 MinGW 是个老坑）
+4. 跑 `go test ./imgfmt ./scanopt`（纯 Go 那两个包，主包要 DLL 没法在这一步测）
+5. 编 `scansvc.exe`
+6. 拷贝到 `dist\`：`scansvc.exe`、`TWAIN_APP_CMD64.dll`、`FreeImage.dll`、
+   `scansvc-tools.bat` / `.ps1`，并尝试从 `C:\Windows\twain_64\` 找 `TWAINDSM.dll`；
+   找不到会明确提示（少了它枚举不到任何扫描仪）
+
+`dist\` 整个目录拷到操作员机器上，双击 `scansvc.exe` 即可。目标机器上已有的
+`scansvc.conf`、`scans\`、`cache\` 不要删。
+
+下面两章是手工编译的步骤，排查编译问题时看。
+
 ## 1. 先编出 DLL
 
 用 VS 打开 `TWAIN-Samples/Twain_App_sample01/visual_studio/TWAIN_APP_VS2017.sln`：
