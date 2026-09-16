@@ -20,6 +20,7 @@ HTTP 和 WebSocket 两条路都通。另外带一组文件 / 目录管理接口�
 ## 0. 一条命令编完（推荐）
 
 仓库根目录的 `build.bat`：编 DLL + 编服务 + 把交付要的文件拷到 `dist\`。
+**完整用法、依赖、部署和常见问题见 [BUILD.md](../../../../BUILD.md)**，下面只列常用命令。
 
 ```powershell
 build.bat                  rem DLL(Release|x64) + scansvc.exe(无控制台窗口) -> dist\

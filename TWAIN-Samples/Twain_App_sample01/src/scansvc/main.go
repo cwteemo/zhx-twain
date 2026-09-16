@@ -69,6 +69,12 @@ import (
 //go:embed index.html
 var indexHTML []byte
 
+// faviconICO 同时是 exe 的图标（tools/mkicon 把它打进了 rsrc_windows_amd64.syso）
+// 和测试页的站点图标，两处用同一个文件，换图标只改这一个。
+//
+//go:embed favicon.ico
+var faviconICO []byte
+
 const (
 	// serviceVersion 由 GET /version 返回。被替换掉的那个转发服务报的是 v2.1，
 	// 前端没有据此分支的逻辑，这里带上自己的名字方便一眼看出连的是哪个服务。
@@ -174,6 +180,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleIndex)
+	mux.HandleFunc("/favicon.ico", handleFavicon)
 	mux.HandleFunc("/api/devices", handleDevices)
 	mux.HandleFunc("/api/status", handleStatus)
 	mux.HandleFunc("/api/connect", handleConnect)
@@ -241,6 +248,14 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(indexHTML)
+}
+
+// handleFavicon 给测试页用的站点图标。浏览器会自己来要这个地址，
+// 不提供的话日志里会一直有 404。
+func handleFavicon(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/x-icon")
+	w.Header().Set("Cache-Control", "max-age=86400")
+	w.Write(faviconICO)
 }
 
 func handleDevices(w http.ResponseWriter, r *http.Request) {

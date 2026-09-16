@@ -61,3 +61,5 @@ msbuild.wrn
 # Visual Studio cache/options directory
 .vs/
 
+# 编译打包产物（build.bat 的输出）
+/dist/

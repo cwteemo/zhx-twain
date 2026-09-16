@@ -1,17 +1,37 @@
 @echo off
 rem ============================================================
-rem  scansvc build script
+rem  scansvc build script -- full docs in BUILD.md (same folder)
 rem
+rem  USAGE
 rem    build.bat                 build DLL + service, package into dist\
-rem    build.bat dll             only the TWAIN DLL (Visual Studio)
-rem    build.bat go              only scansvc.exe (Go)
+rem    build.bat dll             only the TWAIN DLL (Visual Studio / MSBuild)
+rem    build.bat go              only scansvc.exe (Go); needs the DLL built before
 rem    build.bat -debug          Debug build of the DLL (default: Release)
 rem    build.bat -console        keep the console window (default: no window, tray only)
-rem    build.bat -out D:\deploy  package into another folder (default: dist\)
 rem    build.bat -notest         skip Go unit tests
+rem    build.bat -out D:\deploy  package into another folder (default: dist\)
+rem    flags can be combined:    build.bat -debug -console -out D:\test
 rem
-rem  Needs: Visual Studio 2017+ (C++), Go 1.19+, 64-bit MinGW-w64 gcc (for cgo).
-rem  Everything the service needs at runtime is copied into the output folder.
+rem  REQUIREMENTS on the build machine
+rem    Visual Studio 2017+ with the "Desktop development with C++" workload
+rem      (MSBuild is located with vswhere, no need for a Developer Command Prompt)
+rem    Go 1.19+
+rem    64-bit MinGW-w64 gcc for cgo -- check: gcc -dumpmachine -> x86_64-w64-mingw32
+rem
+rem  WHAT IT DOES
+rem    1. MSBuild the DLL, copy TWAIN_APP_CMD64.dll/.lib next to the Go sources
+rem       (.lib is only needed to link; it is NOT shipped)
+rem    2. go test ./imgfmt ./scanopt   (pure-Go packages; the main package needs the DLL)
+rem    3. go build scansvc.exe
+rem    4. copy everything the service needs at runtime into the output folder
+rem
+rem  OUTPUT (dist\)
+rem    scansvc.exe  TWAIN_APP_CMD64.dll  FreeImage.dll  TWAINDSM.dll
+rem    scansvc-tools.bat  scansvc-tools.ps1
+rem    Copy the whole folder to the operator PC. When upgrading, keep the files
+rem    already there: scansvc.conf, scans\, cache\, scanner-options.jsonc
+rem
+rem  Any failing step stops the script and prints why.
 rem ============================================================
 
 setlocal EnableDelayedExpansion
@@ -129,6 +149,15 @@ if "%DO_TEST%"=="1" (
         goto fail
     )
     echo.
+)
+
+rem the exe icon lives in a .syso resource file; regenerate it when it is missing
+rem (changing favicon.ico? run: go run ./tools/mkicon favicon.ico rsrc_windows_amd64.syso)
+if not exist "rsrc_windows_amd64.syso" (
+    if exist "favicon.ico" (
+        echo       generating icon resource from favicon.ico ...
+        go run ./tools/mkicon favicon.ico rsrc_windows_amd64.syso
+    )
 )
 
 echo [3/3] building scansvc.exe ...
