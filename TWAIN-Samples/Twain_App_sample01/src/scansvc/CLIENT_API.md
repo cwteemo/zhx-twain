@@ -20,6 +20,12 @@
 - 已开 CORS（`Access-Control-Allow-Origin: *`），业务系统部署在哪个域名都能调。
 - 服务没启动时，WebSocket 连不上、HTTP 请求直接失败，前端要给出"请启动扫描服务"之类的提示。
 
+### 1.1 对接前先自查
+
+服务自带一个测试页面，**浏览器直接打开 <http://127.0.0.1:18080/>**：枚举设备 → 连接 → 扫描，
+能在上面扫出图，就说明服务、驱动、扫描仪都是好的，接下来出的问题就在对接这一侧。
+遇到"扫不出来"先用它对一遍，能省很多来回。
+
 ---
 
 ## 2. 最小闭环
@@ -286,3 +292,136 @@ POST /api/scan/start {"device":"...","extension":"jpeg","count":0}   // 0 = 扫�
   如果上一次还没结束会直接返回 409。
 - **上传一律走 `/file/upload` 转发**，不要尝试在浏览器里读本地文件。
 - 请求里的自定义字段会原样回显，用它把异步返回的图片对应回业务数据（页序号、档案 id 等）。
+
+---
+
+## 附录 A. 最小示例代码
+
+去掉了界面部分，只留协议交互，可以直接照着改。
+
+### A.1 WebSocket（推荐）
+
+```js
+const WS_URL   = 'ws://127.0.0.1:5000/'
+const HTTP_URL = 'http://127.0.0.1:18080'
+
+let scanners = []          // 扫描仪列表
+let options  = {}          // 用户选的设置项 {key: 取值}，见设置项文档
+let current  = null        // 当前选中的扫描仪
+
+const ws = new WebSocket(WS_URL)
+
+ws.onopen  = () => ws.send(JSON.stringify({ handle: 'scannerList' }))
+ws.onerror = () => alert('连不上扫描服务，请确认已启动')
+
+ws.onmessage = (e) => {
+  const data = JSON.parse(e.data)
+
+  // 失败：msg 是可以直接显示的中文
+  if (data.code !== 0) {
+    alert(data.msg || data.message || '扫描失败')
+    return
+  }
+
+  switch (data.handle) {
+    case 'scannerList':
+      scanners = data.data            // ["Uniscan Q400", ...]
+      current = scanners[0]
+      ws.send(JSON.stringify({ handle: 'getScannerOptions', scanner: current }))
+      break
+
+    case 'getScannerOptions':
+      renderOptionPanel(data.data)    // 见 SCANNER_OPTIONS_API.md
+      break
+
+    case 'scan':
+      onPage(data)                    // 每扫出一张来一条
+      break
+  }
+}
+
+// 开始扫一轮。sort 是自定义字段，会原样回来
+function startScan(sort) {
+  ws.send(JSON.stringify({
+    handle: 'scan',
+    scanner: current,
+    extension: 'jpeg',
+    sort: sort,
+    show_setting: false,
+    scannerOptions: options,
+  }))
+}
+
+function onPage(msg) {
+  const url = msg.base64              // 图片地址，直接可用
+  showImage(url, msg.sort)            // <img src={url}>
+  uploadPage(url, msg.sort)
+}
+
+// 让服务把图转发上传到业务系统
+async function uploadPage(url, sort) {
+  const fd = new FormData()
+  fd.append('filename', url.substring(url.lastIndexOf('/') + 1))  // 只要文件名
+  fd.append('server', 'https://业务系统/api/file/upload')          // 目标地址
+  fd.append('archive_id', currentArchiveId)                       // 其余字段原样透传
+  fd.append('sort', sort)
+
+  const res = await fetch(HTTP_URL + '/file/upload', {
+    method: 'POST',
+    headers: { token: myToken },     // 业务系统要的令牌，不需要就去掉
+    body: fd,
+  })
+  const out = await res.json()
+  if (out.errorCode !== 0) {
+    alert('上传失败：' + out.msg)
+  }
+  return out.data                    // 业务系统返回的内容
+}
+```
+
+### A.2 HTTP（不方便用 WebSocket 时）
+
+```js
+async function scanOnce(device, sort) {
+  const started = await fetch(HTTP_URL + '/api/scan/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ device, extension: 'jpeg', count: 1, scannerOptions: options }),
+  }).then(r => r.json())
+
+  if (!started.success) throw new Error(started.error)   // 409 / 500 时 error 是中文原因
+
+  const jobId = started.job.id
+  let shown = 0
+
+  for (;;) {
+    await new Promise(r => setTimeout(r, 1000))          // 每秒查一次
+    const { job } = await fetch(HTTP_URL + '/api/scan/status?job=' + jobId).then(r => r.json())
+
+    job.pages.slice(shown).forEach(p => {                // 新出现的页先显示
+      showImage(p.url, sort)
+      uploadPage(p.url, sort)
+    })
+    shown = job.pages.length
+
+    if (job.state === 'done')   return job.pages
+    if (job.state === 'failed') throw new Error(job.error)
+  }
+}
+```
+
+---
+
+## 附录 B. 对接自检清单
+
+- [ ] 操作员机器上装了 scansvc 并已启动（建议设置开机自启，服务方提供的工具里有这一项）
+- [ ] 先用内置测试页 <http://127.0.0.1:18080/> 扫出过图
+- [ ] 服务没启动 / 扫描仪没接时，界面有明确提示，不是转圈卡死
+- [ ] 扫描仪列表让用户选，并记住上次选的那台（按用户 + 机器记）
+- [ ] 设置面板按 `control` 通用渲染，没有把某台扫描仪的取值写死
+- [ ] 每次扫描都带上 `scannerOptions`
+- [ ] 图片地址原样使用，没有自己拼路径；会被改写的图加了 `?t=` 时间戳
+- [ ] 上传走 `/file/upload`，业务字段随表单透传
+- [ ] 失败时直接显示服务返回的 `msg` / `error`，没有替换成"操作失败"这种笼统文案
+- [ ] 连续扫描的节奏由客户端控制，上一轮结束才发下一轮
+- [ ] 同一时刻没有并发发起两次扫描（HTTP 方式会直接返回 409）
