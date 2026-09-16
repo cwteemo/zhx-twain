@@ -115,7 +115,8 @@ func TestBuildVirtualScanner(t *testing.T) {
 	for _, o := range opts {
 		keys = append(keys, o.Key)
 	}
-	if want := []string{"source", "colorMode", "dpi", "paperSize", "brightness", "contrast"}; !reflect.DeepEqual(keys, want) {
+	// 虚拟扫描仪只支持这几项；高级项里只有阈值它有。顺序就是配置里的顺序。
+	if want := []string{"source", "colorMode", "dpi", "paperSize", "brightness", "contrast", "threshold"}; !reflect.DeepEqual(keys, want) {
 		t.Errorf("项目顺序 %v，期望 %v", keys, want)
 	}
 
@@ -443,7 +444,11 @@ func TestDefaultConfig(t *testing.T) {
 			t.Errorf("%s: 编译结果不完整", d.Key)
 		}
 	}
-	if want := []string{"source", "colorMode", "dpi", "paperSize", "brightness", "contrast"}; !reflect.DeepEqual(keys, want) {
+	want := []string{
+		"source", "colorMode", "dpi", "paperSize", "brightness", "contrast", // 基础
+		"autoCrop", "autoDeskew", "autoRotate", "autoColor", "blankPage", "rotate", "threshold", // 高级
+	}
+	if !reflect.DeepEqual(keys, want) {
 		t.Errorf("默认生效的项 %v，期望 %v", keys, want)
 	}
 }

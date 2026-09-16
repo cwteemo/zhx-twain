@@ -170,75 +170,109 @@
     { "key": "contrast", "label": "对比度", "kind": "number", "cap": "ICAP_CONTRAST" },
 
     // ==================================================================
-    // 以下是示例，默认关着（disabled）。确认目标扫描仪支持（看 capdump）后，
-    // 把 "disabled": true 删掉就会生效。
+    // 高级项。都在 Uniscan Q400（Avision OEM 机芯）上按真实能力核对过；
+    // 不支持这些能力的扫描仪不会拿到对应的项，不用按型号删。
     // ==================================================================
 
-    // ---------- 示例 · switch：自动纠偏 ----------
-    // 布尔能力，on / off 不写就是 1 / 0。
+    // ---------- switch：自动裁切 / 纠偏 / 旋转 / 彩色识别 ----------
+    {
+      "key": "autoCrop",
+      "label": "自动裁切",
+      "group": "advanced",
+      "kind": "switch",
+      "cap": "ICAP_AUTOMATICBORDERDETECTION"
+    },
     {
       "key": "autoDeskew",
       "label": "自动纠偏",
       "group": "advanced",
       "kind": "switch",
-      "cap": "ICAP_AUTOMATICDESKEW",
-      "disabled": true
+      "cap": "ICAP_AUTOMATICDESKEW"
     },
-
-    // ---------- 示例 · switch：非布尔能力当开关用 ----------
-    // 能力本身是数字，开 / 关分别对应哪个值用 on / off 指定。
     {
       "key": "autoRotate",
       "label": "自动旋转",
       "group": "advanced",
       "kind": "switch",
-      "cap": "ICAP_AUTOMATICROTATE",
-      "on": 1,
-      "off": 0,
-      "disabled": true
+      "cap": "ICAP_AUTOMATICROTATE"
+    },
+    {
+      "key": "autoColor",
+      "label": "自动识别彩色",
+      "group": "advanced",
+      "kind": "switch",
+      "cap": "ICAP_AUTOMATICCOLORENABLED"
     },
 
-    // ---------- 示例 · combo：去空白页 ----------
-    // ICAP_AUTODISCARDBLANKPAGES：-2 关闭，-1 自动判断。单个能力的特殊取值也可以用 combo 写。
+    // ---------- combo：空白页 ----------
+    // ICAP_AUTODISCARDBLANKPAGES：-2 关闭，-1 由驱动自动判断（也能填字节数当阈值，这里不暴露）。
     {
       "key": "blankPage",
-      "label": "去空白页",
+      "label": "空白页",
       "group": "advanced",
       "kind": "combo",
       "control": "radio",
       "choices": [
         { "value": "keep", "label": "保留", "set": [{ "cap": "ICAP_AUTODISCARDBLANKPAGES", "value": -2 }] },
         { "value": "discard", "label": "自动去除", "set": [{ "cap": "ICAP_AUTODISCARDBLANKPAGES", "value": -1 }] }
-      ],
-      "disabled": true
+      ]
     },
 
-    // ---------- 示例 · enum：旋转 ----------
-    // 90 / 270 在不同驱动上顺逆时针可能相反，启用前扫一张确认。
+    // ---------- number：旋转角度 ----------
+    // 用 ICAP_ROTATION（度数，Q400 报 0~360 步长 90），不是 ICAP_ORIENTATION（那个是横竖版）。
     {
       "key": "rotate",
       "label": "旋转",
       "group": "advanced",
-      "kind": "enum",
-      "cap": "ICAP_ORIENTATION",
-      "choices": [
-        { "code": 0, "value": "none", "label": "不旋转" },
-        { "code": 1, "value": "rot90", "label": "旋转 90°" },
-        { "code": 2, "value": "rot180", "label": "旋转 180°" },
-        { "code": 3, "value": "rot270", "label": "旋转 270°" }
-      ],
-      "disabled": true
+      "kind": "number",
+      "cap": "ICAP_ROTATION",
+      "control": "select",
+      "presets": [0, 90, 180, 270],
+      "choiceLabel": "{value}°"
     },
 
-    // ---------- 示例 · number：黑白阈值（强制滑块） ----------
-    // control 写 slider / select / number 可以指定控件；设备报的形态对不上时会自动退回 auto。
+    // ---------- number：黑白阈值 ----------
+    // 只在颜色模式为黑白时有意义，彩色/灰度下设了也不影响。
     {
       "key": "threshold",
       "label": "黑白阈值",
       "group": "advanced",
       "kind": "number",
       "cap": "ICAP_THRESHOLD",
-      "control": "slider",
+      "control": "slider"
+    },
+
+    // ==================================================================
+    // 以下是示例，默认关着（disabled）——写法参考，删掉 "disabled": true 才生效。
+    // 更多写法见 SCANNER_OPTIONS_CONFIG.md。
+    // ==================================================================
+
+    // ---------- 示例 · enum：横版 / 竖版 ----------
+    // ICAP_ORIENTATION 是横竖版（0 竖版，3 横版），和上面的"旋转"不是一回事。
+    {
+      "key": "orientation",
+      "label": "版面方向",
+      "group": "advanced",
+      "kind": "enum",
+      "cap": "ICAP_ORIENTATION",
+      "choices": [
+        { "code": 0, "value": "portrait", "label": "竖版" },
+        { "code": 3, "value": "landscape", "label": "横版" }
+      ],
+      "disabled": true
+    },
+
+    // ---------- 示例 · switch：非布尔能力当开关用 ----------
+    // 能力本身是数字时，用 on / off 指定开关分别对应哪个值。
+    // CAP_AUTOFEED 关掉会让连续扫描停在第一张，要开放给用户前先想清楚。
+    {
+      "key": "autoFeed",
+      "label": "自动进纸",
+      "group": "advanced",
+      "kind": "switch",
+      "cap": "CAP_AUTOFEED",
+      "on": 1,
+      "off": 0,
       "disabled": true
     }
   ],

@@ -39,6 +39,8 @@
 //	scansvc.exe -host 127.0.0.1          只允许本机访问（默认监听所有网卡）
 //	scansvc.exe -auto-port               端口被占用时自动向后顺延
 //	scansvc.exe -http-port 0             不监听 HTTP 端口
+//	scansvc.exe -tray=false              不要托盘，按普通控制台程序跑
+//	scansvc.exe -log ""                  不写日志文件
 //	set SCANSVC_WS_PORT=5001             环境变量方式
 //	set SCANSVC_HTTP_PORT=18081
 //
@@ -80,6 +82,8 @@ var (
 	// 它清的是"当前工作目录"，而工作目录会被 /dir/verify 切到用户的档案目录去，
 	// 真跑起来就是在删用户的档案。这里保留这个能力但只清扫描根目录，且默认关闭。
 	cleanHours = flag.Int("clean-hours", 0, "自动清理扫描目录下超过多少小时的图片；0 表示不清理")
+	logFile    = flag.String("log", defaultLogFileName, "日志文件（相对 exe 目录）；留空表示不写文件")
+	tray       = flag.Bool("tray", true, "缩到右下角托盘运行（Windows）；false 为普通控制台程序")
 )
 
 // 扫描产物登记表：id -> 绝对路径。
@@ -128,6 +132,8 @@ func main() {
 	// 命令行 > 环境变量 > 配置文件 > 默认值，解析细节见 config.go。
 	// 配置文件不存在时会在 exe 旁边生成一份带注释的模板。
 	cfg = loadSettings()
+	// 双击启动（托盘模式）没有控制台，日志必须落盘，见 logfile.go。
+	setupLogFile(cfg.LogFile)
 
 	root, err := filepath.Abs(cfg.ScanDir)
 	if err != nil {
@@ -187,18 +193,30 @@ func main() {
 	registerFileRoutes(mux)
 
 	// 两个端口（WebSocket 5000 / HTTP 18080）供同一套路由，见 serve.go。
-	serveErr, listening, closeAll := startServers(withCORS(mux))
-	defer closeAll()
-	if listening == 0 {
-		log.Printf("没有任何端口监听成功，服务退出")
+	srv.handler = withCORS(mux)
+	defer srv.Stop()
+
+	if srv.Start() == 0 {
+		log.Printf("没有任何端口监听成功")
+		if !cfg.Tray {
+			return
+		}
+		// 托盘模式下不退出：端口多半被上一个没退干净的进程占着，
+		// 用户关掉它之后从托盘菜单点"启动服务"就能用，比让进程一闪而过强。
+		log.Printf("服务仍在后台，解决端口冲突后从托盘右键点「启动服务」即可")
+	} else {
+		log.Printf("扫描服务就绪，图片保存于 %s", root)
+	}
+
+	if cfg.Tray {
+		// 托盘模式：消息循环占住主线程，用户点"退出"才回来。
+		runTray()
 		return
 	}
 
-	log.Printf("扫描服务就绪，图片保存于 %s", root)
-
-	// 任一监听挂掉就整体退出：前端两个端口都要用，剩一个也是半残状态，
+	// 控制台模式：任一监听挂掉就整体退出——前端两个端口都要用，剩一个也是半残状态，
 	// 与其让它带病运行不如退干净，让人一眼看出要重启。
-	if err := <-serveErr; err != nil {
+	if err := <-srv.Failed(); err != nil {
 		log.Printf("服务异常退出: %v", err)
 	}
 }

@@ -36,6 +36,8 @@ type settings struct {
 	AutoPort   bool
 	ScanDir    string
 	CleanHours int
+	LogFile    string
+	Tray       bool
 }
 
 var cfg settings
@@ -45,6 +47,7 @@ var cfg settings
 var knownKeys = map[string]bool{
 	"host": true, "ws-port": true, "http-port": true,
 	"auto-port": true, "dir": true, "clean-hours": true,
+	"log": true, "tray": true,
 }
 
 // configTemplate 是自动生成的默认配置。
@@ -85,6 +88,15 @@ dir = scans
 # 自动清掉扫描目录下超过 N 小时的图片，0 表示不清理。
 # 只清扫描目录，不碰 /dir/verify 选中的那个档案目录。
 clean-hours = 0
+
+# 日志文件。相对路径是相对 exe 所在目录；留空表示不写文件（只打控制台）。
+# 双击启动时没有控制台窗口，日志全靠这个文件，别关掉。
+# 超过 2MB 会改名成 scansvc.log.1 重新开一个，最多占两份。
+log = scansvc.log
+
+# 托盘图标。true 时双击启动就缩到右下角托盘，右键有启动 / 停止 / 重启 / 退出。
+# false 时按普通控制台程序跑（命令行调试、或者用别的方式托管时用）。
+tray = true
 `
 
 // loadSettings 解析出最终生效的配置。必须在 flag.Parse() 之后调用。
@@ -101,7 +113,7 @@ func loadSettings() settings {
 		for k := range kv {
 			if !knownKeys[k] {
 				log.Printf("⚠ 配置文件里有不认识的键 %q，已忽略（键名和命令行参数一样，"+
-					"去掉前面的 -；可用的有：host、ws-port、http-port、auto-port、dir、clean-hours）", k)
+					"去掉前面的 -；可用的有：host、ws-port、http-port、auto-port、dir、clean-hours、log、tray）", k)
 			}
 		}
 	case os.IsNotExist(err):
@@ -120,6 +132,8 @@ func loadSettings() settings {
 		AutoPort:   r.yes("auto-port", *autoPort, "SCANSVC_AUTO_PORT", false),
 		ScanDir:    r.str("dir", *scanDir, "SCANSVC_DIR", defaultScanDir),
 		CleanHours: r.num("clean-hours", *cleanHours, "SCANSVC_CLEAN_HOURS", 0),
+		LogFile:    r.str("log", *logFile, "SCANSVC_LOG", defaultLogFileName),
+		Tray:       r.yes("tray", *tray, "SCANSVC_TRAY", true),
 	}
 
 	s.WSPort = clampPort("ws-port", s.WSPort, defaultWSPort)

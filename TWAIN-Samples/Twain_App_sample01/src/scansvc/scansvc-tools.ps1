@@ -12,6 +12,8 @@ scansvc 维护小工具：导出扫描仪能力、查看设置项、查看配置
   scansvc-tools.bat options [设备名]     查看设置项
   scansvc-tools.bat config              设置项配置状态（内置 / 现场覆盖）
   scansvc-tools.bat builtin-config      下载内置设置项配置，存成 scanner-options.jsonc
+  scansvc-tools.bat start / stop        启动 / 停止 scansvc.exe
+  scansvc-tools.bat autostart           设置或取消开机自启（当前用户「启动」文件夹）
   scansvc-tools.bat -Port 18081 status  服务改过 HTTP 端口时指定
 
 端口的取值顺序：-Port 参数 > 环境变量 SCANSVC_HTTP_PORT > 同目录 scansvc.conf 里的 http-port > 18080
@@ -112,6 +114,7 @@ function Invoke-Api {
 # ---- 各项功能 ----
 
 function Show-Status {
+    Show-Process
     $version = Invoke-Api -Path '/version' -Raw
     if ($null -eq $version) { return }
     Write-Host ''
@@ -273,6 +276,101 @@ function Save-BuiltinConfig {
     Write-Host '撤销：删掉这个文件。'
 }
 
+# ---- 进程 / 开机自启 ----
+
+function Get-ScansvcProcess {
+    return @(Get-Process -Name 'scansvc' -ErrorAction SilentlyContinue)
+}
+
+function Start-Scansvc {
+    $exe = Join-Path $ScriptDir 'scansvc.exe'
+    if (-not (Test-Path -LiteralPath $exe)) {
+        Write-Host ('找不到 ' + $exe + '，把这两个脚本放到 scansvc.exe 同目录。') -ForegroundColor Red
+        return
+    }
+    if ((Get-ScansvcProcess).Count -gt 0) {
+        Write-Host 'scansvc 已经在运行。' -ForegroundColor Yellow
+        return
+    }
+    Start-Process -FilePath $exe -WorkingDirectory $ScriptDir
+    Start-Sleep -Seconds 2
+    if ((Get-ScansvcProcess).Count -gt 0) {
+        Write-Host '已启动。托盘模式下图标在右下角（可能要点「显示隐藏的图标」）。' -ForegroundColor Green
+    } else {
+        Write-Host '启动后进程又退出了，看 scansvc.log。' -ForegroundColor Red
+    }
+}
+
+function Stop-Scansvc {
+    $procs = Get-ScansvcProcess
+    if ($procs.Count -eq 0) {
+        Write-Host 'scansvc 没有在运行。' -ForegroundColor Yellow
+        return
+    }
+    $procs | Stop-Process -Force
+    Write-Host ('已停止 ' + $procs.Count + ' 个 scansvc 进程。') -ForegroundColor Green
+}
+
+function Get-AutostartPath {
+    $startup = [Environment]::GetFolderPath('Startup')
+    if (-not $startup) { return '' }   # 取不到（非 Windows）时按"没有开机自启"处理
+    return (Join-Path $startup 'scansvc.lnk')
+}
+
+# 开机自启用「启动」文件夹里的快捷方式，不是 Windows 服务：
+# TWAIN 驱动要有桌面会话，注册成服务（session 0）多数扫描仪打不开。
+function Set-Autostart {
+    $link = Get-AutostartPath
+    $exe = Join-Path $ScriptDir 'scansvc.exe'
+    Write-Host ''
+    if (-not $link) {
+        Write-Host '取不到「启动」文件夹，这个功能只能在 Windows 上用。' -ForegroundColor Red
+        return
+    }
+    if (Test-Path -LiteralPath $link) {
+        Write-Host ('当前：已设置开机自启 -> ' + $link)
+        $answer = Read-Host '取消开机自启？(y/N)'
+        if ($answer -eq 'y' -or $answer -eq 'Y') {
+            Remove-Item -LiteralPath $link -Force
+            Write-Host '已取消。' -ForegroundColor Green
+        }
+        return
+    }
+    Write-Host '当前：未设置开机自启'
+    if (-not (Test-Path -LiteralPath $exe)) {
+        Write-Host ('找不到 ' + $exe + '，把这两个脚本放到 scansvc.exe 同目录。') -ForegroundColor Red
+        return
+    }
+    $answer = Read-Host '设置为当前用户登录后自动启动？(y/N)'
+    if ($answer -ne 'y' -and $answer -ne 'Y') { return }
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($link)
+        $shortcut.TargetPath = $exe
+        $shortcut.WorkingDirectory = $ScriptDir
+        $shortcut.Description = 'scansvc 扫描服务'
+        $shortcut.Save()
+        Write-Host ('已设置: ' + $link) -ForegroundColor Green
+        Write-Host '下次登录 Windows 时自动启动（登录后才起，锁屏 / 注销状态下不运行）。'
+    } catch {
+        Write-Host ('设置失败: ' + $_.Exception.Message) -ForegroundColor Red
+    }
+}
+
+function Show-Process {
+    $procs = Get-ScansvcProcess
+    Write-Host ''
+    if ($procs.Count -eq 0) {
+        Write-Host 'scansvc 进程: 未运行' -ForegroundColor Yellow
+    } else {
+        foreach ($p in $procs) {
+            Write-Host ('scansvc 进程: 运行中 (PID ' + $p.Id + '，启动于 ' + $p.StartTime + ')') -ForegroundColor Green
+        }
+    }
+    $link = Get-AutostartPath
+    Write-Host ('开机自启: ' + $(if ($link -and (Test-Path -LiteralPath $link)) { '已设置' } else { '未设置' }))
+}
+
 # ---- 菜单 ----
 
 function Show-Menu {
@@ -288,6 +386,10 @@ function Show-Menu {
         Write-Host '  4) 查看某台扫描仪的设置项'
         Write-Host '  5) 设置项配置状态'
         Write-Host '  6) 下载内置设置项配置（应急覆盖用）'
+        Write-Host '  ---'
+        Write-Host '  7) 启动 scansvc'
+        Write-Host '  8) 停止 scansvc'
+        Write-Host '  9) 开机自启设置'
         Write-Host '  0) 退出'
         Write-Host ''
         $choice = Read-Host '请选择'
@@ -298,6 +400,9 @@ function Show-Menu {
             '4' { Show-Options -Name '' }
             '5' { Show-Config }
             '6' { Save-BuiltinConfig }
+            '7' { Start-Scansvc }
+            '8' { Stop-Scansvc }
+            '9' { Set-Autostart }
             '0' { return }
             default { Write-Host '没有这个选项。' -ForegroundColor Yellow }
         }
@@ -315,9 +420,12 @@ switch ($Command.ToLower()) {
     'options'         { Show-Options -Name $Device }
     'config'          { Show-Config }
     'builtin-config'  { Save-BuiltinConfig }
+    'start'           { Start-Scansvc }
+    'stop'            { Stop-Scansvc }
+    'autostart'       { Set-Autostart }
     default {
         Write-Host ('不认识的命令: ' + $Command) -ForegroundColor Yellow
-        Write-Host '可用: status | devices | dump [设备名] | options [设备名] | config | builtin-config'
+        Write-Host '可用: status | devices | dump [设备名] | options [设备名] | config | builtin-config | start | stop | autostart'
         exit 1
     }
 }

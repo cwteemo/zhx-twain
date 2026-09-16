@@ -1,0 +1,251 @@
+[
+  {
+    "key": "source",
+    "label": "扫描方式",
+    "group": "basic",
+    "control": "select",
+    "value": "adfDuplex",
+    "choices": [
+      {
+        "value": "adf",
+        "label": "进纸器单面"
+      },
+      {
+        "value": "adfDuplex",
+        "label": "进纸器双面"
+      }
+    ]
+  },
+  {
+    "key": "colorMode",
+    "label": "颜色模式",
+    "group": "basic",
+    "control": "radio",
+    "value": "color",
+    "choices": [
+      {
+        "value": "bw",
+        "label": "黑白"
+      },
+      {
+        "value": "gray",
+        "label": "灰度"
+      },
+      {
+        "value": "color",
+        "label": "彩色"
+      }
+    ]
+  },
+  {
+    "key": "dpi",
+    "label": "分辨率",
+    "group": "basic",
+    "control": "select",
+    "value": 300,
+    "choices": [
+      {
+        "value": 75,
+        "label": "75 dpi"
+      },
+      {
+        "value": 100,
+        "label": "100 dpi"
+      },
+      {
+        "value": 150,
+        "label": "150 dpi"
+      },
+      {
+        "value": 200,
+        "label": "200 dpi"
+      },
+      {
+        "value": 240,
+        "label": "240 dpi"
+      },
+      {
+        "value": 300,
+        "label": "300 dpi"
+      },
+      {
+        "value": 400,
+        "label": "400 dpi"
+      },
+      {
+        "value": 600,
+        "label": "600 dpi"
+      },
+      {
+        "value": 1200,
+        "label": "1200 dpi"
+      }
+    ],
+    "unit": "dpi"
+  },
+  {
+    "key": "paperSize",
+    "label": "纸张尺寸",
+    "group": "basic",
+    "control": "select",
+    "value": "a4",
+    "choices": [
+      {
+        "value": "none",
+        "label": "不指定"
+      },
+      {
+        "value": "maxSize",
+        "label": "最大尺寸"
+      },
+      {
+        "value": "a4",
+        "label": "A4"
+      },
+      {
+        "value": "a5",
+        "label": "A5"
+      },
+      {
+        "value": "a6",
+        "label": "A6"
+      },
+      {
+        "value": "jisB5",
+        "label": "B5 (JIS)"
+      },
+      {
+        "value": "isoB5",
+        "label": "B5 (ISO)"
+      },
+      {
+        "value": "jisB6",
+        "label": "B6 (JIS)"
+      },
+      {
+        "value": "isoB6",
+        "label": "B6 (ISO)"
+      },
+      {
+        "value": "letter",
+        "label": "Letter"
+      },
+      {
+        "value": "legal",
+        "label": "Legal"
+      },
+      {
+        "value": "a7",
+        "label": "A7"
+      },
+      {
+        "value": "isoB7",
+        "label": "B7 (ISO)"
+      },
+      {
+        "value": "jisB7",
+        "label": "B7 (JIS)"
+      }
+    ]
+  },
+  {
+    "key": "brightness",
+    "label": "亮度",
+    "group": "basic",
+    "control": "slider",
+    "value": 0,
+    "min": -1000,
+    "max": 1000,
+    "step": 10
+  },
+  {
+    "key": "contrast",
+    "label": "对比度",
+    "group": "basic",
+    "control": "slider",
+    "value": 0,
+    "min": -1000,
+    "max": 1000,
+    "step": 10
+  },
+  {
+    "key": "autoCrop",
+    "label": "自动裁切",
+    "group": "advanced",
+    "control": "switch",
+    "value": true
+  },
+  {
+    "key": "autoDeskew",
+    "label": "自动纠偏",
+    "group": "advanced",
+    "control": "switch",
+    "value": true
+  },
+  {
+    "key": "autoRotate",
+    "label": "自动旋转",
+    "group": "advanced",
+    "control": "switch",
+    "value": false
+  },
+  {
+    "key": "autoColor",
+    "label": "自动识别彩色",
+    "group": "advanced",
+    "control": "switch",
+    "value": false
+  },
+  {
+    "key": "blankPage",
+    "label": "空白页",
+    "group": "advanced",
+    "control": "radio",
+    "value": "keep",
+    "choices": [
+      {
+        "value": "keep",
+        "label": "保留"
+      },
+      {
+        "value": "discard",
+        "label": "自动去除"
+      }
+    ]
+  },
+  {
+    "key": "rotate",
+    "label": "旋转",
+    "group": "advanced",
+    "control": "select",
+    "value": 0,
+    "choices": [
+      {
+        "value": 0,
+        "label": "0°"
+      },
+      {
+        "value": 90,
+        "label": "90°"
+      },
+      {
+        "value": 180,
+        "label": "180°"
+      },
+      {
+        "value": 270,
+        "label": "270°"
+      }
+    ]
+  },
+  {
+    "key": "threshold",
+    "label": "黑白阈值",
+    "group": "advanced",
+    "control": "slider",
+    "value": 128,
+    "min": 0,
+    "max": 255,
+    "step": 1
+  }
+]

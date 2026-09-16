@@ -1,0 +1,6159 @@
+{
+  "device": "Uniscan Q400",
+  "time": "2026-09-16 09:56:14",
+  "service": "v2.1-scansvc",
+  "supportedCapsReported": true,
+  "caps": [
+    {
+      "code": "0x0001",
+      "name": "CAP_XFERCOUNT",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 1,
+          "itemTypeName": "INT16",
+          "value": -1
+        }
+      ]
+    },
+    {
+      "code": "0x0100",
+      "name": "ICAP_COMPRESSION",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 3,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 6,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 5,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x0101",
+      "name": "ICAP_PIXELTYPE",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 3,
+          "currentIndex": 2,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": false,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": true,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x0102",
+      "name": "ICAP_UNITS",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x0103",
+      "name": "ICAP_XFERMECH",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 3,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1002",
+      "name": "CAP_FEEDERENABLED",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1003",
+      "name": "CAP_FEEDERLOADED",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 1,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": false
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1005",
+      "name": "CAP_SUPPORTEDCAPS",
+      "raw": [
+        {
+          "container": "ARRAY",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 216,
+          "items": [
+            {
+              "index": 0,
+              "value": 4103
+            },
+            {
+              "index": 1,
+              "value": 4112
+            },
+            {
+              "index": 2,
+              "value": 4099
+            },
+            {
+              "index": 3,
+              "value": 4098
+            },
+            {
+              "index": 4,
+              "value": 4117
+            },
+            {
+              "index": 5,
+              "value": 4111
+            },
+            {
+              "index": 6,
+              "value": 4114
+            },
+            {
+              "index": 7,
+              "value": 4115
+            },
+            {
+              "index": 8,
+              "value": 4116
+            },
+            {
+              "index": 9,
+              "value": 4107
+            },
+            {
+              "index": 10,
+              "value": 4101
+            },
+            {
+              "index": 11,
+              "value": 1
+            },
+            {
+              "index": 12,
+              "value": 4110
+            },
+            {
+              "index": 13,
+              "value": 4352
+            },
+            {
+              "index": 14,
+              "value": 4395
+            },
+            {
+              "index": 15,
+              "value": 4396
+            },
+            {
+              "index": 16,
+              "value": 4380
+            },
+            {
+              "index": 17,
+              "value": 4353
+            },
+            {
+              "index": 18,
+              "value": 256
+            },
+            {
+              "index": 19,
+              "value": 4355
+            },
+            {
+              "index": 20,
+              "value": 4399
+            },
+            {
+              "index": 21,
+              "value": 4358
+            },
+            {
+              "index": 22,
+              "value": 4372
+            },
+            {
+              "index": 23,
+              "value": 4360
+            },
+            {
+              "index": 24,
+              "value": 4361
+            },
+            {
+              "index": 25,
+              "value": 4362
+            },
+            {
+              "index": 26,
+              "value": 4364
+            },
+            {
+              "index": 27,
+              "value": 4382
+            },
+            {
+              "index": 28,
+              "value": 4366
+            },
+            {
+              "index": 29,
+              "value": 4378
+            },
+            {
+              "index": 30,
+              "value": 4400
+            },
+            {
+              "index": 31,
+              "value": 4401
+            },
+            {
+              "index": 32,
+              "value": 4368
+            },
+            {
+              "index": 33,
+              "value": 4370
+            },
+            {
+              "index": 34,
+              "value": 4369
+            },
+            {
+              "index": 35,
+              "value": 4383
+            },
+            {
+              "index": 36,
+              "value": 257
+            },
+            {
+              "index": 37,
+              "value": 4384
+            },
+            {
+              "index": 38,
+              "value": 4386
+            },
+            {
+              "index": 39,
+              "value": 4371
+            },
+            {
+              "index": 40,
+              "value": 4387
+            },
+            {
+              "index": 41,
+              "value": 4379
+            },
+            {
+              "index": 42,
+              "value": 4397
+            },
+            {
+              "index": 43,
+              "value": 258
+            },
+            {
+              "index": 44,
+              "value": 259
+            },
+            {
+              "index": 45,
+              "value": 4374
+            },
+            {
+              "index": 46,
+              "value": 4376
+            },
+            {
+              "index": 47,
+              "value": 4388
+            },
+            {
+              "index": 48,
+              "value": 4375
+            },
+            {
+              "index": 49,
+              "value": 4377
+            },
+            {
+              "index": 50,
+              "value": 4389
+            },
+            {
+              "index": 51,
+              "value": 4385
+            },
+            {
+              "index": 52,
+              "value": 4392
+            },
+            {
+              "index": 53,
+              "value": 4435
+            },
+            {
+              "index": 54,
+              "value": 4433
+            },
+            {
+              "index": 55,
+              "value": 4404
+            },
+            {
+              "index": 56,
+              "value": 4406
+            },
+            {
+              "index": 57,
+              "value": 4407
+            },
+            {
+              "index": 58,
+              "value": 4408
+            },
+            {
+              "index": 59,
+              "value": 4432
+            },
+            {
+              "index": 60,
+              "value": 4132
+            },
+            {
+              "index": 61,
+              "value": 4434
+            },
+            {
+              "index": 62,
+              "value": 4152
+            },
+            {
+              "index": 63,
+              "value": 4365
+            },
+            {
+              "index": 64,
+              "value": 4134
+            },
+            {
+              "index": 65,
+              "value": 4135
+            },
+            {
+              "index": 66,
+              "value": 4136
+            },
+            {
+              "index": 67,
+              "value": 4137
+            },
+            {
+              "index": 68,
+              "value": 4138
+            },
+            {
+              "index": 69,
+              "value": 4439
+            },
+            {
+              "index": 70,
+              "value": 4440
+            },
+            {
+              "index": 71,
+              "value": 4441
+            },
+            {
+              "index": 72,
+              "value": 4442
+            },
+            {
+              "index": 73,
+              "value": 4443
+            },
+            {
+              "index": 74,
+              "value": 4444
+            },
+            {
+              "index": 75,
+              "value": 4446
+            },
+            {
+              "index": 76,
+              "value": 4141
+            },
+            {
+              "index": 77,
+              "value": 4448
+            },
+            {
+              "index": 78,
+              "value": 4449
+            },
+            {
+              "index": 79,
+              "value": 4166
+            },
+            {
+              "index": 80,
+              "value": 4165
+            },
+            {
+              "index": 81,
+              "value": 4167
+            },
+            {
+              "index": 82,
+              "value": 4168
+            },
+            {
+              "index": 83,
+              "value": 4174
+            },
+            {
+              "index": 84,
+              "value": 4415
+            },
+            {
+              "index": 85,
+              "value": 4416
+            },
+            {
+              "index": 86,
+              "value": 4171
+            },
+            {
+              "index": 87,
+              "value": 4438
+            },
+            {
+              "index": 88,
+              "value": 37271
+            },
+            {
+              "index": 89,
+              "value": 37272
+            },
+            {
+              "index": 90,
+              "value": 37273
+            },
+            {
+              "index": 91,
+              "value": 37376
+            },
+            {
+              "index": 92,
+              "value": 37382
+            },
+            {
+              "index": 93,
+              "value": 37383
+            },
+            {
+              "index": 94,
+              "value": 37384
+            },
+            {
+              "index": 95,
+              "value": 37385
+            },
+            {
+              "index": 96,
+              "value": 37393
+            },
+            {
+              "index": 97,
+              "value": 37394
+            },
+            {
+              "index": 98,
+              "value": 37395
+            },
+            {
+              "index": 99,
+              "value": 37396
+            },
+            {
+              "index": 100,
+              "value": 37397
+            },
+            {
+              "index": 101,
+              "value": 37398
+            },
+            {
+              "index": 102,
+              "value": 37399
+            },
+            {
+              "index": 103,
+              "value": 37401
+            },
+            {
+              "index": 104,
+              "value": 37402
+            },
+            {
+              "index": 105,
+              "value": 37403
+            },
+            {
+              "index": 106,
+              "value": 37404
+            },
+            {
+              "index": 107,
+              "value": 37377
+            },
+            {
+              "index": 108,
+              "value": 37405
+            },
+            {
+              "index": 109,
+              "value": 37406
+            },
+            {
+              "index": 110,
+              "value": 37407
+            },
+            {
+              "index": 111,
+              "value": 37408
+            },
+            {
+              "index": 112,
+              "value": 37409
+            },
+            {
+              "index": 113,
+              "value": 37410
+            },
+            {
+              "index": 114,
+              "value": 37411
+            },
+            {
+              "index": 115,
+              "value": 37412
+            },
+            {
+              "index": 116,
+              "value": 37413
+            },
+            {
+              "index": 117,
+              "value": 37414
+            },
+            {
+              "index": 118,
+              "value": 37415
+            },
+            {
+              "index": 119,
+              "value": 37416
+            },
+            {
+              "index": 120,
+              "value": 37417
+            },
+            {
+              "index": 121,
+              "value": 37418
+            },
+            {
+              "index": 122,
+              "value": 37419
+            },
+            {
+              "index": 123,
+              "value": 37420
+            },
+            {
+              "index": 124,
+              "value": 37421
+            },
+            {
+              "index": 125,
+              "value": 37422
+            },
+            {
+              "index": 126,
+              "value": 37423
+            },
+            {
+              "index": 127,
+              "value": 37424
+            },
+            {
+              "index": 128,
+              "value": 37425
+            },
+            {
+              "index": 129,
+              "value": 37426
+            },
+            {
+              "index": 130,
+              "value": 37427
+            },
+            {
+              "index": 131,
+              "value": 37428
+            },
+            {
+              "index": 132,
+              "value": 37429
+            },
+            {
+              "index": 133,
+              "value": 37430
+            },
+            {
+              "index": 134,
+              "value": 37431
+            },
+            {
+              "index": 135,
+              "value": 37432
+            },
+            {
+              "index": 136,
+              "value": 37433
+            },
+            {
+              "index": 137,
+              "value": 37434
+            },
+            {
+              "index": 138,
+              "value": 37435
+            },
+            {
+              "index": 139,
+              "value": 37436
+            },
+            {
+              "index": 140,
+              "value": 37437
+            },
+            {
+              "index": 141,
+              "value": 37438
+            },
+            {
+              "index": 142,
+              "value": 37439
+            },
+            {
+              "index": 143,
+              "value": 37440
+            },
+            {
+              "index": 144,
+              "value": 37441
+            },
+            {
+              "index": 145,
+              "value": 37442
+            },
+            {
+              "index": 146,
+              "value": 37443
+            },
+            {
+              "index": 147,
+              "value": 37444
+            },
+            {
+              "index": 148,
+              "value": 37445
+            },
+            {
+              "index": 149,
+              "value": 37446
+            },
+            {
+              "index": 150,
+              "value": 37447
+            },
+            {
+              "index": 151,
+              "value": 37448
+            },
+            {
+              "index": 152,
+              "value": 37449
+            },
+            {
+              "index": 153,
+              "value": 37450
+            },
+            {
+              "index": 154,
+              "value": 37451
+            },
+            {
+              "index": 155,
+              "value": 37452
+            },
+            {
+              "index": 156,
+              "value": 37453
+            },
+            {
+              "index": 157,
+              "value": 37454
+            },
+            {
+              "index": 158,
+              "value": 37455
+            },
+            {
+              "index": 159,
+              "value": 37456
+            },
+            {
+              "index": 160,
+              "value": 37457
+            },
+            {
+              "index": 161,
+              "value": 37458
+            },
+            {
+              "index": 162,
+              "value": 37459
+            },
+            {
+              "index": 163,
+              "value": 37460
+            },
+            {
+              "index": 164,
+              "value": 37461
+            },
+            {
+              "index": 165,
+              "value": 37462
+            },
+            {
+              "index": 166,
+              "value": 37463
+            },
+            {
+              "index": 167,
+              "value": 37464
+            },
+            {
+              "index": 168,
+              "value": 37465
+            },
+            {
+              "index": 169,
+              "value": 37466
+            },
+            {
+              "index": 170,
+              "value": 37467
+            },
+            {
+              "index": 171,
+              "value": 37468
+            },
+            {
+              "index": 172,
+              "value": 37469
+            },
+            {
+              "index": 173,
+              "value": 37470
+            },
+            {
+              "index": 174,
+              "value": 37471
+            },
+            {
+              "index": 175,
+              "value": 37472
+            },
+            {
+              "index": 176,
+              "value": 37473
+            },
+            {
+              "index": 177,
+              "value": 37474
+            },
+            {
+              "index": 178,
+              "value": 37476
+            },
+            {
+              "index": 179,
+              "value": 37475
+            },
+            {
+              "index": 180,
+              "value": 37477
+            },
+            {
+              "index": 181,
+              "value": 37478
+            },
+            {
+              "index": 182,
+              "value": 37479
+            },
+            {
+              "index": 183,
+              "value": 37480
+            },
+            {
+              "index": 184,
+              "value": 37481
+            },
+            {
+              "index": 185,
+              "value": 37482
+            },
+            {
+              "index": 186,
+              "value": 37483
+            },
+            {
+              "index": 187,
+              "value": 37484
+            },
+            {
+              "index": 188,
+              "value": 37485
+            },
+            {
+              "index": 189,
+              "value": 37486
+            },
+            {
+              "index": 190,
+              "value": 37487
+            },
+            {
+              "index": 191,
+              "value": 37488
+            },
+            {
+              "index": 192,
+              "value": 37489
+            },
+            {
+              "index": 193,
+              "value": 37490
+            },
+            {
+              "index": 194,
+              "value": 37491
+            },
+            {
+              "index": 195,
+              "value": 37492
+            },
+            {
+              "index": 196,
+              "value": 37493
+            },
+            {
+              "index": 197,
+              "value": 37494
+            },
+            {
+              "index": 198,
+              "value": 37495
+            },
+            {
+              "index": 199,
+              "value": 37496
+            },
+            {
+              "index": 200,
+              "value": 37497
+            },
+            {
+              "index": 201,
+              "value": 37498
+            },
+            {
+              "index": 202,
+              "value": 37499
+            },
+            {
+              "index": 203,
+              "value": 37500
+            },
+            {
+              "index": 204,
+              "value": 37501
+            },
+            {
+              "index": 205,
+              "value": 37502
+            },
+            {
+              "index": 206,
+              "value": 37503
+            },
+            {
+              "index": 207,
+              "value": 37504
+            },
+            {
+              "index": 208,
+              "value": 37505
+            },
+            {
+              "index": 209,
+              "value": 37506
+            },
+            {
+              "index": 210,
+              "value": 37507
+            },
+            {
+              "index": 211,
+              "value": 37508
+            },
+            {
+              "index": 212,
+              "value": 37509
+            },
+            {
+              "index": 213,
+              "value": 37510
+            },
+            {
+              "index": 214,
+              "value": 37511
+            },
+            {
+              "index": 215,
+              "value": 37512
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1007",
+      "name": "CAP_AUTOFEED",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x100b",
+      "name": "CAP_INDICATORS",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x100e",
+      "name": "CAP_UICONTROLLABLE",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x100f",
+      "name": "CAP_DEVICEONLINE",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1010",
+      "name": "CAP_AUTOSCAN",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1012",
+      "name": "CAP_DUPLEX",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "code": "0x1013",
+      "name": "CAP_DUPLEXENABLED",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 1,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1014",
+      "name": "CAP_ENABLEDSUIONLY",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1015",
+      "name": "CAP_CUSTOMDSDATA",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1024",
+      "name": "CAP_SERIALNUMBER",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 12,
+          "itemTypeName": "STR255",
+          "value": "SAXQ222J0022"
+        }
+      ]
+    },
+    {
+      "code": "0x1026",
+      "name": "CAP_PRINTER",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 1,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1027",
+      "name": "CAP_PRINTERENABLED",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1028",
+      "name": "CAP_PRINTERINDEX",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "code": "0x1029",
+      "name": "CAP_PRINTERMODE",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x102a",
+      "name": "CAP_PRINTERSTRING",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 12,
+          "itemTypeName": "STR255",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "code": "0x102d",
+      "name": "CAP_FEEDERALIGNMENT",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "code": "0x1038",
+      "name": "CAP_MICRENABLED",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1045",
+      "name": "CAP_PRINTERVERTICALOFFSET",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": 0.0000,
+          "minWhole": 0,
+          "minFrac": 0,
+          "maxValue": 14.0000,
+          "maxWhole": 14,
+          "maxFrac": 0,
+          "stepSize": 0.1000,
+          "stepWhole": 0,
+          "stepFrac": 6554,
+          "defaultValue": 0.1000,
+          "defaultWhole": 0,
+          "defaultFrac": 6554,
+          "currentValue": 0.1000,
+          "currentWhole": 0,
+          "currentFrac": 6554
+        }
+      ]
+    },
+    {
+      "code": "0x1046",
+      "name": "CAP_POWERSAVETIME",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 2,
+          "itemTypeName": "INT32",
+          "value": 14400
+        }
+      ]
+    },
+    {
+      "code": "0x1047",
+      "name": "CAP_PRINTERCHARROTATION",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 180,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1048",
+      "name": "CAP_PRINTERFONTSTYLE",
+      "raw": [
+        {
+          "container": "ARRAY",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 3,
+          "items": [
+            {
+              "index": 0,
+              "value": 0
+            },
+            {
+              "index": 1,
+              "value": 3
+            },
+            {
+              "index": 2,
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x104b",
+      "name": "CAP_PRINTERINDEXNUMDIGITS",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "numItems": 11,
+          "currentIndex": 4,
+          "defaultIndex": 4,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 3,
+              "value": 3,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 4,
+              "value": 4,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 5,
+              "value": 5,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 6,
+              "value": 6,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 7,
+              "value": 7,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 8,
+              "value": 8,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 9,
+              "value": 9,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 10,
+              "value": 10,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x104e",
+      "name": "CAP_PRINTERSTRINGPREVIEW",
+      "raw": [
+        {
+          "container": "ARRAY",
+          "itemType": 12,
+          "itemTypeName": "STR255",
+          "numItems": 1,
+          "items": [
+            {
+              "index": 0,
+              "value": "0001"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1100",
+      "name": "ICAP_AUTOBRIGHT",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1101",
+      "name": "ICAP_BRIGHTNESS",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": -1000.0000,
+          "minWhole": -1000,
+          "minFrac": 0,
+          "maxValue": 1000.0000,
+          "maxWhole": 1000,
+          "maxFrac": 0,
+          "stepSize": 10.0000,
+          "stepWhole": 10,
+          "stepFrac": 0,
+          "defaultValue": 0.0000,
+          "defaultWhole": 0,
+          "defaultFrac": 0,
+          "currentValue": 0.0000,
+          "currentWhole": 0,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x1103",
+      "name": "ICAP_CONTRAST",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": -1000.0000,
+          "minWhole": -1000,
+          "minFrac": 0,
+          "maxValue": 1000.0000,
+          "maxWhole": 1000,
+          "maxFrac": 0,
+          "stepSize": 10.0000,
+          "stepWhole": 10,
+          "stepFrac": 0,
+          "defaultValue": 0.0000,
+          "defaultWhole": 0,
+          "defaultFrac": 0,
+          "currentValue": 0.0000,
+          "currentWhole": 0,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x1106",
+      "name": "ICAP_FILTER",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "code": "0x1108",
+      "name": "ICAP_GAMMA",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "value": 1.0000,
+          "whole": 1,
+          "frac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x1109",
+      "name": "ICAP_HALFTONES",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 9,
+          "itemTypeName": "STR32",
+          "numItems": 6,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": "Halftone 1",
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": "Halftone 2",
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": "Halftone 3",
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 3,
+              "value": "Halftone 4",
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 4,
+              "value": "Halftone 5",
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 5,
+              "value": "Diffusion",
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x110a",
+      "name": "ICAP_HIGHLIGHT",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": 1.0000,
+          "minWhole": 1,
+          "minFrac": 0,
+          "maxValue": 255.0000,
+          "maxWhole": 255,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 255.0000,
+          "defaultWhole": 255,
+          "defaultFrac": 0,
+          "currentValue": 255.0000,
+          "currentWhole": 255,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x110c",
+      "name": "ICAP_IMAGEFILEFORMAT",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 4,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 2,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 4,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 0,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 3,
+              "value": 10,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x110d",
+      "name": "ICAP_LAMPSTATE",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x110e",
+      "name": "ICAP_LIGHTSOURCE",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 4,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1110",
+      "name": "ICAP_ORIENTATION",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 3,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1111",
+      "name": "ICAP_PHYSICALWIDTH",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "value": 8.5000,
+          "whole": 8,
+          "frac": 32768
+        }
+      ]
+    },
+    {
+      "code": "0x1112",
+      "name": "ICAP_PHYSICALHEIGHT",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "value": 14.0000,
+          "whole": 14,
+          "frac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x1113",
+      "name": "ICAP_SHADOW",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": 0.0000,
+          "minWhole": 0,
+          "minFrac": 0,
+          "maxValue": 255.0000,
+          "maxWhole": 255,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 0.0000,
+          "defaultWhole": 0,
+          "defaultFrac": 0,
+          "currentValue": 0.0000,
+          "currentWhole": 0,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x1114",
+      "name": "ICAP_FRAMES",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 8,
+          "itemTypeName": "FRAME",
+          "value": {
+            "left": 0.00,
+            "top": 0.00,
+            "right": 8.50,
+            "bottom": 14.00
+          }
+        }
+      ]
+    },
+    {
+      "code": "0x1116",
+      "name": "ICAP_XNATIVERESOLUTION",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "value": 600.0000,
+          "whole": 600,
+          "frac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x1117",
+      "name": "ICAP_YNATIVERESOLUTION",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "value": 600.0000,
+          "whole": 600,
+          "frac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x1118",
+      "name": "ICAP_XRESOLUTION",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": 72.0000,
+          "minWhole": 72,
+          "minFrac": 0,
+          "maxValue": 1200.0000,
+          "maxWhole": 1200,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 200.0000,
+          "defaultWhole": 200,
+          "defaultFrac": 0,
+          "currentValue": 300.0000,
+          "currentWhole": 300,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x1119",
+      "name": "ICAP_YRESOLUTION",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": 72.0000,
+          "minWhole": 72,
+          "minFrac": 0,
+          "maxValue": 1200.0000,
+          "maxWhole": 1200,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 200.0000,
+          "defaultWhole": 200,
+          "defaultFrac": 0,
+          "currentValue": 300.0000,
+          "currentWhole": 300,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x111a",
+      "name": "ICAP_MAXFRAMES",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "code": "0x111b",
+      "name": "ICAP_TILES",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x111c",
+      "name": "ICAP_BITORDER",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 1,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x111e",
+      "name": "ICAP_LIGHTPATH",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x111f",
+      "name": "ICAP_PIXELFLAVOR",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1120",
+      "name": "ICAP_PLANARCHUNKY",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1121",
+      "name": "ICAP_ROTATION",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": 0.0000,
+          "minWhole": 0,
+          "minFrac": 0,
+          "maxValue": 360.0000,
+          "maxWhole": 360,
+          "maxFrac": 0,
+          "stepSize": 90.0000,
+          "stepWhole": 90,
+          "stepFrac": 0,
+          "defaultValue": 0.0000,
+          "defaultWhole": 0,
+          "defaultFrac": 0,
+          "currentValue": 0.0000,
+          "currentWhole": 0,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x1122",
+      "name": "ICAP_SUPPORTEDSIZES",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 14,
+          "currentIndex": 3,
+          "defaultIndex": 3,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 1,
+              "value": 3,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 4,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 3,
+              "value": 1,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 4,
+              "value": 5,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 5,
+              "value": 13,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 6,
+              "value": 22,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 7,
+              "value": 29,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 8,
+              "value": 7,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 9,
+              "value": 30,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 10,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 11,
+              "value": 39,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 12,
+              "value": 40,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 13,
+              "value": 54,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1123",
+      "name": "ICAP_THRESHOLD",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": 0.0000,
+          "minWhole": 0,
+          "minFrac": 0,
+          "maxValue": 255.0000,
+          "maxWhole": 255,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 128.0000,
+          "defaultWhole": 128,
+          "defaultFrac": 0,
+          "currentValue": 128.0000,
+          "currentWhole": 128,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x1124",
+      "name": "ICAP_XSCALING",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "value": 1.0000,
+          "whole": 1,
+          "frac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x1125",
+      "name": "ICAP_YSCALING",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "value": 1.0000,
+          "whole": 1,
+          "frac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x1128",
+      "name": "ICAP_JPEGPIXELTYPE",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 2,
+          "currentIndex": 1,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 6,
+              "isCurrent": true,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x112b",
+      "name": "ICAP_BITDEPTH",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 1,
+          "items": [
+            {
+              "index": 0,
+              "value": 24,
+              "isCurrent": true,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x112c",
+      "name": "ICAP_BITDEPTHREDUCTION",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 4,
+          "currentIndex": 3,
+          "defaultIndex": 3,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 3,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 3,
+              "value": 4,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x112d",
+      "name": "ICAP_UNDEFINEDIMAGESIZE",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 1,
+          "defaultIndex": 1,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x112f",
+      "name": "ICAP_EXTIMAGEINFO",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1130",
+      "name": "ICAP_MINIMUMHEIGHT",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "value": 1.0000,
+          "whole": 1,
+          "frac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x1131",
+      "name": "ICAP_MINIMUMWIDTH",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "value": 1.0000,
+          "whole": 1,
+          "frac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x1134",
+      "name": "ICAP_AUTODISCARDBLANKPAGES",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 2,
+          "itemTypeName": "INT32",
+          "value": -2
+        }
+      ]
+    },
+    {
+      "code": "0x1136",
+      "name": "ICAP_FLIPROTATION",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x1137",
+      "name": "ICAP_BARCODEDETECTIONENABLED",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1138",
+      "name": "ICAP_SUPPORTEDBARCODETYPES",
+      "raw": [
+        {
+          "container": "ARRAY",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 16,
+          "items": [
+            {
+              "index": 0,
+              "value": 0
+            },
+            {
+              "index": 1,
+              "value": 1
+            },
+            {
+              "index": 2,
+              "value": 3
+            },
+            {
+              "index": 3,
+              "value": 4
+            },
+            {
+              "index": 4,
+              "value": 6
+            },
+            {
+              "index": 5,
+              "value": 7
+            },
+            {
+              "index": 6,
+              "value": 8
+            },
+            {
+              "index": 7,
+              "value": 9
+            },
+            {
+              "index": 8,
+              "value": 10
+            },
+            {
+              "index": 9,
+              "value": 11
+            },
+            {
+              "index": 10,
+              "value": 12
+            },
+            {
+              "index": 11,
+              "value": 13
+            },
+            {
+              "index": 12,
+              "value": 14
+            },
+            {
+              "index": 13,
+              "value": 15
+            },
+            {
+              "index": 14,
+              "value": 16
+            },
+            {
+              "index": 15,
+              "value": 20
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x113f",
+      "name": "ICAP_PATCHCODEDETECTIONENABLED",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1140",
+      "name": "ICAP_SUPPORTEDPATCHCODETYPES",
+      "raw": [
+        {
+          "container": "ARRAY",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 1,
+          "items": [
+            {
+              "index": 0,
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1150",
+      "name": "ICAP_AUTOMATICBORDERDETECTION",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 1,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1151",
+      "name": "ICAP_AUTOMATICDESKEW",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 1,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": false
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1152",
+      "name": "ICAP_AUTOMATICROTATE",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1153",
+      "name": "ICAP_JPEGQUALITY",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 1,
+          "itemTypeName": "INT16",
+          "value": 50
+        }
+      ]
+    },
+    {
+      "code": "0x1156",
+      "name": "ICAP_AUTOSIZE",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 3,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1157",
+      "name": "ICAP_AUTOMATICCROPUSESFRAME",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1158",
+      "name": "ICAP_AUTOMATICLENGTHDETECTION",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 1,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1159",
+      "name": "ICAP_AUTOMATICCOLORENABLED",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x115a",
+      "name": "ICAP_AUTOMATICCOLORNONCOLORPIXELTYPE",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x115b",
+      "name": "ICAP_COLORMANAGEMENTENABLED",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x115c",
+      "name": "ICAP_IMAGEMERGE",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 3,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 3,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x115e",
+      "name": "ICAP_SUPPORTEDEXTIMAGEINFO",
+      "raw": [
+        {
+          "container": "ARRAY",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 19,
+          "items": [
+            {
+              "index": 0,
+              "value": 4633
+            },
+            {
+              "index": 1,
+              "value": 4611
+            },
+            {
+              "index": 2,
+              "value": 4636
+            },
+            {
+              "index": 3,
+              "value": 4610
+            },
+            {
+              "index": 4,
+              "value": 4608
+            },
+            {
+              "index": 5,
+              "value": 4609
+            },
+            {
+              "index": 6,
+              "value": 4666
+            },
+            {
+              "index": 7,
+              "value": 4667
+            },
+            {
+              "index": 8,
+              "value": 4668
+            },
+            {
+              "index": 9,
+              "value": 4669
+            },
+            {
+              "index": 10,
+              "value": 4670
+            },
+            {
+              "index": 11,
+              "value": 4671
+            },
+            {
+              "index": 12,
+              "value": 4675
+            },
+            {
+              "index": 13,
+              "value": 4676
+            },
+            {
+              "index": 14,
+              "value": 4680
+            },
+            {
+              "index": 15,
+              "value": 4679
+            },
+            {
+              "index": 16,
+              "value": 4651
+            },
+            {
+              "index": 17,
+              "value": 4677
+            },
+            {
+              "index": 18,
+              "value": 4626
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1160",
+      "name": "ICAP_MIRROR",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x1161",
+      "name": "ICAP_JPEGSUBSAMPLING",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 3,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 4,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 0,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9197",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 1,
+          "defaultIndex": 1,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9198",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 5,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 3,
+              "value": 3,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 4,
+              "value": 4,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9199",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 4,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 3,
+              "value": 3,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9200",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 1,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9201",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9206",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9207",
+      "name": "",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": -180.0000,
+          "minWhole": -180,
+          "minFrac": 0,
+          "maxValue": 180.0000,
+          "maxWhole": 180,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 0.0000,
+          "defaultWhole": 0,
+          "defaultFrac": 0,
+          "currentValue": 180.0000,
+          "currentWhole": 180,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9208",
+      "name": "",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": -100.0000,
+          "minWhole": -100,
+          "minFrac": 0,
+          "maxValue": 100.0000,
+          "maxWhole": 100,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 0.0000,
+          "defaultWhole": 0,
+          "defaultFrac": 0,
+          "currentValue": 100.0000,
+          "currentWhole": 100,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9209",
+      "name": "",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": -100.0000,
+          "minWhole": -100,
+          "minFrac": 0,
+          "maxValue": 100.0000,
+          "maxWhole": 100,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 0.0000,
+          "defaultWhole": 0,
+          "defaultFrac": 0,
+          "currentValue": 100.0000,
+          "currentWhole": 100,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9211",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9212",
+      "name": "",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": 0.0000,
+          "minWhole": 0,
+          "minFrac": 0,
+          "maxValue": 240.0000,
+          "maxWhole": 240,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 15.0000,
+          "defaultWhole": 15,
+          "defaultFrac": 0,
+          "currentValue": 15.0000,
+          "currentWhole": 15,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9213",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 9,
+          "itemTypeName": "STR32",
+          "value": "Uniscan Q400"
+        }
+      ]
+    },
+    {
+      "code": "0x9214",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 9,
+          "itemTypeName": "STR32",
+          "value": "SAXQ222J0022"
+        }
+      ]
+    },
+    {
+      "code": "0x9215",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9216",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 9,
+          "itemTypeName": "STR32",
+          "value": "0.91"
+        }
+      ]
+    },
+    {
+      "code": "0x9217",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9219",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x921a",
+      "name": "",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": 0.0000,
+          "minWhole": 0,
+          "minFrac": 0,
+          "maxValue": 118.0000,
+          "maxWhole": 118,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 0.0000,
+          "defaultWhole": 0,
+          "defaultFrac": 0,
+          "currentValue": 0.0000,
+          "currentWhole": 0,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x921b",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 3,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 600,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x921c",
+      "name": "",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": -5.0000,
+          "minWhole": -5,
+          "minFrac": 0,
+          "maxValue": 5.0000,
+          "maxWhole": 5,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 0.0000,
+          "defaultWhole": 0,
+          "defaultFrac": 0,
+          "currentValue": 0.0000,
+          "currentWhole": 0,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x921d",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x921e",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x921f",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9220",
+      "name": "",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": -1.0000,
+          "minWhole": -1,
+          "minFrac": 0,
+          "maxValue": 30.0000,
+          "maxWhole": 30,
+          "maxFrac": 0,
+          "stepSize": 0.0100,
+          "stepWhole": 0,
+          "stepFrac": 655,
+          "defaultValue": -1.0000,
+          "defaultWhole": -1,
+          "defaultFrac": 0,
+          "currentValue": -1.0000,
+          "currentWhole": -1,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9221",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 1,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9222",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 12,
+          "itemTypeName": "STR255",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "code": "0x9223",
+      "name": "",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": -118.0000,
+          "minWhole": -118,
+          "minFrac": 0,
+          "maxValue": 118.0000,
+          "maxWhole": 118,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 0.0000,
+          "defaultWhole": 0,
+          "defaultFrac": 0,
+          "currentValue": 0.0000,
+          "currentWhole": 0,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9224",
+      "name": "",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": 0.0000,
+          "minWhole": 0,
+          "minFrac": 0,
+          "maxValue": 118.0000,
+          "maxWhole": 118,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 0.0000,
+          "defaultWhole": 0,
+          "defaultFrac": 0,
+          "currentValue": 0.0000,
+          "currentWhole": 0,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9225",
+      "name": "",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": -118.0000,
+          "minWhole": -118,
+          "minFrac": 0,
+          "maxValue": 118.0000,
+          "maxWhole": 118,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 0.0000,
+          "defaultWhole": 0,
+          "defaultFrac": 0,
+          "currentValue": 0.0000,
+          "currentWhole": 0,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9226",
+      "name": "",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": -118.0000,
+          "minWhole": -118,
+          "minFrac": 0,
+          "maxValue": 118.0000,
+          "maxWhole": 118,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 0.0000,
+          "defaultWhole": 0,
+          "defaultFrac": 0,
+          "currentValue": 0.0000,
+          "currentWhole": 0,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9227",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9228",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 3,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9229",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 113
+        }
+      ]
+    },
+    {
+      "code": "0x922a",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x922b",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 88
+        }
+      ]
+    },
+    {
+      "code": "0x922c",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x922d",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x922e",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x922f",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9230",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9231",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9232",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9233",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 10
+        }
+      ]
+    },
+    {
+      "code": "0x9234",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 29
+        }
+      ]
+    },
+    {
+      "code": "0x9235",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 2025
+        }
+      ]
+    },
+    {
+      "code": "0x9236",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 9
+        }
+      ]
+    },
+    {
+      "code": "0x9237",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "code": "0x9238",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 2026
+        }
+      ]
+    },
+    {
+      "code": "0x9239",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x923a",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x923b",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 3,
+          "itemTypeName": "UINT8",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x923c",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 3,
+          "itemTypeName": "UINT8",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x923d",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 3,
+          "itemTypeName": "UINT8",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "code": "0x923e",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 113
+        }
+      ]
+    },
+    {
+      "code": "0x923f",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9240",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9241",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 3,
+          "itemTypeName": "UINT8",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9242",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 9,
+          "itemTypeName": "STR32",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "code": "0x9243",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 9,
+          "itemTypeName": "STR32",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "code": "0x9244",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 3,
+          "itemTypeName": "UINT8",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9245",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 48
+        }
+      ]
+    },
+    {
+      "code": "0x9246",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 10
+        }
+      ]
+    },
+    {
+      "code": "0x9247",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 247
+        }
+      ]
+    },
+    {
+      "code": "0x9248",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9249",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x924a",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x924b",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": false,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x924c",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 4,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 3,
+              "value": 3,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x924d",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 4,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 3,
+              "value": 3,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x924e",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 6,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 3,
+              "value": 3,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 4,
+              "value": 4,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 5,
+              "value": 5,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x924f",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 300
+        }
+      ]
+    },
+    {
+      "code": "0x9250",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9251",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 11,
+          "currentIndex": 4,
+          "defaultIndex": 4,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 3,
+              "value": 3,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 4,
+              "value": 4,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 5,
+              "value": 5,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 6,
+              "value": 6,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 7,
+              "value": 7,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 8,
+              "value": 8,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 9,
+              "value": 9,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 10,
+              "value": 10,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9252",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9253",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 4,
+          "currentIndex": 1,
+          "defaultIndex": 1,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 3,
+              "value": 3,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9254",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 12,
+          "itemTypeName": "STR255",
+          "value": "Custom"
+        }
+      ]
+    },
+    {
+      "code": "0x9255",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9256",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9257",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9258",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9259",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x925a",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 30
+        }
+      ]
+    },
+    {
+      "code": "0x925b",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": true,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x925c",
+      "name": "",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": -5.0000,
+          "minWhole": -5,
+          "minFrac": 0,
+          "maxValue": 5.0000,
+          "maxWhole": 5,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 0.0000,
+          "defaultWhole": 0,
+          "defaultFrac": 0,
+          "currentValue": 0.0000,
+          "currentWhole": 0,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x925d",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 3,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x925e",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x925f",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9260",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9261",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9262",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9263",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 1,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9264",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9265",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9266",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 3,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9267",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9268",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9269",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x926a",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x926b",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x926c",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 3,
+          "itemTypeName": "UINT8",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x926d",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x926e",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x926f",
+      "name": "",
+      "raw": [
+        {
+          "container": "RANGE",
+          "itemType": 7,
+          "itemTypeName": "FIX32",
+          "minValue": 0.0000,
+          "minWhole": 0,
+          "minFrac": 0,
+          "maxValue": 480.0000,
+          "maxWhole": 480,
+          "maxFrac": 0,
+          "stepSize": 1.0000,
+          "stepWhole": 1,
+          "stepFrac": 0,
+          "defaultValue": 240.0000,
+          "defaultWhole": 240,
+          "defaultFrac": 0,
+          "currentValue": 240.0000,
+          "currentWhole": 240,
+          "currentFrac": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9270",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9271",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9272",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9273",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9274",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9275",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 3,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9276",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9277",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9278",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9279",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 2569
+        }
+      ]
+    },
+    {
+      "code": "0x927a",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 5,
+          "itemTypeName": "UINT32",
+          "value": 1598
+        }
+      ]
+    },
+    {
+      "code": "0x927b",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x927c",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 9,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 3,
+              "value": 3,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 4,
+              "value": 4,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 5,
+              "value": 5,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 6,
+              "value": 6,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 7,
+              "value": 7,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 8,
+              "value": 8,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x927d",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 4,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 3,
+              "value": 3,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x927e",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 100
+        }
+      ]
+    },
+    {
+      "code": "0x927f",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": true,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9280",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 3,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9281",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 2,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": true,
+              "isDefault": true
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9282",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9283",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9284",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 12,
+          "itemTypeName": "STR255",
+          "value": "Avision OEM"
+        }
+      ]
+    },
+    {
+      "code": "0x9285",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 6,
+          "itemTypeName": "BOOL",
+          "numItems": 1,
+          "currentIndex": 0,
+          "defaultIndex": 0,
+          "items": [
+            {
+              "index": 0,
+              "value": false,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "0x9286",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9287",
+      "name": "",
+      "raw": [
+        {
+          "container": "ONEVALUE",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "code": "0x9288",
+      "name": "",
+      "raw": [
+        {
+          "container": "ENUMERATION",
+          "itemType": 4,
+          "itemTypeName": "UINT16",
+          "numItems": 3,
+          "currentIndex": 2,
+          "defaultIndex": 2,
+          "items": [
+            {
+              "index": 0,
+              "value": 0,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 1,
+              "value": 1,
+              "isCurrent": false,
+              "isDefault": false
+            },
+            {
+              "index": 2,
+              "value": 2,
+              "isCurrent": true,
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "unreadable": [],
+  "options": [
+    {
+      "key": "source",
+      "label": "扫描方式",
+      "group": "basic",
+      "control": "select",
+      "value": "adfDuplex",
+      "choices": [
+        {
+          "value": "adf",
+          "label": "进纸器单面"
+        },
+        {
+          "value": "adfDuplex",
+          "label": "进纸器双面"
+        }
+      ]
+    },
+    {
+      "key": "colorMode",
+      "label": "颜色模式",
+      "group": "basic",
+      "control": "radio",
+      "value": "color",
+      "choices": [
+        {
+          "value": "bw",
+          "label": "黑白"
+        },
+        {
+          "value": "gray",
+          "label": "灰度"
+        },
+        {
+          "value": "color",
+          "label": "彩色"
+        }
+      ]
+    },
+    {
+      "key": "dpi",
+      "label": "分辨率",
+      "group": "basic",
+      "control": "select",
+      "value": 300,
+      "choices": [
+        {
+          "value": 75,
+          "label": "75 dpi"
+        },
+        {
+          "value": 100,
+          "label": "100 dpi"
+        },
+        {
+          "value": 150,
+          "label": "150 dpi"
+        },
+        {
+          "value": 200,
+          "label": "200 dpi"
+        },
+        {
+          "value": 240,
+          "label": "240 dpi"
+        },
+        {
+          "value": 300,
+          "label": "300 dpi"
+        },
+        {
+          "value": 400,
+          "label": "400 dpi"
+        },
+        {
+          "value": 600,
+          "label": "600 dpi"
+        },
+        {
+          "value": 1200,
+          "label": "1200 dpi"
+        }
+      ],
+      "unit": "dpi"
+    },
+    {
+      "key": "paperSize",
+      "label": "纸张尺寸",
+      "group": "basic",
+      "control": "select",
+      "value": "a4",
+      "choices": [
+        {
+          "value": "none",
+          "label": "不指定"
+        },
+        {
+          "value": "maxSize",
+          "label": "最大尺寸"
+        },
+        {
+          "value": "a4",
+          "label": "A4"
+        },
+        {
+          "value": "a5",
+          "label": "A5"
+        },
+        {
+          "value": "a6",
+          "label": "A6"
+        },
+        {
+          "value": "jisB5",
+          "label": "B5 (JIS)"
+        },
+        {
+          "value": "isoB5",
+          "label": "B5 (ISO)"
+        },
+        {
+          "value": "jisB6",
+          "label": "B6 (JIS)"
+        },
+        {
+          "value": "isoB6",
+          "label": "B6 (ISO)"
+        },
+        {
+          "value": "letter",
+          "label": "Letter"
+        },
+        {
+          "value": "legal",
+          "label": "Legal"
+        },
+        {
+          "value": "a7",
+          "label": "A7"
+        },
+        {
+          "value": "isoB7",
+          "label": "B7 (ISO)"
+        },
+        {
+          "value": "jisB7",
+          "label": "B7 (JIS)"
+        }
+      ]
+    },
+    {
+      "key": "brightness",
+      "label": "亮度",
+      "group": "basic",
+      "control": "slider",
+      "value": 0,
+      "min": -1000,
+      "max": 1000,
+      "step": 10
+    },
+    {
+      "key": "contrast",
+      "label": "对比度",
+      "group": "basic",
+      "control": "slider",
+      "value": 0,
+      "min": -1000,
+      "max": 1000,
+      "step": 10
+    }
+  ]
+}

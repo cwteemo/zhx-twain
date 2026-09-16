@@ -173,6 +173,15 @@
 | `paperSize` | 纸张尺寸 | select | `none` 不指定 / `maxSize` 最大尺寸 / `a3` `a4` `a5` `a6` / `jisB4` `jisB5` `isoB4` `isoB5` / `letter` `legal` … / `businessCard` 名片；扫描仪报了表里没有的规格时为 `code<编号>`，如 `code60` |
 | `brightness` | 亮度 | slider（设备报枚举时是 select，报单值时是 number） | 数字，常见 -1000 ~ 1000 |
 | `contrast` | 对比度 | 同上 | 数字 |
+| `autoCrop` | 自动裁切 | switch | `true` / `false` |
+| `autoDeskew` | 自动纠偏 | switch | `true` / `false` |
+| `autoRotate` | 自动旋转 | switch | `true` / `false` |
+| `autoColor` | 自动识别彩色 | switch | `true` / `false` |
+| `blankPage` | 空白页 | radio | `keep` 保留 / `discard` 自动去除 |
+| `rotate` | 旋转 | select | 数字，`0` `90` `180` `270` |
+| `threshold` | 黑白阈值 | slider | 数字，常见 0 ~ 255 |
+
+前 6 项是 `basic`（基础），后 7 项是 `advanced`（高级），前端可以分区显示。
 
 设置项由服务端配置文件决定，后续会随着适配的扫描仪增加（比如去空白页、自动纠偏、自动裁切）。
 前端按 3.2 的规则通用渲染即可，服务端加项时前端不用改。

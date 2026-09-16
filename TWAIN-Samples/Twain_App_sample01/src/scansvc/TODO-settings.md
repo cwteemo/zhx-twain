@@ -111,13 +111,15 @@ DLL 侧（`src/main.cpp`）没有加标记，按函数名找。
 - **建议修法（任选）**：按设备名缓存上一次的选项，先回缓存；或者只在已连接同一台设备时读，
   没连就回空数组，等第一次扫描后再读。
 
-### #13 【高】还没在 Windows 上实测
+### #13 【中】回归用例还缺几台真机 —— 部分完成（2026-09-16）
 
-- **现状**：`scanopt` 只在 Linux 上 `go test` 过。`scanopt/testdata/devices/TWAIN2_Software_Scanner.json`
-  是按虚拟扫描仪源码（`Twain_DS_sample01/src/CTWAINDS_FreeImage.cpp`）的默认值和 DLL 输出格式**推出来的**，不是真实抓取。
-- **要做**：Windows 上对虚拟扫描仪和每台真实扫描仪各导出一份 capdump，放进 `scanopt/testdata/devices/`，
-  `go test ./scanopt -update` 生成期望结果、核对后提交（步骤见 SCANNER_OPTIONS_CONFIG.md 第 6 节）；
-  虚拟扫描仪那份真实数据替换掉模拟数据。
+- **已有**：`scanopt/testdata/devices/Uniscan_Q400.json` 是真机导出（Avision OEM 机芯，216 项能力，
+  设备自报 `CAP_SUPPORTEDCAPS`）。13 个设置项在它上面全部核对过。
+- **还缺**：`TWAIN2_Software_Scanner.json` 仍是按虚拟扫描仪源码
+  （`Twain_DS_sample01/src/CTWAINDS_FreeImage.cpp`）的默认值和 DLL 输出格式**推出来的**，不是真实抓取；
+  其它型号（S8660、KODAK S2000、LANXUM 各型号）也都还没有。
+- **要做**：每台机器导出一份 capdump 放进 `scanopt/testdata/devices/`，
+  `go test ./scanopt -update` 生成期望结果、核对后提交（步骤见 SCANNER_OPTIONS_CONFIG.md 第 6 节）。
 
 ### #14 【中】只读不写 —— ✅ 已做（2026-09-15）
 

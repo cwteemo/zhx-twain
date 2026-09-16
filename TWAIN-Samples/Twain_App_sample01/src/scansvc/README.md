@@ -36,11 +36,44 @@ TWAINDSM.dll        ← TWAIN 数据源管理器，缺了它枚举不到任何�
 cd TWAIN-Samples\Twain_App_sample01\src\scansvc
 set CGO_ENABLED=1
 set GOARCH=amd64
+
+rem 交付用：没有控制台窗口，双击就缩到托盘后台运行
+go build -ldflags "-H=windowsgui" -o scansvc.exe .
+
+rem 调试用：带控制台窗口，日志直接打在屏幕上
 go build -o scansvc.exe .
+
 .\scansvc.exe
 ```
 
-### 2.1 维护工具（不用记命令，也不需要 curl）
+**`-H=windowsgui` 只影响有没有控制台窗口**，功能完全一样。加了它就没有黑窗口，日志只能看
+`scansvc.log`（见 2.4 的 `log`）；不加则多一个控制台窗口，调试时看日志方便。
+
+### 2.1 双击运行 / 托盘
+
+双击 `scansvc.exe` 就在后台跑起来，图标缩在右下角托盘（新图标可能被折叠进「显示隐藏的图标」
+里，可以拖到任务栏上常驻）。
+
+- **右键图标**：
+  - 第一行显示当前状态（`运行中: 0.0.0.0:5000  0.0.0.0:18080` 或 `已停止`）
+  - 打开测试页面 / 打开日志 / 打开图片目录
+  - **启动服务 / 停止服务 / 重启服务**：只开关两个端口的监听，不动扫描仪连接和缓存，
+    重启后不用再等一次设备打开
+  - 退出：关掉服务和 TWAIN 环境，进程结束
+- **双击图标**：打开测试页面
+- 端口被占用导致一个都没起来时**进程不会退出**，托盘仍在：关掉占用端口的程序后，
+  右键点「启动服务」即可，不用重新双击 exe
+- 监听意外断开时会弹气泡提示，并写进 `scansvc.log`
+- 资源管理器崩溃重启后，托盘图标会自动加回来
+
+不想要托盘（比如用别的方式托管进程）：`scansvc.exe -tray=false`，就是普通控制台程序。
+**注意**：用 `-H=windowsgui` 编译的 exe 再加 `-tray=false`，既没窗口也没图标，只能到任务管理器里结束。
+
+**开机自启**：用维护工具（下一节）的「开机自启设置」，它在当前用户的「启动」文件夹里放一个快捷方式。
+不建议注册成 Windows 服务——服务跑在 session 0 没有桌面会话，而 TWAIN 驱动基本都要求有桌面，
+多数扫描仪在服务里直接打不开。
+
+### 2.2 维护工具（不用记命令，也不需要 curl）
 
 `scansvc-tools.bat` + `scansvc-tools.ps1` 两个文件拷到 `scansvc.exe` 同目录，双击 bat 就有菜单：
 看服务状态、列扫描仪、**导出扫描仪能力（适配新扫描仪时发给开发的那个文件）**、看设置项、
@@ -56,12 +89,15 @@ scansvc-tools.bat options "Uniscan Q400"   # 看这台设备的设置项
 scansvc-tools.bat config                   # 设置项配置用的是内置还是现场覆盖
 scansvc-tools.bat builtin-config           # 下载内置配置，存成 scanner-options.jsonc
 scansvc-tools.bat -Port 18081 status       # 服务改过 HTTP 端口
+scansvc-tools.bat start                    # 启动 scansvc.exe
+scansvc-tools.bat stop                     # 停止 scansvc.exe
+scansvc-tools.bat autostart                # 设置 / 取消开机自启
 ```
 
 活儿都在 `.ps1` 里做，走 Windows 自带的 PowerShell（3.0+），**机器上没有 curl.exe 也能用**；
 端口不指定时会去读同目录的 `scansvc.conf`。下文各处的 `curl.exe ...` 命令都能换成对应的 bat 命令。
 
-### 2.2 两个端口
+### 2.3 两个端口
 
 服务监听两个端口，和被替换掉的那个转发服务保持一致——它本来就是一个进程开两个
 （`StartWebsocket` 占 5000、`StartHttpServer` 占 18080）：
@@ -90,7 +126,7 @@ HTTP 端口已启动: http://localhost:18080  （既有前端写死的地址）
 扫描服务就绪，图片保存于 D:\scansvc\scans
 ```
 
-### 2.3 配置文件（推荐）
+### 2.4 配置文件（推荐）
 
 第一次启动时会在 **exe 旁边**自动生成 `scansvc.conf`，所有能自定义的项都在里面，
 带注释，改完重启生效：
@@ -115,6 +151,12 @@ dir = scans
 
 # 自动清掉扫描目录下超过 N 小时的图片，0 表示不清理。
 clean-hours = 0
+
+# 日志文件（相对 exe 目录），超过 2MB 滚动成 scansvc.log.1。留空则不写文件。
+log = scansvc.log
+
+# 托盘图标。false 时按普通控制台程序跑。
+tray = true
 ```
 
 几条规矩：
@@ -130,7 +172,7 @@ clean-hours = 0
 配置文件放 **exe 所在目录**而不是当前工作目录：从快捷方式、计划任务、别的程序拉起
 `scansvc.exe` 时，工作目录是什么全看调用方，配置得跟着 exe 走才稳。
 
-### 2.4 命令行参数与环境变量
+### 2.5 命令行参数与环境变量
 
 配置文件之外，同样的东西也能用命令行或环境变量给，适合临时试一下、或者打包成服务：
 
@@ -142,6 +184,8 @@ clean-hours = 0
 | 端口顺延 | `-auto-port` | `SCANSVC_AUTO_PORT` | false |
 | 图片保存目录 | `-dir scans` | `SCANSVC_DIR` | scans |
 | 自动清理 | `-clean-hours 24` | `SCANSVC_CLEAN_HOURS` | 0（不清理） |
+| 日志文件 | `-log scansvc.log` | `SCANSVC_LOG` | exe 旁边的 `scansvc.log` |
+| 托盘图标 | `-tray=false` | `SCANSVC_TRAY` | true |
 | 配置文件路径 | `-config <路径>` | — | exe 旁边的 `scansvc.conf` |
 
 优先级：**命令行 > 环境变量 > 配置文件 > 内置默认值**。
@@ -151,7 +195,7 @@ clean-hours = 0
 
 两个端口设成同一个值时只监听一次（本来就是同一套路由，不会冲突）。
 
-### 2.5 端口被占用
+### 2.6 端口被占用
 
 一个端口起不来不影响另一个，日志会说清楚是哪个、怎么查：
 

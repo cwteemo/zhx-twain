@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 )
 
 // 默认端口；端口被 -auto-port 顺延时最多向后试 autoPortTries 个。
@@ -44,28 +45,42 @@ var (
 // 没监听成功就是 0。legacy.go 生成图片 URL 时要用它，见 fileHost()。
 var httpPortActual int
 
-// startServers 把两个端口都起起来，返回出错通道、实际起来的监听数，以及关闭函数。
+// servers 管着两个监听，可以随时停掉再起来——托盘菜单里的"停止服务 / 启动服务"就是它。
+//
+// 停止只关监听（不再接受新连接），不动 TWAIN：扫描仪连着的状态、设置项缓存都还在，
+// 重新启动不用再等一次设备打开。
+type servers struct {
+	mu        sync.Mutex
+	handler   http.Handler
+	listeners []net.Listener
+	stopping  bool
+	// fail 用来把"没人动它却挂了"的监听错误送出去。主动停止时不往里发。
+	fail chan error
+}
+
+var srv = &servers{fail: make(chan error, 2)}
+
+// Start 把两个端口都起起来，返回实际起来的监听数。
 // 一个端口起不来不影响另一个——扫描和文件管理是两条相对独立的链路，
 // 能通一条是一条，比整个服务起不来强。
-func startServers(handler http.Handler) (<-chan error, int, func()) {
-	bindHost, wp, hp := cfg.Host, cfg.WSPort, cfg.HTTPPort
+func (s *servers) Start() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.listeners) > 0 {
+		return len(s.listeners) // 已经在跑了
+	}
+	s.stopping = false
 
-	// 两个端口供的是同一套路由，谁也不比谁特殊。设成一样就只监听一个。
-	// 这里不用 log.Fatalf：它会跳过 defer TwainExit()，让 DSM/数据源没关干净。
-	serveErr := make(chan error, 2)
-	listening := 0
-	// 收着所有监听，交给调用方在退出时一并关掉。
-	var opened []net.Listener
+	bindHost, wp, hp := cfg.Host, cfg.WSPort, cfg.HTTPPort
+	handler := s.handler
 
 	if wp > 0 {
 		if ln, err := listenWithFallback(hostPort(bindHost, wp), cfg.AutoPort); err != nil {
 			reportListenFail("WebSocket", wp, err)
 		} else {
-			opened = append(opened, ln)
-			listening++
-			actual := portOf(ln.Addr().String())
-			log.Printf("WebSocket 端口已启动: ws://localhost:%s/  （既有前端写死的地址）", actual)
-			go func() { serveErr <- http.Serve(ln, handler) }()
+			s.listeners = append(s.listeners, ln)
+			log.Printf("WebSocket 端口已启动: ws://localhost:%s/  （既有前端写死的地址）", portOf(ln.Addr().String()))
+			s.serve(ln, handler)
 		}
 	}
 
@@ -73,27 +88,75 @@ func startServers(handler http.Handler) (<-chan error, int, func()) {
 		if ln, err := listenWithFallback(hostPort(bindHost, hp), cfg.AutoPort); err != nil {
 			reportListenFail("HTTP", hp, err)
 		} else {
-			opened = append(opened, ln)
-			listening++
+			s.listeners = append(s.listeners, ln)
 			actual := portOf(ln.Addr().String())
 			// 记下实际端口：WebSocket 推图片地址时要指到这个端口上来。
 			if n, convErr := strconv.Atoi(actual); convErr == nil {
 				httpPortActual = n
 			}
 			log.Printf("HTTP 端口已启动: http://localhost:%s  （既有前端写死的地址）", actual)
-			go func() { serveErr <- http.Serve(ln, handler) }()
+			s.serve(ln, handler)
 		}
 	} else if hp > 0 && hp == wp {
 		httpPortActual = wp
 		log.Printf("WebSocket 和 HTTP 指定了同一个端口 %d，只监听一次（两边本来就是同一套路由）", wp)
 	}
 
-	return serveErr, listening, func() {
-		for _, ln := range opened {
-			ln.Close()
-		}
-	}
+	return len(s.listeners)
 }
+
+func (s *servers) serve(ln net.Listener, handler http.Handler) {
+	go func() {
+		err := http.Serve(ln, handler)
+		s.mu.Lock()
+		stopping := s.stopping
+		s.mu.Unlock()
+		if stopping {
+			return // 是我们自己关的，正常
+		}
+		select {
+		case s.fail <- err:
+		default:
+		}
+	}()
+}
+
+// Stop 关掉监听。已经停了再调也没事。
+func (s *servers) Stop() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.listeners) == 0 {
+		return
+	}
+	s.stopping = true
+	for _, ln := range s.listeners {
+		ln.Close()
+	}
+	s.listeners = nil
+	httpPortActual = 0
+	log.Printf("监听已停止（扫描仪连接和缓存保留，重新启动即可继续用）")
+}
+
+// Running 表示当前有没有在监听。
+func (s *servers) Running() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.listeners) > 0
+}
+
+// Addrs 返回当前监听的地址，给托盘菜单显示用。
+func (s *servers) Addrs() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, 0, len(s.listeners))
+	for _, ln := range s.listeners {
+		out = append(out, ln.Addr().String())
+	}
+	return out
+}
+
+// Failed 是监听意外挂掉时的通知（主动停止不会发）。
+func (s *servers) Failed() <-chan error { return s.fail }
 
 // reportListenFail 把监听失败说清楚。端口被占是最常见的情况，直接给排查命令。
 func reportListenFail(name string, port int, err error) {
