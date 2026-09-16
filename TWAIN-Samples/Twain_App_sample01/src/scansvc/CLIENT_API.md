@@ -86,7 +86,7 @@
 ```json
 → {"handle":"scan",
    "scanner":"Uniscan Q400",      // 必填，设备名
-   "extension":"jpeg",            // 图片格式：jpeg / jpg / png，默认 png
+   "extension":"jpg",             // 图片格式：jpg / tiff / png，默认 png。见 4.1
    "sort":3,                      // 任意自定义字段，会原样回来（这里是页序号）
    "id":null,                     //   同上（这里是要替换的页 id）
    "show_setting":false,          // true 时弹扫描仪驱动自带的设置面板，不扫描
@@ -131,6 +131,24 @@
 
 ## 4. 图片怎么取
 
+### 4.1 支持的格式
+
+扫描请求里的 `extension` 决定存成什么格式，目前支持三种（写 `jpeg`、`tif` 也认）：
+
+| 取值 | 说明 |
+|---|---|
+| `jpg` | 有损压缩，质量 85。体积小，适合给人看、往业务系统传 |
+| `tiff` | **LZW 无损压缩**，档案数字化归档要的就是这个。黑白扫描存 1 位、灰度存 8 位、彩色存 24 位，不会因为格式转换把黑白图撑成彩色 |
+| `png` | 无损，本服务早期的默认值，留着兼容 |
+
+两种格式都会把**扫描分辨率（DPI）写进文件**（TIFF 写 XResolution/YResolution，JPEG 写 JFIF 密度）。
+档案验收要查图片里记录的 DPI，别丢。
+
+> **TIFF 浏览器显示不了**。所以转 TIFF 时服务会**一并生成同名的 JPEG 预览**，
+> 预览取 `<图片地址>?thumbnail=1`，上传和归档仍然用原来的 `.tiff` 地址。
+
+### 4.2 取图片
+
 扫出来的图由服务的 HTTP 端口提供：
 
 ```
@@ -143,6 +161,7 @@ http://127.0.0.1:18080/file/<文件名>?thumbnail=1     # 有同名 .jpeg 缩略
 - 响应带 `Cache-Control: max-age=7200`。同一张图反复显示不会重复下载；
   如果某张图会被改写（加工后覆盖），显示时自己在 URL 后面加个 `?t=时间戳`。
 - 图片会一直留在操作员机器上，除非服务开了自动清理（默认关闭）。
+- `?thumbnail=1` 对 TIFF 尤其有用：拿到的是同名 JPEG 预览（见 4.1）。
 
 ---
 
@@ -239,7 +258,7 @@ Content-Type: application/json
 
 {
   "device": "Uniscan Q400",       // 设备名；不传则用当前已连接的那台
-  "extension": "jpeg",            // 图片格式：jpeg / jpg / png，默认 png
+  "extension": "jpg",             // 图片格式：jpg / tiff / png，默认 png。见 4.1
   "count": 1,                     // 扫几页；不传按 1 算，显式传 0 表示走送纸器一直扫到没纸
   "scannerOptions": {"dpi": 300}  // 可选，同 SCANNER_OPTIONS_API.md
 }

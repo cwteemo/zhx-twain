@@ -320,7 +320,7 @@ POST /api/setting-ui
 ### 扫描（HTTP 异步任务，和 WebSocket 等价）
 
 ```
-POST /api/scan/start   {"device":"...","extension":"jpeg","count":1,"scannerOptions":{...}}
+POST /api/scan/start   {"device":"...","extension":"jpg","count":1,"scannerOptions":{...}}   # jpg / tiff / png
   → {"success":true,"job":{"id":"...","state":"scanning","pages":[]}}
   立刻返回，扫描在后台跑。同一时刻只允许一个任务，重复发起给 409。
   产出和 WebSocket 一致：转成 jpeg/png、平铺到扫描根目录、给 /file/<文件名> 地址。
@@ -433,9 +433,30 @@ TWAIN 细节全在服务端。**有哪些设置项、下拉框有哪些选项都
 ### 4.3 图片格式
 
 DLL 只会吐 BMP——`zhx_Scan` 靠 `*.bmp` 通配符比对扫描前后的目录来认产物，换格式就认不出来。
-所以转换放在 Go 侧（`imageconv.go`）：按请求里的 `extension` 转成 png/jpg，转完删掉原 BMP
-（一张十几 MB，连扫几百页很快吃满盘）。不认识的格式原样保留 BMP——扩展名必须和实际内容一致，
-前端要拿它报给后端。
+所以转换放在 Go 侧：按请求里的 `extension` 转，转完删掉原 BMP（一张十几 MB，连扫几百页很快吃满盘）。
+不认识的格式原样保留 BMP——扩展名必须和实际内容一致，前端要拿它报给后端。
+
+支持三种：
+
+| 格式 | 实现 |
+|---|---|
+| `jpg` | 标准库，质量 85，另外补一段 JFIF APP0 把 DPI 写进去（Go 的编码器根本不写这段） |
+| `tiff` | **自己写的 TIFF + LZW**，见下 |
+| `png` | 标准库，早期默认值，留着兼容 |
+
+转 TIFF 时会**一并存一张同名 JPEG** 当预览（浏览器显示不了 TIFF），前端取预览加 `?thumbnail=1`。
+
+**为什么 TIFF 要自己写**：标准库没有 TIFF 编码器；`golang.org/x/image/tiff` 只支持
+"不压缩"和 Deflate，**没有 LZW**；扫描仪那边也指望不上（Q400 的 `ICAP_COMPRESSION`
+只有 无压缩 / JPEG / G4）。而档案数字化要的就是 TIFF + LZW。
+
+代码在 `imgfmt/` 包（纯 Go，不碰 cgo，所以 `go test ./imgfmt` 在 Linux 上也能跑）：
+`bmp.go` 解码（按原始位深还原：1 位黑白 / 8 位灰度 / 24 位彩色，不再一律转 RGBA，
+否则黑白图存成 TIFF 会从几十 KB 变几十 MB）、`lzw.go` TIFF 版 LZW、`tiff.go` 容器。
+
+⚠️ TIFF 的 LZW 和标准库的 `compress/lzw` **不是一回事**：码长要提前一位加宽
+（x/image 的注释直接把它叫 "off by one"）。差这一位，别人的解码器读出来就是
+`lzw: invalid code`。改这块务必跑测试。
 
 BMP 解码是自己写的，没用 `golang.org/x/image/bmp`：那个包的新版本要求 Go 1.23+，
 引进来会把 `go.mod` 的版本要求抬上去。支持 1/4/8/24/32 位未压缩 BMP。

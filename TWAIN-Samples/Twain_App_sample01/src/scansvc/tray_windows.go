@@ -55,7 +55,10 @@ var (
 	procShellExecute    = shell32.NewProc("ShellExecuteW")
 	procExtractIcon     = shell32.NewProc("ExtractIconW")
 
-	procGetModuleHandle = kernel32.NewProc("GetModuleHandleW")
+	procGetModuleHandle       = kernel32.NewProc("GetModuleHandleW")
+	procGetConsoleWindow      = kernel32.NewProc("GetConsoleWindow")
+	procGetConsoleProcessList = kernel32.NewProc("GetConsoleProcessList")
+	procShowWindow            = user32.NewProc("ShowWindow")
 )
 
 const (
@@ -88,6 +91,7 @@ const (
 	idiApplication = 32512
 	idcArrow       = 32512
 	swShowNormal   = 1
+	swHide         = 0
 
 	csHRedraw = 0x0002
 	csVRedraw = 0x0001
@@ -226,6 +230,9 @@ func runTray() {
 		log.Printf("⚠ 托盘图标添加失败（服务照常运行）")
 	} else {
 		log.Printf("已缩到右下角托盘，右键图标可以启动 / 停止 / 重启 / 退出")
+		// 图标出来了，才把双击带出来的控制台窗口藏起来——万一托盘没建起来，
+		// 至少还有个窗口能看见服务在跑。
+		hideOwnedConsole()
 	}
 
 	// 监听意外挂掉时提示一下，不然后台运行时没人知道。
@@ -245,6 +252,32 @@ func runTray() {
 		procTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
 		procDispatchMessage.Call(uintptr(unsafe.Pointer(&m)))
 	}
+}
+
+// hideOwnedConsole 把双击 exe 时弹出来的那个控制台窗口藏起来。
+//
+// 没用 -ldflags "-H=windowsgui" 编译时，双击 exe 会附带一个控制台窗口。它有两个问题：
+// 一是难看（用户以为是"弹框"），二是**点窗口的关闭按钮会把服务一起关掉**——
+// Windows 会给控制台里的进程发 CTRL_CLOSE_EVENT，几秒后强杀，托盘也就没了。
+//
+// 所以托盘起来之后就把它藏掉：进程照常跑，日志照样写文件（见 logfile.go），
+// 要退出从托盘右键点"退出"。
+//
+// 只藏"自己的"控制台：从 cmd / PowerShell 里启动时，控制台是那个 shell 的，
+// 藏了会把用户正在用的窗口弄没。用 GetConsoleProcessList 判断——附在这个控制台上的
+// 进程只有我们自己（返回 1），才说明是双击启动的。
+func hideOwnedConsole() {
+	hwnd, _, _ := procGetConsoleWindow.Call()
+	if hwnd == 0 {
+		return // 用 -H=windowsgui 编的，本来就没有控制台
+	}
+	var pids [4]uint32
+	n, _, _ := procGetConsoleProcessList.Call(uintptr(unsafe.Pointer(&pids[0])), uintptr(len(pids)))
+	if n != 1 {
+		return // 控制台是别人的（从命令行启动），留着让用户看日志
+	}
+	procShowWindow.Call(hwnd, swHide)
+	log.Printf("已隐藏双击启动时弹出的控制台窗口；日志见 %s，退出请用托盘右键", logFilePath)
 }
 
 // waitWithoutTray 在托盘建不起来时退回"等到监听挂掉"的老行为，别让进程直接退出。

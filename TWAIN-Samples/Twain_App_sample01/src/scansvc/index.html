@@ -94,7 +94,7 @@
   <h2>3. 扫描</h2>
   <div class="row">
     <label>格式</label>
-    <select id="sel-ext"><option>jpeg</option><option>png</option></select>
+    <select id="sel-ext"><option>jpg</option><option>tiff</option><option>png</option></select>
     <label>页数</label>
     <input id="inp-count" type="number" value="1" min="0" style="width:90px">
     <label class="hint">0 = 走送纸器扫到没纸</label>
@@ -106,6 +106,8 @@
   <p class="hint">
     对应 <code>POST /api/scan/start</code> + 每秒轮询 <code>GET /api/scan/status?job=</code>。
     图片地址就是返回里的 <code>url</code>，直接用即可。
+    选 tiff 时浏览器显示不了原图，这里显示的是服务端一并生成的同名 JPEG 预览
+    （地址后面加 <code>?thumbnail=1</code>）；上传传的仍然是 TIFF 原图。
   </p>
 </div>
 
@@ -391,7 +393,8 @@ function addShot(page) {
   const box = document.createElement('div');
   box.className = 'shot';
   const img = document.createElement('img');
-  img.src = page.url;
+  // 浏览器显示不了 TIFF，服务端转 TIFF 时会存一张同名 JPEG，加 ?thumbnail=1 就能取到
+  img.src = /\.tiff?($|\?)/i.test(page.url) ? page.url + '?thumbnail=1' : page.url;
   img.title = '点击选中，双击在新窗口打开';
   img.onclick = () => selectShot(box, page);
   img.ondblclick = () => window.open(page.url, '_blank');
