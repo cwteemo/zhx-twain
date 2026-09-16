@@ -18,7 +18,9 @@
 //	GET  /api/scanner-options/config/builtin  下载内置配置原文（应急覆盖时当起点）
 //	POST /api/capability   设一项 TWAIN 能力（JSON: {"name":"...","value":"..."}）
 //	POST /api/setting-ui   打开驱动自带的设置面板，阻塞到用户关闭
-//	POST /api/scan         扫描（JSON: {"device":"...","count":1}，count=0 扫到没纸）
+//	POST /api/scan         扫描（同步，调试用；产出是原始 BMP，见 scanjob.go 的说明）
+//	POST /api/scan/start   发起扫描任务（异步，立刻返回 jobId），产出同 WebSocket
+//	GET  /api/scan/status  查扫描任务的进度和已扫出的页（?job=<id>，不带则给最近一次）
 //	GET  /api/image?id=xx  取回扫描出的图片
 //	WS   /ws  和  WS  /    WebSocket。/ 上同时提供演示页和 WebSocket，按握手头分流，
 //	                       因为既有前端把 ws://127.0.0.1:5000/ 写死了（见 legacy.go）
@@ -185,6 +187,8 @@ func main() {
 	mux.HandleFunc("/api/scanner-options/config/builtin", handleOptionsConfigBuiltin)
 	mux.HandleFunc("/api/setting-ui", handleSettingUI)
 	mux.HandleFunc("/api/scan", handleScan(root))
+	mux.HandleFunc("/api/scan/start", handleScanStart)
+	mux.HandleFunc("/api/scan/status", handleScanStatus)
 	mux.HandleFunc("/api/image", handleImage)
 	mux.HandleFunc("/ws", handleWS)
 	// 文件 / 目录管理那一组（含 /file/，图片的静态出口也在里面）。

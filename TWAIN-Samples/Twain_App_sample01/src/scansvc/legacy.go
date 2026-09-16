@@ -177,10 +177,7 @@ func handleLegacyScan(c *wsClient, msg legacyMsg) {
 		}
 	}
 
-	ext := strings.ToLower(strings.TrimPrefix(msg.str("extension"), "."))
-	if ext == "" {
-		ext = legacyDefaultExt
-	}
+	ext := normalizeExt(msg.str("extension"))
 
 	dir, err := newScanDir(scanRoot)
 	if err != nil {
@@ -190,22 +187,11 @@ func handleLegacyScan(c *wsClient, msg legacyMsg) {
 
 	// 每扫出一张就推一条，形式和旧服务端一致：整个请求对象回显 + base64 装地址。
 	// 这个回调跑在 TWAIN 线程上，只做格式转换和一次非阻塞 Push。
+	// 格式转换、挪到扫描根目录、拼地址和 HTTP 那条路共用，见 scanjob.go 的 preparePage。
 	progress := func(page int, path string) {
-		converted, convErr := convertScan(path, ext)
-		if convErr != nil {
-			// 转换失败会退回原始 BMP，扫描本身不受影响，记一笔就够。
-			log.Printf("第 %d 页格式转换失败: %v", page, convErr)
-		}
-
-		flat, moveErr := moveToScanRoot(converted)
-		if moveErr != nil {
-			log.Printf("第 %d 页移到扫描根目录失败: %v", page, moveErr)
-			return
-		}
-
-		url, urlErr := fileURL(c.host, flat)
-		if urlErr != nil {
-			log.Printf("第 %d 页生成访问地址失败: %v", page, urlErr)
+		p, err := preparePage(path, ext, c.host, page)
+		if err != nil {
+			log.Printf("第 %d 页处理失败: %v", page, err)
 			return
 		}
 
@@ -214,7 +200,7 @@ func handleLegacyScan(c *wsClient, msg legacyMsg) {
 		for k, v := range msg {
 			one[k] = v
 		}
-		one["base64"] = url
+		one["base64"] = p.URL
 		one.send(c, legacyCodeOK)
 	}
 

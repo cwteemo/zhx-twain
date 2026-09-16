@@ -308,7 +308,20 @@ POST /api/setting-ui
   调用方要么把超时放宽，要么改用 WebSocket 的 showSetting 指令。
 ```
 
-### 扫描
+### 扫描（HTTP 异步任务，和 WebSocket 等价）
+
+```
+POST /api/scan/start   {"device":"...","extension":"jpeg","count":1,"scannerOptions":{...}}
+  → {"success":true,"job":{"id":"...","state":"scanning","pages":[]}}
+  立刻返回，扫描在后台跑。同一时刻只允许一个任务，重复发起给 409。
+  产出和 WebSocket 一致：转成 jpeg/png、平铺到扫描根目录、给 /file/<文件名> 地址。
+
+GET  /api/scan/status[?job=<id>]
+  → {"success":true,"job":{"state":"scanning|done|failed","pages":[{"page":1,"file":"...","url":"..."}],"error":""}}
+  不带 job 给最近一次；只保留最近 20 次任务。实现见 scanjob.go。
+```
+
+### 扫描（同步，调试用）
 
 ```
 POST /api/scan          {"count":1}
