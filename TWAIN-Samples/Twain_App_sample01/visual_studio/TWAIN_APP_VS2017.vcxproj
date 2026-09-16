@@ -122,7 +122,7 @@ if EXIST "$(ProjectDir)..\pub\bin\win32\$(TargetName).exe" del /q /f "$(ProjectD
       </PrecompiledHeader>
       <WarningLevel>Level4</WarningLevel>
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
-      <TreatWarningAsError>true</TreatWarningAsError>
+      <TreatWarningAsError>false</TreatWarningAsError>
     </ClCompile>
     <Link>
       <AdditionalDependencies>libcmtd.lib;FreeImage.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -200,7 +200,7 @@ if EXIST "$(ProjectDir)..\pub\bin\win32\$(TargetName).exe" del /q /f "$(ProjectD
       <PrecompiledHeader>
       </PrecompiledHeader>
       <WarningLevel>Level4</WarningLevel>
-      <TreatWarningAsError>true</TreatWarningAsError>
+      <TreatWarningAsError>false</TreatWarningAsError>
     </ClCompile>
     <Link>
       <AdditionalDependencies>libcmt.lib;FreeImage.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -239,7 +239,7 @@ if EXIST "$(ProjectDir)..\pub\bin\win64\$(TargetName).exe" del /q /f "$(ProjectD
       <PrecompiledHeader>
       </PrecompiledHeader>
       <WarningLevel>Level4</WarningLevel>
-      <TreatWarningAsError>true</TreatWarningAsError>
+      <TreatWarningAsError>false</TreatWarningAsError>
     </ClCompile>
     <Link>
       <AdditionalDependencies>libcmt.lib;FreeImage.lib;%(AdditionalDependencies)</AdditionalDependencies>

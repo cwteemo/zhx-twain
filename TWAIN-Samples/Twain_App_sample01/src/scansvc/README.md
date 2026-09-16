@@ -21,7 +21,13 @@ HTTP 和 WebSocket 两条路都通。另外带一组文件 / 目录管理接口�
 
 用 VS 打开 `TWAIN-Samples/Twain_App_sample01/visual_studio/TWAIN_APP_VS2017.sln`：
 
-- 配置选 **Debug | x64**（本分支该工程已是 `DynamicLibrary`，模块定义文件 `..\src\exports.def` 也已配好）
+- 配置选 **Debug | x64** 或 **Release | x64**（本分支该工程已是 `DynamicLibrary`，模块定义文件
+  `..\src\exports.def` 也已配好）。
+  两个配置都能编：上游代码在 `/W4` 下有不少警告，原来 Release 开着"警告视为错误"(`/WX`)，
+  一编就是一串 `C2220 以下警告被视为错误`，现已关掉（Debug|x64 本来就是关的）。
+  警告仍然会显示，只是不再中断编译。
+- **32 位配置（Win32）没有配 `exports.def`**，编出来的 DLL 不导出 `zhx_*` 函数，Go 那边链接不上。
+  要用 32 位得先把 `ModuleDefinitionFile` 补上；平时用 x64 就行。
 - 生成后把产物拷到本目录：
 
 ```
