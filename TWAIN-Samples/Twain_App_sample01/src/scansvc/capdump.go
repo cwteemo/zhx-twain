@@ -8,6 +8,7 @@ package main
 //
 // 触发方式（任选一个，都会先连上设备）：
 //
+//	scansvc-tools.bat dump "<设备名>"                     现场用这个，双击也有菜单，不依赖 curl
 //	GET  /api/capabilities/dump?device=<设备名>          HTTP
 //	{"cmd":"dumpCapabilities","params":{"device":"..."}}  WebSocket（cmd 协议）
 //	{"handle":"dumpCapabilities","scanner":"..."}         WebSocket（既有前端的 handle 协议）
@@ -60,6 +61,7 @@ type capDump struct {
 // TwainDumpCapabilities 读出设备支持的全部能力并存盘。
 // device 非空时先连上这台；为空则用当前已连接的设备。
 func TwainDumpCapabilities(device string) (*capDump, error) {
+	reloadOptionsConfig()
 	if strings.TrimSpace(device) != "" {
 		if err := TwainConnect(device); err != nil {
 			return nil, err

@@ -525,21 +525,36 @@ func TwainCapability(name string) (string, error) {
 // TwainReadCapabilities 在一次 TWAIN 任务里连续读多项能力，返回 编号 -> DLL 原始 JSON。
 // 读不到的项是 "[]"。编号按十进制传给 DLL：它读取侧的名字表残缺且有错，只有编号靠得住。
 func TwainReadCapabilities(codes []uint16) (map[uint16]string, error) {
-	out := make(map[uint16]string, len(codes))
+	var out map[uint16]string
 	var err error
 	inTwain(func() {
 		if int(C.zhx_GetState()) < StateDSOpen {
 			err = errors.New("尚未连接扫描仪，先调 /api/connect")
 			return
 		}
-		for _, code := range codes {
-			cName := C.CString(fmt.Sprintf("%d", code))
-			// 返回的是 DLL 内部静态缓冲区，下一次调用就会被覆盖，所以立刻拷成 Go 字符串。
-			out[code] = C.GoString(C.zhx_GetCapability_STR(cName))
-			C.free(unsafe.Pointer(cName))
-		}
+		out = readCapsOnTwainThread(codes)
 	})
 	return out, err
+}
+
+// readCapsOnTwainThread 逐项读能力，**必须在 TWAIN 线程上**调用。
+func readCapsOnTwainThread(codes []uint16) map[uint16]string {
+	out := make(map[uint16]string, len(codes))
+	for _, code := range codes {
+		cName := C.CString(fmt.Sprintf("%d", code))
+		// 返回的是 DLL 内部静态缓冲区，下一次调用就会被覆盖，所以立刻拷成 Go 字符串。
+		out[code] = C.GoString(C.zhx_GetCapability_STR(cName))
+		C.free(unsafe.Pointer(cName))
+	}
+	return out
+}
+
+// currentDeviceOnTwainThread 返回已打开的设备名，没打开返回空串。**必须在 TWAIN 线程上**调用。
+func currentDeviceOnTwainThread() string {
+	if int(C.zhx_GetState()) < StateDSOpen {
+		return ""
+	}
+	return C.GoString(C.zhx_GetCurrentDevice())
 }
 
 // TwainSetCapability 直接设一项 TWAIN 能力，给 ScanConfig 没覆盖到的场景用。

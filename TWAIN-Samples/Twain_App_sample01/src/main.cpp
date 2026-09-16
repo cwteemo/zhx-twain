@@ -68,6 +68,7 @@ typedef union {
 #include <map>
 #include <algorithm>
 #include <cstdarg>
+#include <cmath>
 #include "utilities.h"
 
 
@@ -3444,9 +3445,12 @@ int zhx_SetCapability_STR(char *nCap, char *value) {
                 float fValue = (float)atof(value);
                 
                 // Convert float to FIX32
+                // 值 = Whole + Frac/65536，Frac 无符号，所以负数要向下取整：
+                // -1.5 是 Whole=-2、Frac=32768。原来直接截断，负小数会算出错的 Frac。
                 TW_FIX32 fix32;
-                fix32.Whole = (TW_INT16)fValue;
-                fix32.Frac = (TW_UINT16)((fValue - fix32.Whole) * 65536.0f);
+                double whole = floor((double)fValue);
+                fix32.Whole = (TW_INT16)whole;
+                fix32.Frac = (TW_UINT16)((fValue - whole) * 65536.0 + 0.5);
                 
                 // Copy FIX32 bytes to Item
                 memcpy(&pOneValue->Item, &fix32, sizeof(TW_FIX32));
@@ -3487,6 +3491,14 @@ int zhx_SetCapability_STR(char *nCap, char *value) {
     
     _DSM_Free(cap.hContainer);
     
+    // TWRC_CHECKSTATUS：数据源接受了，但换成了它能支持的最接近的值（比如 DPI 取整到档位）。
+    // 按 TWAIN 规范这是成功，原来当失败处理；实际生效的值由调用方读回确认。
+    if (rc == TWRC_CHECKSTATUS) {
+        Logger::Log("@INFO Capability %s set to nearest supported value of %s (TWRC_CHECKSTATUS)", nCap, value);
+        Logger::Cleanup();
+        return 0;
+    }
+
     if (rc != TWRC_SUCCESS) {
         Logger::Log("@ERROR Failed to set capability %s to %s: TWAIN error %d", nCap, value, rc);
         Logger::Cleanup();

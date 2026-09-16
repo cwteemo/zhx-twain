@@ -1,0 +1,272 @@
+// ==================================================================
+// scansvc 扫描仪设置项配置（内置）
+//
+// 前端设置面板里有哪些设置项、每项对应扫描仪的哪个 TWAIN 能力、下拉框里有哪些选项，
+// 全在这个文件里定义。它编译进 scansvc.exe，是唯一来源。
+//
+// 改完跑 go test ./scanopt：检查写法，并用 testdata/devices 下已适配设备的能力导出做回归。
+// 现场应急时可以在 exe 旁边放一份 scanner-options.jsonc 整份覆盖它（不用重启），
+// 事后要把改动同步回这里。
+//
+// 完整说明见 SCANNER_OPTIONS_CONFIG.md。这里只放要点：
+//
+//   - 支持 // 和 /* */ 注释，最后一项后面多写一个逗号也没关系
+//   - options 的顺序 = 前端显示的顺序 = 下发到扫描仪的顺序
+//   - 每项的 kind 决定写法，一共四种：
+//       enum    一个能力的几个编号 → 下拉框 / 单选组       （颜色模式、纸张尺寸）
+//       number  一个数值能力 → 滑块 / 下拉档位 / 数字框     （分辨率、亮度）
+//       switch  一个开关能力 → 开关                         （自动纠偏）
+//       combo   每个选项同时设几个能力 → 下拉框 / 单选组    （扫描方式）
+//   - key 是前端存配置方案用的，**发布之后不要改名**；要下线某项写 "disabled": true
+//   - 扫描仪不支持的项、不支持的选项，服务会自动不给前端，不用按型号删
+//   - 能力写 twain.h 里的宏名（ICAP_PIXELTYPE），或编号（0x0101）
+//   - 某台扫描仪的某个能力报得不标准，在最下面 profiles 里单独覆盖
+//
+// 不知道一台扫描仪支持哪些能力、取值是什么：
+//   curl.exe "http://127.0.0.1:18080/api/capabilities/dump?device=设备名"
+// ==================================================================
+{
+  "version": 1,
+
+  "options": [
+    // ---------- combo：扫描方式 ----------
+    // 每个选项写"选中它时要设哪些能力"（set），以及"什么设备才给这个选项"（requires）。
+    // 设备当前是哪一项，是拿 set 和设备当前值对出来的。
+    {
+      "key": "source",
+      "label": "扫描方式",
+      "kind": "combo",
+      "control": "select",
+      "choices": [
+        {
+          "value": "flatbed",
+          "label": "平板",
+          "set": [{ "cap": "CAP_FEEDERENABLED", "value": 0 }]
+        },
+        {
+          "value": "adf",
+          "label": "进纸器单面",
+          "set": [
+            { "cap": "CAP_FEEDERENABLED", "value": 1 },
+            // optional：设备没有这个能力就跳过，不影响这个选项
+            { "cap": "CAP_DUPLEXENABLED", "value": 0, "optional": true }
+          ]
+        },
+        {
+          "value": "adfDuplex",
+          "label": "进纸器双面",
+          "set": [
+            { "cap": "CAP_FEEDERENABLED", "value": 1 },
+            { "cap": "CAP_DUPLEXENABLED", "value": 1 }
+          ],
+          // CAP_DUPLEX 是设备的双面能力：0 不支持，1/2 支持
+          "requires": [{ "cap": "CAP_DUPLEX", "op": "!=", "value": 0 }]
+        }
+      ]
+    },
+
+    // ---------- enum：颜色模式 ----------
+    // choices 里 code 是 TWAIN 编号，value 是发给前端的取值，label 是显示的文字。
+    // 设备只支持其中一部分时，只给前端那一部分；顺序按这里写的。
+    {
+      "key": "colorMode",
+      "label": "颜色模式",
+      "kind": "enum",
+      "cap": "ICAP_PIXELTYPE",
+      "control": "radio",
+      "choices": [
+        { "code": 0, "value": "bw", "label": "黑白" },
+        { "code": 1, "value": "gray", "label": "灰度" },
+        { "code": 2, "value": "color", "label": "彩色" }
+      ]
+    },
+
+    // ---------- number：分辨率 ----------
+    // caps 写多个：读第一个，写的时候一起写（不少设备 X/Y 分辨率要成对设）。
+    // 设备报的是一个区间（比如 50~1200）时，下拉框只给 presets 里落在区间内的档位；
+    // 设备报的是固定几档时，就用设备的档位。
+    {
+      "key": "dpi",
+      "label": "分辨率",
+      "kind": "number",
+      "caps": ["ICAP_XRESOLUTION", "ICAP_YRESOLUTION"],
+      "control": "select",
+      "presets": [75, 100, 150, 200, 240, 300, 400, 600, 1200],
+      "choiceLabel": "{value} dpi",
+      "unit": "dpi"
+    },
+
+    // ---------- enum：纸张尺寸 ----------
+    // showUnknown：设备报了这里没写的规格也列出来，取值是 code<编号>，文字用 unknownLabel。
+    {
+      "key": "paperSize",
+      "label": "纸张尺寸",
+      "kind": "enum",
+      "cap": "ICAP_SUPPORTEDSIZES",
+      "control": "select",
+      "showUnknown": true,
+      "unknownLabel": "其他规格（{code}）",
+      "choices": [
+        { "code": 0, "value": "none", "label": "不指定" },
+        { "code": 54, "value": "maxSize", "label": "最大尺寸" },
+        { "code": 1, "value": "a4", "label": "A4" },
+        { "code": 11, "value": "a3", "label": "A3" },
+        { "code": 5, "value": "a5", "label": "A5" },
+        { "code": 13, "value": "a6", "label": "A6" },
+        { "code": 2, "value": "jisB5", "label": "B5 (JIS)" },
+        { "code": 29, "value": "isoB5", "label": "B5 (ISO)" },
+        { "code": 38, "value": "jisB4", "label": "B4 (JIS)" },
+        { "code": 6, "value": "isoB4", "label": "B4 (ISO)" },
+        { "code": 39, "value": "jisB6", "label": "B6 (JIS)" },
+        { "code": 7, "value": "isoB6", "label": "B6 (ISO)" },
+        { "code": 12, "value": "isoB3", "label": "B3 (ISO)" },
+        { "code": 37, "value": "jisB3", "label": "B3 (JIS)" },
+        { "code": 3, "value": "letter", "label": "Letter" },
+        { "code": 4, "value": "legal", "label": "Legal" },
+        { "code": 9, "value": "ledger", "label": "Ledger" },
+        { "code": 10, "value": "executive", "label": "Executive" },
+        { "code": 52, "value": "statement", "label": "Statement" },
+        { "code": 53, "value": "businessCard", "label": "名片" },
+        { "code": 19, "value": "a0", "label": "A0" },
+        { "code": 20, "value": "a1", "label": "A1" },
+        { "code": 21, "value": "a2", "label": "A2" },
+        { "code": 22, "value": "a7", "label": "A7" },
+        { "code": 23, "value": "a8", "label": "A8" },
+        { "code": 24, "value": "a9", "label": "A9" },
+        { "code": 25, "value": "a10", "label": "A10" },
+        { "code": 17, "value": "4a0", "label": "4A0" },
+        { "code": 18, "value": "2a0", "label": "2A0" },
+        { "code": 26, "value": "isoB0", "label": "B0 (ISO)" },
+        { "code": 27, "value": "isoB1", "label": "B1 (ISO)" },
+        { "code": 28, "value": "isoB2", "label": "B2 (ISO)" },
+        { "code": 30, "value": "isoB7", "label": "B7 (ISO)" },
+        { "code": 31, "value": "isoB8", "label": "B8 (ISO)" },
+        { "code": 32, "value": "isoB9", "label": "B9 (ISO)" },
+        { "code": 33, "value": "isoB10", "label": "B10 (ISO)" },
+        { "code": 34, "value": "jisB0", "label": "B0 (JIS)" },
+        { "code": 35, "value": "jisB1", "label": "B1 (JIS)" },
+        { "code": 36, "value": "jisB2", "label": "B2 (JIS)" },
+        { "code": 40, "value": "jisB7", "label": "B7 (JIS)" },
+        { "code": 41, "value": "jisB8", "label": "B8 (JIS)" },
+        { "code": 42, "value": "jisB9", "label": "B9 (JIS)" },
+        { "code": 43, "value": "jisB10", "label": "B10 (JIS)" },
+        { "code": 44, "value": "c0", "label": "C0" },
+        { "code": 45, "value": "c1", "label": "C1" },
+        { "code": 46, "value": "c2", "label": "C2" },
+        { "code": 47, "value": "c3", "label": "C3" },
+        { "code": 14, "value": "c4", "label": "C4" },
+        { "code": 15, "value": "c5", "label": "C5" },
+        { "code": 16, "value": "c6", "label": "C6" },
+        { "code": 48, "value": "c7", "label": "C7" },
+        { "code": 49, "value": "c8", "label": "C8" },
+        { "code": 50, "value": "c9", "label": "C9" },
+        { "code": 51, "value": "c10", "label": "C10" }
+      ]
+    },
+
+    // ---------- number：亮度 / 对比度 ----------
+    // control 不写（auto）：设备报区间 → 滑块，报固定几档 → 下拉，只报一个值 → 数字框。
+    { "key": "brightness", "label": "亮度", "kind": "number", "cap": "ICAP_BRIGHTNESS" },
+    { "key": "contrast", "label": "对比度", "kind": "number", "cap": "ICAP_CONTRAST" },
+
+    // ==================================================================
+    // 以下是示例，默认关着（disabled）。确认目标扫描仪支持（看 capdump）后，
+    // 把 "disabled": true 删掉就会生效。
+    // ==================================================================
+
+    // ---------- 示例 · switch：自动纠偏 ----------
+    // 布尔能力，on / off 不写就是 1 / 0。
+    {
+      "key": "autoDeskew",
+      "label": "自动纠偏",
+      "group": "advanced",
+      "kind": "switch",
+      "cap": "ICAP_AUTOMATICDESKEW",
+      "disabled": true
+    },
+
+    // ---------- 示例 · switch：非布尔能力当开关用 ----------
+    // 能力本身是数字，开 / 关分别对应哪个值用 on / off 指定。
+    {
+      "key": "autoRotate",
+      "label": "自动旋转",
+      "group": "advanced",
+      "kind": "switch",
+      "cap": "ICAP_AUTOMATICROTATE",
+      "on": 1,
+      "off": 0,
+      "disabled": true
+    },
+
+    // ---------- 示例 · combo：去空白页 ----------
+    // ICAP_AUTODISCARDBLANKPAGES：-2 关闭，-1 自动判断。单个能力的特殊取值也可以用 combo 写。
+    {
+      "key": "blankPage",
+      "label": "去空白页",
+      "group": "advanced",
+      "kind": "combo",
+      "control": "radio",
+      "choices": [
+        { "value": "keep", "label": "保留", "set": [{ "cap": "ICAP_AUTODISCARDBLANKPAGES", "value": -2 }] },
+        { "value": "discard", "label": "自动去除", "set": [{ "cap": "ICAP_AUTODISCARDBLANKPAGES", "value": -1 }] }
+      ],
+      "disabled": true
+    },
+
+    // ---------- 示例 · enum：旋转 ----------
+    // 90 / 270 在不同驱动上顺逆时针可能相反，启用前扫一张确认。
+    {
+      "key": "rotate",
+      "label": "旋转",
+      "group": "advanced",
+      "kind": "enum",
+      "cap": "ICAP_ORIENTATION",
+      "choices": [
+        { "code": 0, "value": "none", "label": "不旋转" },
+        { "code": 1, "value": "rot90", "label": "旋转 90°" },
+        { "code": 2, "value": "rot180", "label": "旋转 180°" },
+        { "code": 3, "value": "rot270", "label": "旋转 270°" }
+      ],
+      "disabled": true
+    },
+
+    // ---------- 示例 · number：黑白阈值（强制滑块） ----------
+    // control 写 slider / select / number 可以指定控件；设备报的形态对不上时会自动退回 auto。
+    {
+      "key": "threshold",
+      "label": "黑白阈值",
+      "group": "advanced",
+      "kind": "number",
+      "cap": "ICAP_THRESHOLD",
+      "control": "slider",
+      "disabled": true
+    }
+  ],
+
+  // ==================================================================
+  // profiles：个别扫描仪单独处理
+  //   match   设备名里包含其中任意一个关键字（不区分大小写）就命中
+  //   hide    这类设备上不给前端的 key
+  //   options 写法和上面完全一样；key 相同的替换上面的定义，key 不同的追加到末尾
+  // ==================================================================
+  "profiles": [
+    // 示例：某型号分辨率驱动报 50~1200 的区间，实际只有 200 / 300 能用；且不显示对比度
+    // {
+    //   "name": "Uniscan Q400",
+    //   "match": ["Q400"],
+    //   "hide": ["contrast"],
+    //   "options": [
+    //     {
+    //       "key": "dpi",
+    //       "label": "分辨率",
+    //       "kind": "number",
+    //       "caps": ["ICAP_XRESOLUTION", "ICAP_YRESOLUTION"],
+    //       "control": "select",
+    //       "presets": [200, 300],
+    //       "choiceLabel": "{value} dpi",
+    //       "unit": "dpi"
+    //     }
+    //   ]
+    // }
+  ]
+}

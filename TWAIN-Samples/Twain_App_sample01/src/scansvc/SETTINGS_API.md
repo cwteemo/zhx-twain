@@ -485,54 +485,15 @@ DLL 靠固定的传输方式和 `*.bmp` 产物来识别扫描结果，改了扫�
 | 指令 | 行为 |
 |---|---|
 | `{"handle":"scan","scanner":"设备名","show_setting":true}` | 先连接该设备，再弹驱动设置面板。**成功不回任何消息**（回了前端会当成扫描结果去读 `base64` 而抛异常），失败回 `code:-1` |
-| `{"handle":"getScannerOptions","scanner":"设备名"}` | **不连接设备**。只有该设备已经连着（扫描过一次之后）才现读能力，否则回空数组 `data:[]`，见 8.3 |
+| `{"handle":"getScannerOptions","scanner":"设备名"}` | 取设置项。**不连接设备**：连着现读，没连给上次的缓存 |
+| `{"handle":"setScannerOptions","scanner":"设备名","scannerOptions":{...}}` | 下发设置项，会连接设备 |
+| `scan` 带 `scannerOptions` | 扫描前先下发设置，有一项不生效就不扫 |
 
-兼容协议里**没有**直接设参数的指令，前端能改参数的途径只有驱动设置面板。
+### 8.3 设置项协议（getScannerOptions / setScannerOptions）
 
-### 8.3 getScannerOptions 返回结构
+给前端的完整说明见 **[SCANNER_OPTIONS_API.md](SCANNER_OPTIONS_API.md)**，这里不重复。
 
-前端（`加工/通用` 分支 `ScanCom/Scan.js`）用的是 SANE 风格的选项模型，不是 TWAIN 的 CAP。
-实现在 `scanopt/`（纯 Go，`go test ./scanopt` 不接扫描仪也能跑）：列哪些项照着**虚拟扫描仪**自带设置面板来，可选值和当前值都现读设备，
-设备不支持的项直接略过（真实扫描仪上项会少一些）。
-
-```json
-{"handle":"getScannerOptions","scanner":"TWAIN2 Software Scanner","code":0,"data":[
-  {"option":1,"name":"source","type":"str-list","value":"ADF Front","list":["Flatbed","ADF Front"]},
-  {"option":2,"name":"mode","type":"str-list","value":"Color","list":["Lineart","Gray","Color"]},
-  {"option":3,"name":"resolution","type":"str-list","value":"200","list":["50","100","150","200","300","400","500","600"]},
-  {"option":4,"name":"paper-size","type":"str-list","value":"US Letter","list":["None","US Letter","US Legal"]},
-  {"option":5,"name":"rotate","type":"str-list","value":"None","list":["None"]},
-  {"option":6,"name":"units","type":"str-list","value":"Inches","list":["Inches","Pixels","Centimeters","Picas","Points","Twips"]},
-  {"option":7,"name":"brightness","type":"int-range","value":0,"min":-1000,"max":1000,"step":1},
-  {"option":8,"name":"contrast","type":"int-range","value":0,"min":-1000,"max":1000,"step":1},
-  {"option":9,"name":"threshold","type":"int-range","value":128,"min":0,"max":255,"step":1},
-  {"option":10,"name":"gamma","type":"int","value":1},
-  {"option":11,"name":"long-paper-scan","type":"bool","value":0},
-  {"option":12,"name":"documents-in-adf","type":"int","value":20}
-]}
-```
-
-上面是按虚拟扫描仪源码里的默认值推出来的示意，实际以设备返回为准。
-
-| name | TWAIN 能力 | type 怎么定 |
-|---|---|---|
-| `source` | `CAP_FEEDERENABLED` + `CAP_DUPLEXENABLED` | str-list：`Flatbed` / `ADF Front` / `ADF Duplex`（`CAP_DUPLEX` 为 0 时不给双面） |
-| `mode` | `ICAP_PIXELTYPE` | str-list：`Lineart`(黑白) / `Gray` / `Color` |
-| `resolution` | `ICAP_XRESOLUTION` | 设备报枚举 → str-list（前端没有 int-list）；报区间 → int-range |
-| `paper-size` | `ICAP_SUPPORTEDSIZES` | str-list：`A4`、`US Letter` 等，不认识的编号原样出数字 |
-| `rotate` | `ICAP_ORIENTATION` | str-list：`None` / `90` / `180` / `270` |
-| `units` | `ICAP_UNITS` | str-list |
-| `brightness` / `contrast` / `threshold` | `ICAP_BRIGHTNESS` / `ICAP_CONTRAST` / `ICAP_THRESHOLD` | 区间 → int-range；枚举 → str-list；单值 → int |
-| `gamma` | `ICAP_GAMMA` | 同上 |
-| `long-paper-scan` | `CUSTCAP_LONGDOCUMENT` (0x8001) | bool，值为 1 / 0。**仅虚拟扫描仪** |
-| `documents-in-adf` | `CUSTCAP_DOCS_IN_ADF` (0x8002) | int。**仅虚拟扫描仪** |
-
-- `option` 编号按上表顺序固定，某项被略过不会让后面的项改号
-- 自定义能力（0x8000 以上）的含义各厂商自己定，所以只在设备名含 `Software Scanner` 时才读
-- 前端在切换扫描仪时（包括进页面默认选中第一台）就会自动发这条，所以**这里不打开设备**：
-  设备列表来自已安装的驱动，不代表设备接着。只有请求的正好是已连接的那台才读，否则回空数组；
-  设备在用户点扫描时才连接
-- 目前**只读不写**：前端 `scan` 请求里带选项的那行是注释掉的，改选项还没有入口
-
-**新增一项选项**：只改 `scanopt/defs.go` 里的 `Defs` 表，文件头有字段说明和示例；
+服务端结构：`scanopt/`（纯 Go 的翻译层，`go test ./scanopt` 不接扫描仪也能跑）负责
+"TWAIN 能力 ↔ 设置项"，`options.go` 负责在 TWAIN 线程上读写和缓存。
+设置项由内置配置 `scanopt/default_options.jsonc` 定义（增删设置项、下拉选项都不写 Go 代码），写法见 [SCANNER_OPTIONS_CONFIG.md](SCANNER_OPTIONS_CONFIG.md)。
 改完跑 `go test ./scanopt`（有定义表自检）。

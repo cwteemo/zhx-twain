@@ -10,7 +10,8 @@ package main
 // 指令（对齐旧的 C# 服务端 zhxserver/Socket/MySocket.cs）：
 //   scannerList        → data: ["设备名", ...]
 //   scan               → 每扫出一张推一条，base64 字段装图片地址
-//   getScannerOptions  → data: 选项数组
+//   getScannerOptions  → data: 设置项（协议见 SCANNER_OPTIONS_API.md）
+//   setScannerOptions  → 下发设置项，data: 每项结果 + 最新设置项（本服务新增）
 //   export / import    → 前端只用来关 loading
 //
 // 图片不内联：前端 uploadFile 里是 `base64.slice(base64.lastIndexOf('.') + 1)`
@@ -102,6 +103,9 @@ func handleLegacyMessage(c *wsClient, raw map[string]any) {
 	case "getScannerOptions":
 		handleLegacyScannerOptions(c, msg)
 
+	case "setScannerOptions":
+		handleLegacySetScannerOptions(c, msg)
+
 	case "dumpCapabilities":
 		// 不是旧服务端的指令，是给适配新扫描仪抓真实能力结构用的，见 capdump.go。
 		dump, err := TwainDumpCapabilities(msg.str("scanner"))
@@ -151,6 +155,26 @@ func handleLegacyScan(c *wsClient, msg legacyMsg) {
 		// 那是 undefined，紧接着的 .slice() 会直接抛异常。
 		// 前端本来就靠 updateScanStatus 的定时器复位 loading，不需要这条响应。
 		return
+	}
+
+	values, err := optionValues(msg["scannerOptions"])
+	if err != nil {
+		msg.fail(c, "%s", err.Error())
+		return
+	}
+
+	// 扫描前先下发设置。有一项设不上就不扫：参数不对扫出来的图多半要重扫，
+	// 不如直接告诉用户哪一项不行。这台扫描仪没有的项（skipped）忽略。
+	if len(values) > 0 {
+		results, _, applyErr := TwainApplyScannerOptions(values)
+		if applyErr != nil {
+			msg.fail(c, "%s", applyErr.Error())
+			return
+		}
+		if failed := failedOptions(results, labelsOf(device)); failed != "" {
+			msg.fail(c, "扫描设置未生效，已取消扫描。%s", failed)
+			return
+		}
 	}
 
 	ext := strings.ToLower(strings.TrimPrefix(msg.str("extension"), "."))
@@ -203,6 +227,15 @@ func handleLegacyScan(c *wsClient, msg legacyMsg) {
 		msg.fail(c, "%s", err.Error())
 		return
 	}
+
+	// 这台设备第一次连上：读一份设置项存进缓存，并主动推给前端。
+	// 前端进页面时设备还没连，那时 getScannerOptions 只能给空的，设置面板就一直是空的。
+	if !hasCachedOptions(device) {
+		if data, optErr := TwainScannerOptions(); optErr == nil {
+			push := legacyMsg{"handle": "getScannerOptions", "scanner": device, "data": data}
+			push.send(c, legacyCodeOK)
+		}
+	}
 }
 
 // moveToScanRoot 把扫描出的图从本次扫描的临时目录挪到扫描根目录，返回新路径。
@@ -236,7 +269,7 @@ func moveToScanRoot(path string) (string, error) {
 	return dst, nil
 }
 
-// handleLegacyScannerOptions 返回扫描仪选项，模型见 options.go。
+// handleLegacyScannerOptions 返回扫描仪设置项，协议见 SCANNER_OPTIONS_API.md。
 //
 // 前端在切换扫描仪时就会自动发这条（ScanImageHeader.vue 监听 curScanner），
 // 进页面时默认选中列表第一台，所以这里**绝不能去打开设备**：设备列表来自已安装的
@@ -244,26 +277,46 @@ func moveToScanRoot(path string) (string, error) {
 // 打开一台不在线的设备还要卡住 TWAIN 队列好几秒（实测 S8660 MSG_OPENDS 4.2 秒）。
 // 设备只在用户点扫描时才连接（handleLegacyScan）。
 //
-// 所以只有请求的正好是**已经连着**的那台时才读真实选项，否则回空数组。
-// 空数组而不是 null：前端判的是 `if (!options)`，null 会弹"请关闭其他扫描程序"，
-// 空数组只是面板空着。
-//
-// TODO(TODO-settings.md #14): 只读不写，scan 里还没接收 scannerOptions。
+// 所以只有请求的正好是**已经连着**的那台时才现读；否则给上次读到的缓存（connected=false,
+// cached=true），从来没连过的给空 options。data 永远是对象不是 null：前端判的是
+// `if (!options)`，null 会弹"请关闭其他扫描程序"。
 func handleLegacyScannerOptions(c *wsClient, msg legacyMsg) {
-	st := TwainStatus()
+	msg["data"] = ScannerOptionsFor(msg.str("scanner"))
+	msg.send(c, legacyCodeOK)
+}
+
+// handleLegacySetScannerOptions 下发设置项。这是用户在设置面板点"应用"，
+// 属于明确的操作，所以**会打开设备**（和 getScannerOptions 不同）。
+// data 带回每一项的结果和下发后现读的设置项；有失败项时 code=-1、msg 说明哪几项。
+func handleLegacySetScannerOptions(c *wsClient, msg legacyMsg) {
 	device := msg.str("scanner")
-	if !st.Connected || (device != "" && device != st.Device) {
-		msg["data"] = []any{}
-		msg.send(c, legacyCodeOK)
+	if device == "" {
+		msg.fail(c, "未指定扫描仪")
 		return
 	}
-
-	options, err := TwainScannerOptions()
+	values, err := optionValues(msg["scannerOptions"])
 	if err != nil {
 		msg.fail(c, "%s", err.Error())
 		return
 	}
-	msg["data"] = options
+	if err := TwainConnect(device); err != nil {
+		msg.fail(c, "%s", err.Error())
+		return
+	}
+
+	results, data, err := TwainApplyScannerOptions(values)
+	if err != nil {
+		msg.fail(c, "%s", err.Error())
+		return
+	}
+	if results == nil {
+		results = []optionResult{}
+	}
+	msg["data"] = map[string]any{"results": results, "options": data}
+	if failed := failedOptions(results, labelsOf(device)); failed != "" {
+		msg.fail(c, "部分设置未生效。%s", failed)
+		return
+	}
 	msg.send(c, legacyCodeOK)
 }
 

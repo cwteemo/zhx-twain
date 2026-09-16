@@ -113,13 +113,15 @@ DLL 侧（`src/main.cpp`）没有加标记，按函数名找。
 
 ### #13 【高】还没在 Windows 上实测
 
-- **现状**：只在 Linux 上 `go vet` + `go test ./scanopt` 通过。`scanopt/testdata/virtual_scanner.json`
-  是按虚拟扫描仪源码（`Twain_DS_sample01/src/CTWAINDS_FreeImage.cpp`）的默认值和
-  DLL 的 `sprintf` 格式**推出来的**，不是抓的真实输出。
-- **要做**：Windows 上连虚拟扫描仪发一次 `getScannerOptions`，把 `twain.log` 里各项能力的原文
-  存进 testdata 替换掉模拟数据；有真实扫描仪的话也各存一份，加进测试做回归。
+- **现状**：`scanopt` 只在 Linux 上 `go test` 过。`scanopt/testdata/devices/TWAIN2_Software_Scanner.json`
+  是按虚拟扫描仪源码（`Twain_DS_sample01/src/CTWAINDS_FreeImage.cpp`）的默认值和 DLL 输出格式**推出来的**，不是真实抓取。
+- **要做**：Windows 上对虚拟扫描仪和每台真实扫描仪各导出一份 capdump，放进 `scanopt/testdata/devices/`，
+  `go test ./scanopt -update` 生成期望结果、核对后提交（步骤见 SCANNER_OPTIONS_CONFIG.md 第 6 节）；
+  虚拟扫描仪那份真实数据替换掉模拟数据。
 
-### #14 【中】只读不写
+### #14 【中】只读不写 —— ✅ 已做（2026-09-15）
+
+> 改成新的设置项协议（SCANNER_OPTIONS_API.md），新增 `setScannerOptions`，`scan` 接收 `scannerOptions`。
 
 - **现状**：前端 `Scan.js` 的 `scan_data` 里 `scannerOptions` 那行是注释掉的，设置面板也被注释了，
   所以目前没有入口把选项发回来。
@@ -127,14 +129,18 @@ DLL 侧（`src/main.cpp`）没有加标记，按函数名找。
   取值表是 `map[int]string`，反查即可；`legacy.go` 的 `scan` 里读 `scannerOptions`，
   扫描前逐项 `setCapOnTwainThread`。`source` 这种合成项要拆回两个能力。
 
-### #15 【中】前端设置面板缺项会崩（前端仓库）
+### #15 【中】前端设置面板缺项会崩（前端仓库）—— 作废
+
+> 协议已换，前端设置面板要按 SCANNER_OPTIONS_API.md 重做，旧的 `formatConfigs` 不再适用。
 
 - **位置**：court-document-processing `加工/通用` 分支，`ScanCom/_components/setScanTools.vue` 的 `formatConfigs`
 - **现象**：对白名单里每个 name 直接取 `fieldMap[name].value`，本服务没返回的项 `fieldMap[name]` 是 undefined。
 - **影响**：面板现在是注释掉的，暂时不会触发；**重新启用面板前必须先改**，否则一打开就报错。
 - **建议修法**：`val[item] && val[item].value`，或者白名单只保留服务端返回了的 name。
 
-### #16 【低】部分选项在前端没有中文标签 / 形态不一致
+### #16 【低】部分选项在前端没有中文标签 / 形态不一致 —— 作废
+
+> 新协议由服务端给中文 `label`，前端不再维护标签表。
 
 - **现象**：
   - `paper-size`、`units`、`threshold`、`gamma`、`documents-in-adf` 不在前端 `temporaryData` 里，标签是空的；
@@ -142,9 +148,11 @@ DLL 侧（`src/main.cpp`）没有加标记，按函数名找。
   - 前端假数据里 `resolution` 是 `int-range`，TWAIN 设备多报枚举，这里给的是 `str-list`（前端没有 int-list）。
 - **建议修法**：前端补标签；或者前端加一个 `int-list` 类型。
 
-### #17 【低】`rotate` 的方向没核对
+### #17 【低】`rotate` 的方向没核对 —— 暂缓
 
-- **位置**：`scanopt/defs.go` 的 `orientationLabels`
+> 新协议第一版没有 `rotate`，以后加回来时再核对。
+
+- **位置**：设置项配置 `scanopt/default_options.jsonc` 里的 `rotate` 示例（默认 disabled）
 - **现象**：`TWOR_ROT90`/`TWOR_ROT270` 在 TWAIN 里是顺时针还是逆时针没查证，前端把 `"90"` 标成"顺时针90度"。
 - **要做**：拿虚拟扫描仪或真实设备扫一张确认，不对就对调 1 和 3 的文字。
 

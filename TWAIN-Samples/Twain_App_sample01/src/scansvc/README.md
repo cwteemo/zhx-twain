@@ -40,7 +40,28 @@ go build -o scansvc.exe .
 .\scansvc.exe
 ```
 
-### 2.1 两个端口
+### 2.1 维护工具（不用记命令，也不需要 curl）
+
+`scansvc-tools.bat` + `scansvc-tools.ps1` 两个文件拷到 `scansvc.exe` 同目录，双击 bat 就有菜单：
+看服务状态、列扫描仪、**导出扫描仪能力（适配新扫描仪时发给开发的那个文件）**、看设置项、
+看设置项配置状态、下载内置配置。
+
+也可以带参数直接跑：
+
+```powershell
+scansvc-tools.bat status
+scansvc-tools.bat devices
+scansvc-tools.bat dump "Uniscan Q400"      # 导出能力，存到 capdump\ 下
+scansvc-tools.bat options "Uniscan Q400"   # 看这台设备的设置项
+scansvc-tools.bat config                   # 设置项配置用的是内置还是现场覆盖
+scansvc-tools.bat builtin-config           # 下载内置配置，存成 scanner-options.jsonc
+scansvc-tools.bat -Port 18081 status       # 服务改过 HTTP 端口
+```
+
+活儿都在 `.ps1` 里做，走 Windows 自带的 PowerShell（3.0+），**机器上没有 curl.exe 也能用**；
+端口不指定时会去读同目录的 `scansvc.conf`。下文各处的 `curl.exe ...` 命令都能换成对应的 bat 命令。
+
+### 2.2 两个端口
 
 服务监听两个端口，和被替换掉的那个转发服务保持一致——它本来就是一个进程开两个
 （`StartWebsocket` 占 5000、`StartHttpServer` 占 18080）：
@@ -69,7 +90,7 @@ HTTP 端口已启动: http://localhost:18080  （既有前端写死的地址）
 扫描服务就绪，图片保存于 D:\scansvc\scans
 ```
 
-### 2.2 配置文件（推荐）
+### 2.3 配置文件（推荐）
 
 第一次启动时会在 **exe 旁边**自动生成 `scansvc.conf`，所有能自定义的项都在里面，
 带注释，改完重启生效：
@@ -109,7 +130,7 @@ clean-hours = 0
 配置文件放 **exe 所在目录**而不是当前工作目录：从快捷方式、计划任务、别的程序拉起
 `scansvc.exe` 时，工作目录是什么全看调用方，配置得跟着 exe 走才稳。
 
-### 2.3 命令行参数与环境变量
+### 2.4 命令行参数与环境变量
 
 配置文件之外，同样的东西也能用命令行或环境变量给，适合临时试一下、或者打包成服务：
 
@@ -130,7 +151,7 @@ clean-hours = 0
 
 两个端口设成同一个值时只监听一次（本来就是同一套路由，不会冲突）。
 
-### 2.4 端口被占用
+### 2.5 端口被占用
 
 一个端口起不来不影响另一个，日志会说清楚是哪个、怎么查：
 
@@ -307,10 +328,13 @@ C# 服务端把 RFID 读卡（串口读卡器）和斑马打印机（ZPL）也�
 当成一条扫描结果去读 `data['base64']`，那是 undefined，紧接着的 `.slice()` 直接抛异常；
 前端本来就靠自己的定时器复位 loading。失败才回 `code:-1`。
 
-`getScannerOptions` 按前端的选项模型（`{"option":2,"name":"mode","type":"str-list","list":[...]}`，
-SANE 风格，不是 TWAIN 的 CAP）返回，项目照着虚拟扫描仪的设置面板来、取值现读设备，
-实现在 `scanopt/`（新增选项只改 `scanopt/defs.go`），结构见 [SETTINGS_API.md](SETTINGS_API.md) 8.3。目前只读不写。
-它**不会打开设备**：只有请求的正是已连接的那台才读，否则回空数组；设备在 `scan` 时才连接。
+`getScannerOptions` / `setScannerOptions` / `scan` 的 `scannerOptions` 是一套固定的**设置项协议**：
+服务端把扫描仪能力描述成 `{key,label,control,value,choices}`，前端照着画控件、把 `{key: 取值}` 发回来，
+TWAIN 细节全在服务端。**有哪些设置项、下拉框有哪些选项都写在声明式配置 `scanopt/default_options.jsonc` 里**
+（编译进 exe，增删改不写 Go 代码；`scanopt/testdata/devices` 下是已适配设备的回归用例），
+写法见 [SCANNER_OPTIONS_CONFIG.md](SCANNER_OPTIONS_CONFIG.md)。现场应急可以放 `scanner-options.jsonc` 覆盖。
+给前端的文档：[SCANNER_OPTIONS_API.md](SCANNER_OPTIONS_API.md)。
+`getScannerOptions` **不会打开设备**：连着的现读，没连着的给上次读到的缓存（exe 旁边 `cache\`）。
 
 `scan` 扫出 0 页时，`message` 会说明原因：扫描仪未连接/未开机、送纸器没纸、卡纸、重张、
 盖板未合上、被其他程序占用、数据源状态异常（需重连）。依据是 DLL 的 `zhx_GetScanDiagnosis`

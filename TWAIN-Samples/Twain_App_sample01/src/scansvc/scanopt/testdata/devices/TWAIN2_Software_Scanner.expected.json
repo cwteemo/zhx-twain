@@ -1,0 +1,123 @@
+[
+  {
+    "key": "source",
+    "label": "扫描方式",
+    "group": "basic",
+    "control": "select",
+    "value": "adf",
+    "choices": [
+      {
+        "value": "flatbed",
+        "label": "平板"
+      },
+      {
+        "value": "adf",
+        "label": "进纸器单面"
+      }
+    ]
+  },
+  {
+    "key": "colorMode",
+    "label": "颜色模式",
+    "group": "basic",
+    "control": "radio",
+    "value": "color",
+    "choices": [
+      {
+        "value": "bw",
+        "label": "黑白"
+      },
+      {
+        "value": "gray",
+        "label": "灰度"
+      },
+      {
+        "value": "color",
+        "label": "彩色"
+      }
+    ]
+  },
+  {
+    "key": "dpi",
+    "label": "分辨率",
+    "group": "basic",
+    "control": "select",
+    "value": 200,
+    "choices": [
+      {
+        "value": 50,
+        "label": "50 dpi"
+      },
+      {
+        "value": 100,
+        "label": "100 dpi"
+      },
+      {
+        "value": 150,
+        "label": "150 dpi"
+      },
+      {
+        "value": 200,
+        "label": "200 dpi"
+      },
+      {
+        "value": 300,
+        "label": "300 dpi"
+      },
+      {
+        "value": 400,
+        "label": "400 dpi"
+      },
+      {
+        "value": 500,
+        "label": "500 dpi"
+      },
+      {
+        "value": 600,
+        "label": "600 dpi"
+      }
+    ],
+    "unit": "dpi"
+  },
+  {
+    "key": "paperSize",
+    "label": "纸张尺寸",
+    "group": "basic",
+    "control": "select",
+    "value": "letter",
+    "choices": [
+      {
+        "value": "none",
+        "label": "不指定"
+      },
+      {
+        "value": "letter",
+        "label": "Letter"
+      },
+      {
+        "value": "legal",
+        "label": "Legal"
+      }
+    ]
+  },
+  {
+    "key": "brightness",
+    "label": "亮度",
+    "group": "basic",
+    "control": "slider",
+    "value": 0,
+    "min": -1000,
+    "max": 1000,
+    "step": 1
+  },
+  {
+    "key": "contrast",
+    "label": "对比度",
+    "group": "basic",
+    "control": "slider",
+    "value": 0,
+    "min": -1000,
+    "max": 1000,
+    "step": 1
+  }
+]

@@ -12,6 +12,10 @@
 //	POST /api/config       设扫描参数（分辨率/色彩/ADF/双面…）
 //	GET  /api/capability   读一项 TWAIN 能力原始信息（?name=ICAP_PIXELTYPE）
 //	GET  /api/capabilities/dump?device=xx  导出设备全部能力的原始结构并存盘（见 capdump.go）
+//	GET  /api/scanner-options?device=xx    读设置项（同 WebSocket getScannerOptions，不打开设备）
+//	POST /api/scanner-options              下发设置项（JSON: {"device":"...","scannerOptions":{...}}）
+//	GET  /api/scanner-options/config       设置项配置用的是内置还是现场覆盖、覆盖文件有没有写错
+//	GET  /api/scanner-options/config/builtin  下载内置配置原文（应急覆盖时当起点）
 //	POST /api/capability   设一项 TWAIN 能力（JSON: {"name":"...","value":"..."}）
 //	POST /api/setting-ui   打开驱动自带的设置面板，阻塞到用户关闭
 //	POST /api/scan         扫描（JSON: {"device":"...","count":1}，count=0 扫到没纸）
@@ -141,6 +145,9 @@ func main() {
 		go startCleaner(root, time.Duration(cfg.CleanHours)*time.Hour)
 	}
 
+	// 设置项配置：默认用编译进来的内置配置，exe 旁边有 scanner-options.jsonc 时用它应急覆盖。
+	initOptionsConfig()
+
 	log.Println("正在初始化 TWAIN 环境...")
 	startTwainThread()
 	defer TwainExit()
@@ -167,6 +174,9 @@ func main() {
 	mux.HandleFunc("/api/config", handleConfig)
 	mux.HandleFunc("/api/capability", handleCapability)
 	mux.HandleFunc("/api/capabilities/dump", handleCapabilityDump)
+	mux.HandleFunc("/api/scanner-options", handleScannerOptions)
+	mux.HandleFunc("/api/scanner-options/config", handleOptionsConfigStatus)
+	mux.HandleFunc("/api/scanner-options/config/builtin", handleOptionsConfigBuiltin)
 	mux.HandleFunc("/api/setting-ui", handleSettingUI)
 	mux.HandleFunc("/api/scan", handleScan(root))
 	mux.HandleFunc("/api/image", handleImage)

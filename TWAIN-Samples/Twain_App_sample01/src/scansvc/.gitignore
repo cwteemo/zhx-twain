@@ -9,8 +9,13 @@ scans/
 # 导出的扫描仪能力结构（capdump.go）
 capdump/
 
+# 设置项缓存（options.go）
+cache/
+
 # 日志
 twain.log
 
 # 运行时生成的配置（含本机路径，不进仓库）
 scansvc.conf
+# 设置项现场应急覆盖文件（唯一来源是 scanopt/default_options.jsonc，这份不进仓库）
+scanner-options.jsonc
