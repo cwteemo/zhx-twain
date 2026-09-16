@@ -19,7 +19,12 @@ import (
 )
 
 // convertScan 把扫描产物转成 ext 指定的格式，返回新文件路径。
-// ext 为空、为 bmp、或不认识的格式时原样返回源文件——扩展名和实际内容必须一致，
+//
+// 转成什么**只看 ext**（前端请求里的 extension），源文件是什么**只看内容**，不看它的后缀——
+// 后缀是谁都能改的，内容才是事实。DLL 现在固定吐 BMP（`zhx_Scan` 是用 *.bmp 找新文件的），
+// 但驱动设置一变就可能直接出 JPEG，那时候还按 BMP 解就会失败。
+//
+// ext 不认识（空、bmp 之类）时原样返回源文件：扩展名必须和实际内容一致，
 // 前端是从 URL 结尾取扩展名再报给后端的，糊弄不得。
 func convertScan(srcPath, ext string) (string, error) {
 	if !imgfmt.Supported(ext) {
@@ -27,15 +32,24 @@ func convertScan(srcPath, ext string) (string, error) {
 	}
 	ext = imgfmt.NormalizeExt(ext)
 
-	im, err := imgfmt.DecodeBMPFile(srcPath)
+	im, srcFormat, err := imgfmt.DecodeFile(srcPath)
 	if err != nil {
-		// 解不动就退回原图，别让格式转换挡住扫描本身。
-		return srcPath, fmt.Errorf("解码 BMP 失败，回退为原始 BMP: %w", err)
+		if srcFormat == ext {
+			// 源文件已经是要的格式了（比如驱动直接出了 JPEG），解不解得开都无所谓，
+			// 只要后缀对上就行。
+			return renameToExt(srcPath, ext)
+		}
+		// 解不动又不是目标格式：退回原图，别让格式转换挡住扫描本身。
+		return srcPath, fmt.Errorf("解码扫描产物失败（识别为 %s），保留原文件: %w", orUnknown(srcFormat), err)
+	}
+	if srcFormat == ext {
+		// 已经是目标格式，重新编码只会掉画质（JPEG 尤其），改个后缀就够。
+		return renameToExt(srcPath, ext)
 	}
 
 	body, err := imgfmt.Encode(im, ext)
 	if err != nil {
-		return srcPath, fmt.Errorf("编码 %s 失败，回退为原始 BMP: %w", ext, err)
+		return srcPath, fmt.Errorf("编码 %s 失败，保留原文件（%s）: %w", ext, orUnknown(srcFormat), err)
 	}
 
 	dstPath := strings.TrimSuffix(srcPath, filepath.Ext(srcPath)) + "." + ext
@@ -49,9 +63,29 @@ func convertScan(srcPath, ext string) (string, error) {
 		writeTIFFPreview(im, dstPath)
 	}
 
-	// 原 BMP 留着没意义，转换成功就删掉——一张十几 MB，连续扫几百页很快就把盘吃满。
+	// 原图留着没意义，转换成功就删掉——一张十几 MB，连续扫几百页很快就把盘吃满。
 	os.Remove(srcPath)
 	return dstPath, nil
+}
+
+// renameToExt 只改后缀不动内容，用于"源文件已经是目标格式"的情况。
+// 目标已存在（同名不同后缀的冲突）时保留源文件，交给上层的去重逻辑处理。
+func renameToExt(srcPath, ext string) (string, error) {
+	dstPath := strings.TrimSuffix(srcPath, filepath.Ext(srcPath)) + "." + ext
+	if dstPath == srcPath {
+		return srcPath, nil
+	}
+	if err := os.Rename(srcPath, dstPath); err != nil {
+		return srcPath, fmt.Errorf("改名为 %s 失败: %w", dstPath, err)
+	}
+	return dstPath, nil
+}
+
+func orUnknown(format string) string {
+	if format == "" {
+		return "未知格式"
+	}
+	return format
 }
 
 // writeTIFFPreview 给一张 TIFF 存同名的 JPEG 预览。失败只记日志：

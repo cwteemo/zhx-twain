@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"os"
 	"testing"
 )
 
@@ -289,9 +290,100 @@ func TestEncodeUnknownFormat(t *testing.T) {
 	}
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
+// ---- 按内容识别源格式 ----
+
+func TestSniff(t *testing.T) {
+	pal := []color.RGBA{{0, 0, 0, 255}, {255, 255, 255, 255}}
+	bmp := buildBMP(t, 4, 2, 1, pal, [][]byte{{0xA0}, {0x50}}, 300)
+
+	jpg, err := Encode(Image{Image: image.NewGray(image.Rect(0, 0, 8, 8)), DPIX: 300, DPIY: 300}, "jpg")
+	if err != nil {
+		t.Fatal(err)
 	}
-	return b
+	pngBytes, err := Encode(Image{Image: image.NewGray(image.Rect(0, 0, 8, 8))}, "png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tif, err := EncodeTIFFBytes(image.NewGray(image.Rect(0, 0, 8, 8)), 300, 300)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name string
+		data []byte
+		want string
+	}{
+		{"BMP", bmp, "bmp"},
+		{"JPEG", jpg, "jpg"},
+		{"PNG", pngBytes, "png"},
+		{"TIFF", tif, "tiff"},
+		{"空", nil, ""},
+		{"乱码", []byte("not an image at all"), ""},
+	}
+	for _, c := range cases {
+		if got := Sniff(c.data); got != c.want {
+			t.Errorf("%s: Sniff = %q，期望 %q", c.name, got, c.want)
+		}
+	}
+}
+
+// 解码只看内容，不看后缀：故意把 BMP 存成 .jpg 也要能解出来。
+func TestDecodeFileIgnoresExtension(t *testing.T) {
+	pal := []color.RGBA{{0, 0, 0, 255}, {255, 255, 255, 255}}
+	bmp := buildBMP(t, 4, 2, 1, pal, [][]byte{{0xA0}, {0x50}}, 300)
+
+	dir := t.TempDir()
+	path := dir + "/misnamed.jpg" // 后缀是假的
+	if err := os.WriteFile(path, bmp, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	im, format, err := DecodeFile(path)
+	if err != nil {
+		t.Fatalf("按内容应当能解出 BMP: %v", err)
+	}
+	if format != "bmp" {
+		t.Errorf("识别成 %q，期望 bmp", format)
+	}
+	if im.Image.Bounds().Dx() != 4 || im.DPIX != 300 {
+		t.Errorf("解出来的图不对: %v dpi=%d", im.Image.Bounds(), im.DPIX)
+	}
+}
+
+func TestDecodeFileJPEGAndPNG(t *testing.T) {
+	dir := t.TempDir()
+	for _, c := range []struct{ ext, want string }{{"jpg", "jpg"}, {"png", "png"}} {
+		body, err := Encode(Image{Image: image.NewGray(image.Rect(0, 0, 8, 8)), DPIX: 300, DPIY: 300}, c.ext)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := dir + "/x." + c.ext
+		if err := os.WriteFile(path, body, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, format, err := DecodeFile(path)
+		if err != nil || format != c.want {
+			t.Errorf("%s: 得到 format=%q err=%v", c.ext, format, err)
+		}
+	}
+}
+
+// TIFF 能认出来但本包不解码——调用方据此判断"已经是目标格式"，不会误当成坏文件。
+func TestDecodeFileTIFFRecognizedNotDecoded(t *testing.T) {
+	tif, err := EncodeTIFFBytes(image.NewGray(image.Rect(0, 0, 8, 8)), 300, 300)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := t.TempDir() + "/x.tiff"
+	if err := os.WriteFile(path, tif, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, format, err := DecodeFile(path)
+	if format != "tiff" {
+		t.Errorf("应当识别为 tiff，得到 %q", format)
+	}
+	if err == nil {
+		t.Error("本包不解码 TIFF，应当返回错误")
+	}
 }

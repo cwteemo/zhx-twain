@@ -8,9 +8,11 @@
 package imgfmt
 
 import (
+	"bytes"
 	"fmt"
 	"image/jpeg"
 	"image/png"
+	"os"
 	"strings"
 )
 
@@ -33,6 +35,59 @@ func NormalizeExt(ext string) string {
 
 // Supported 判断这个格式认不认识。
 func Supported(ext string) bool { return NormalizeExt(ext) != "" }
+
+// Sniff 按**文件内容**判断是什么格式，返回 NormalizeExt 那套名字（jpg / png / tiff / bmp）。
+// 认不出来返回空串。
+//
+// 为什么不看扩展名：扩展名是调用方给的，内容才是事实。扫描仪驱动换个设置就可能
+// 直接吐 JPEG，这时候还当成 BMP 去解就会失败。
+func Sniff(raw []byte) string {
+	switch {
+	case len(raw) >= 2 && raw[0] == 'B' && raw[1] == 'M':
+		return "bmp"
+	case len(raw) >= 3 && raw[0] == 0xFF && raw[1] == 0xD8 && raw[2] == 0xFF:
+		return "jpg"
+	case len(raw) >= 8 && string(raw[:8]) == "\x89PNG\r\n\x1a\n":
+		return "png"
+	case len(raw) >= 4 && (string(raw[:4]) == "II*\x00" || string(raw[:4]) == "MM\x00*"):
+		return "tiff"
+	}
+	return ""
+}
+
+// DecodeFile 读一张图，按内容挑解码器。
+// 返回的第二个值是识别出来的源格式（见 Sniff）。
+//
+// TIFF 只认得出来、解不了——本包只写 TIFF 不读 TIFF（读 TIFF 要处理一堆压缩方式，
+// 而扫描流程里不需要）。真遇到 TIFF 源文件，调用方按"已经是目标格式"处理即可。
+func DecodeFile(path string) (Image, string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return Image{}, "", err
+	}
+	format := Sniff(raw)
+	switch format {
+	case "bmp":
+		im, err := DecodeBMP(raw)
+		return im, format, err
+	case "jpg":
+		img, err := jpeg.Decode(bytes.NewReader(raw))
+		return Image{Image: img}, format, err
+	case "png":
+		img, err := png.Decode(bytes.NewReader(raw))
+		return Image{Image: img}, format, err
+	case "tiff":
+		return Image{}, format, fmt.Errorf("本服务不解码 TIFF")
+	}
+	return Image{}, "", fmt.Errorf("认不出这是什么图片格式（前 4 字节 % x）", raw[:min(4, len(raw))])
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 // Encode 按 ext 指定的格式编码。ext 先过 NormalizeExt。
 // dpi 会写进文件：TIFF 写 XResolution / YResolution，JPEG 写 JFIF 里的密度。
