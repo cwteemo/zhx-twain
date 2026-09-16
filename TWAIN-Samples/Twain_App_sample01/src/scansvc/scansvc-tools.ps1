@@ -12,6 +12,8 @@ scansvc 维护小工具：导出扫描仪能力、查看设置项、查看配置
   scansvc-tools.bat options [设备名]     查看设置项
   scansvc-tools.bat set [设备名] -Set "dpi=300,colorMode=gray"     修改设置项（不带 -Set 会让你挑）
   scansvc-tools.bat scan [设备名] -Count 1 -Extension jpeg -Set "dpi=300"   扫描测试（HTTP 异步接口）
+  scansvc-tools.bat upload <文件名> -Server <业务系统地址> -Token <令牌> -Set "archive_id=123"
+                                        转发上传测试（文件名就是扫描返回地址的最后一段）
   scansvc-tools.bat config              设置项配置状态（内置 / 现场覆盖）
   scansvc-tools.bat builtin-config      下载内置设置项配置，存成 scanner-options.jsonc
   scansvc-tools.bat start / stop        启动 / 停止 scansvc.exe
@@ -30,7 +32,10 @@ param(
     [string] $Set = '',
     # scan 用：扫几页（0 = 走送纸器扫到没纸）、图片格式
     [int] $Count = 1,
-    [string] $Extension = 'jpeg'
+    [string] $Extension = 'jpeg',
+    # upload 用：业务系统的接收地址、令牌
+    [string] $Server = '',
+    [string] $Token = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -460,6 +465,56 @@ function Save-BuiltinConfig {
     Write-Host '撤销：删掉这个文件。'
 }
 
+# Invoke-UploadTest 测 /file/upload：让服务把某张扫描图转发到业务系统。
+# 这条链路只有真连业务系统才能验证，所以 -Server 必填。
+# 表单字段用 x-www-form-urlencoded 发（服务端两种都认），PowerShell 5.1 不用自己拼 multipart。
+function Invoke-UploadTest {
+    param([string] $FileName, [string] $ServerUrl, [string] $TokenValue, [string] $Extra)
+
+    if (-not $ServerUrl) {
+        Write-Host ''
+        Write-Host '要测转发上传，得先有业务系统的接收地址。' -ForegroundColor Yellow
+        $ServerUrl = Read-Host '业务系统接收地址（完整 URL，直接回车取消）'
+        if (-not $ServerUrl) { return }
+    }
+    if (-not $FileName) {
+        Write-Host ''
+        Write-Host '要传哪张图？填扫描返回的文件名（图片地址的最后一段），例如 SCAN_20260916_095614_861_000001N.jpeg'
+        $FileName = Read-Host '文件名（直接回车取消）'
+        if (-not $FileName) { return }
+    }
+
+    $form = @{ filename = $FileName; server = $ServerUrl }
+    foreach ($kv in (ParseOptionPairs $Extra).GetEnumerator()) { $form[$kv.Key] = $kv.Value }
+
+    $headers = @{}
+    if ($TokenValue) { $headers['token'] = $TokenValue }
+
+    Write-Host ''
+    Write-Host ('转发 ' + $FileName + ' 到 ' + $ServerUrl)
+    if ($Extra) { Write-Host ('附加字段: ' + $Extra) }
+
+    try {
+        $res = Invoke-RestMethod -Uri ($script:BaseUrl + '/file/upload') -Method Post -Body $form `
+            -ContentType 'application/x-www-form-urlencoded' -Headers $headers -TimeoutSec 600 @script:HttpArgs
+    } catch {
+        Write-Host ''
+        Write-Host ('请求失败: ' + $_.Exception.Message) -ForegroundColor Red
+        $detail = Get-ErrorDetail $_
+        if ($detail) { Write-Host ('  服务返回: ' + $detail) -ForegroundColor Red }
+        return
+    }
+
+    Write-Host ''
+    if ($res.errorCode -eq 0) {
+        Write-Host '转发成功。业务系统返回：' -ForegroundColor Green
+    } else {
+        Write-Host ('转发失败（errorCode ' + $res.errorCode + '）：' + $res.msg) -ForegroundColor Red
+        Write-Host '常见原因：文件名写错、业务系统地址不通、对方没返回 JSON。'
+    }
+    $res | ConvertTo-Json -Depth 6
+}
+
 # ---- 进程 / 开机自启 ----
 
 function Get-ScansvcProcess {
@@ -570,13 +625,14 @@ function Show-Menu {
         Write-Host '  4) 查看某台扫描仪的设置项'
         Write-Host '  5) 修改设置项（会连接扫描仪）'
         Write-Host '  6) 扫描测试（走 HTTP 异步接口，客户端文档第 7 章那套）'
+        Write-Host '  7) 转发上传测试（需要业务系统地址）'
         Write-Host '  ---'
-        Write-Host '  7) 设置项配置状态'
-        Write-Host '  8) 下载内置设置项配置（应急覆盖用）'
+        Write-Host '  8) 设置项配置状态'
+        Write-Host '  9) 下载内置设置项配置（应急覆盖用）'
         Write-Host '  ---'
-        Write-Host '  9) 启动 scansvc'
-        Write-Host ' 10) 停止 scansvc'
-        Write-Host ' 11) 开机自启设置'
+        Write-Host ' 10) 启动 scansvc'
+        Write-Host ' 11) 停止 scansvc'
+        Write-Host ' 12) 开机自启设置'
         Write-Host '  0) 退出'
         Write-Host ''
         $choice = Read-Host '请选择'
@@ -587,11 +643,12 @@ function Show-Menu {
             '4' { Show-Options -Name '' }
             '5' { Set-Options -Name '' -Pairs '' }
             '6' { Invoke-HttpScan -Name '' -Pairs '' -Pages 1 -Ext 'jpeg' }
-            '7' { Show-Config }
-            '8' { Save-BuiltinConfig }
-            '9' { Start-Scansvc }
-            '10' { Stop-Scansvc }
-            '11' { Set-Autostart }
+            '7' { Invoke-UploadTest -FileName '' -ServerUrl $Server -TokenValue $Token -Extra '' }
+            '8' { Show-Config }
+            '9' { Save-BuiltinConfig }
+            '10' { Start-Scansvc }
+            '11' { Stop-Scansvc }
+            '12' { Set-Autostart }
             '0' { return }
             default { Write-Host '没有这个选项。' -ForegroundColor Yellow }
         }
@@ -609,6 +666,7 @@ switch ($Command.ToLower()) {
     'options'         { Show-Options -Name $Device }
     'set'             { Set-Options -Name $Device -Pairs $Set }
     'scan'            { Invoke-HttpScan -Name $Device -Pairs $Set -Pages $Count -Ext $Extension }
+    'upload'          { Invoke-UploadTest -FileName $Device -ServerUrl $Server -TokenValue $Token -Extra $Set }
     'config'          { Show-Config }
     'builtin-config'  { Save-BuiltinConfig }
     'start'           { Start-Scansvc }
@@ -616,7 +674,7 @@ switch ($Command.ToLower()) {
     'autostart'       { Set-Autostart }
     default {
         Write-Host ('不认识的命令: ' + $Command) -ForegroundColor Yellow
-        Write-Host '可用: status | devices | dump [设备名] | options [设备名] | set [设备名] | scan [设备名] | config | builtin-config | start | stop | autostart'
+        Write-Host '可用: status | devices | dump [设备名] | options [设备名] | set [设备名] | scan [设备名] | upload [文件名] | config | builtin-config | start | stop | autostart'
         exit 1
     }
 }

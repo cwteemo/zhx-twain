@@ -1,302 +1,459 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>扫描仪中间服务 · 控制台</title>
+<title>扫描服务 · 接口测试台</title>
 <style>
-  body { font: 14px/1.6 system-ui, "Microsoft YaHei", sans-serif; margin: 0; padding: 24px; background: #f6f7f9; color: #1f2328; }
-  h1 { font-size: 18px; margin: 0 0 4px; }
-  .sub { color: #57606a; font-size: 12px; margin: 0 0 16px; }
-  .panel { background: #fff; border: 1px solid #d8dce0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-  .panel h2 { font-size: 14px; margin: 0 0 12px; color: #57606a; font-weight: 600; }
-  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-  .row + .row { margin-top: 10px; }
-  label { color: #57606a; }
-  select, input, button { font: inherit; padding: 6px 10px; border: 1px solid #c3c8ce; border-radius: 5px; background: #fff; color: inherit; }
-  input[type=checkbox] { padding: 0; width: 15px; height: 15px; vertical-align: -2px; }
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; font: 14px/1.6 system-ui, "Microsoft YaHei", sans-serif;
+         background: #f6f8fa; color: #1f2328; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  .sub { color: #656d76; margin: 0 0 20px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  .card { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  label { color: #424a53; }
+  select, input, button, textarea { font: inherit; padding: 6px 10px; border: 1px solid #c3c8ce;
+         border-radius: 5px; background: #fff; color: inherit; }
+  textarea { width: 100%; min-height: 60px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
   button { cursor: pointer; background: #1f6feb; color: #fff; border-color: #1f6feb; }
   button.ghost { background: #fff; color: #1f2328; border-color: #c3c8ce; }
   button:disabled { opacity: .45; cursor: default; }
-  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; background: #eaeef2; color: #57606a; }
-  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: #8c959f; }
-  .pill.on { background: #e6f4ea; color: #1a7f37; }
-  .pill.on .dot { background: #1a7f37; }
-  .pill.busy { background: #fff4e5; color: #9a6700; }
-  .pill.busy .dot { background: #9a6700; }
-  #msg { font-size: 13px; color: #57606a; min-height: 20px; }
-  #msg.err { color: #cf222e; }
-  #shots { display: flex; flex-wrap: wrap; gap: 12px; }
-  figure { margin: 0; border: 1px solid #d8dce0; border-radius: 6px; padding: 8px; background: #fff; }
-  figure img { display: block; max-width: 300px; max-height: 400px; }
-  figcaption { font-size: 12px; color: #57606a; margin-top: 6px; word-break: break-all; }
-  .hint { font-size: 12px; color: #8c959f; margin: 8px 0 0; }
-  table.results { border-collapse: collapse; font-size: 12px; margin-top: 10px; }
-  table.results td { border: 1px solid #e1e4e8; padding: 3px 8px; }
-  table.results .bad { color: #cf222e; }
-  table.results .good { color: #1a7f37; }
+  .hint { color: #656d76; font-size: 12px; margin: 8px 0 0; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px;
+          background: #eaeef2; color: #424a53; }
+  .pill.ok { background: #dafbe1; color: #1a7f37; }
+  .pill.bad { background: #ffebe9; color: #cf222e; }
+  .opt { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px dashed #eaeef2; }
+  .opt .name { width: 150px; color: #424a53; }
+  .opt .ctl { flex: 1; display: flex; gap: 8px; align-items: center; }
+  .opt .key { color: #8c959f; font-size: 12px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 10px; }
+  .shot { border: 1px solid #d0d7de; border-radius: 6px; padding: 6px; background: #fff; width: 170px; }
+  .shot img { width: 100%; height: 130px; object-fit: contain; background: #f6f8fa; cursor: pointer; }
+  .shot .fn { font-size: 11px; color: #656d76; word-break: break-all; margin-top: 4px; }
+  .shot.sel { border-color: #1f6feb; box-shadow: 0 0 0 2px rgba(31,111,235,.2); }
+  pre { background: #f6f8fa; border: 1px solid #eaeef2; border-radius: 6px; padding: 10px;
+        overflow: auto; max-height: 260px; font-size: 12px; margin: 8px 0 0; }
+  .log { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  .log div { padding: 2px 0; border-bottom: 1px solid #f0f2f4; }
+  .log .err { color: #cf222e; }
 </style>
 </head>
 <body>
+<div class="wrap">
 
-<h1>扫描仪中间服务 · 控制台</h1>
-<p class="sub">连接 → 配置 → 扫描。设备列表来自已安装的 TWAIN 驱动，不代表设备在线。</p>
+<h1>扫描服务 · 接口测试台</h1>
+<p class="sub">
+  按客户端对接文档（CLIENT_API.md）的 HTTP 流程逐步走一遍：设备 → 设置项 → 扫描 → 上传。
+  也可以当对接的参考实现，页面里没有任何第三方库。
+</p>
 
-<div class="panel">
-  <h2>1. 设备</h2>
+<!-- 1. 服务状态 -->
+<div class="card">
+  <h2>0. 服务状态</h2>
   <div class="row">
-    <button id="btn-refresh" class="ghost">枚举设备</button>
-    <select id="devices" style="min-width:220px"><option value="">（尚未枚举）</option></select>
-    <button id="btn-connect">连接</button>
-    <button id="btn-disconnect" class="ghost" disabled>断开</button>
-    <button id="btn-reconnect" class="ghost" disabled>重连</button>
-    <label style="margin-left:-4px"><input id="deep" type="checkbox"> 深度重连</label>
-    <span id="pill" class="pill"><span class="dot"></span><span id="pill-text">未连接</span></span>
+    <button id="btn-status" class="ghost">刷新状态</button>
+    <span id="pill-state" class="pill">未查询</span>
+    <span id="txt-version" class="hint"></span>
   </div>
-  <p class="hint">深度重连会把整个 TWAIN 环境重建一遍，用于设备拔插、驱动异常这类光重开数据源救不回来的情况。</p>
+  <p class="hint">对应 <code>GET /version</code> 和 <code>GET /api/status</code>。</p>
 </div>
 
-<div class="panel">
-  <h2>2. 扫描参数</h2>
+<!-- 2. 设备 -->
+<div class="card">
+  <h2>1. 扫描仪列表</h2>
   <div class="row">
-    <label>分辨率 <input id="resolution" type="number" value="200" min="50" max="1200" step="50" style="width:80px"> DPI</label>
-    <label>色彩
-      <select id="pixelType">
-        <option value="">不改</option>
-        <option value="0">黑白</option>
-        <option value="1">灰度</option>
-        <option value="2" selected>彩色</option>
-      </select>
-    </label>
-    <label><input id="feeder" type="checkbox"> 使用送纸器(ADF)</label>
-    <label><input id="autoFeed" type="checkbox"> 自动进纸</label>
-    <label><input id="duplex" type="checkbox"> 双面</label>
-    <button id="btn-config" disabled>应用参数</button>
-    <button id="btn-setting-ui" class="ghost" disabled>驱动设置面板</button>
+    <button id="btn-devices" class="ghost">获取列表</button>
+    <select id="sel-device" style="min-width:280px"></select>
   </div>
-  <div id="config-results"></div>
-  <p class="hint">参数只在连接之后才能下发（TWAIN 的能力协商要求数据源处于 state 4）。扫描仪不支持的项会单独标红，不影响其它项。
-  "驱动设置面板"打开的是扫描仪厂商自己的设置界面（TWAIN 的 MSG_ENABLEDSUIONLY），里面的项比上面这几个全，
-  改完点确定由驱动自己保存；面板开着的时候服务在等它关闭，别的操作要排队。</p>
+  <p class="hint">对应 <code>GET /api/devices</code>。列表来自已安装的驱动，不代表设备接着或开机。</p>
 </div>
 
-<div class="panel">
+<!-- 3. 设置项 -->
+<div class="card">
+  <h2>2. 扫描仪设置项</h2>
+  <div class="row">
+    <button id="btn-get-opts" class="ghost">读取设置项</button>
+    <button id="btn-set-opts">应用设置（会连接扫描仪）</button>
+    <span id="pill-opts" class="pill">未读取</span>
+  </div>
+  <div id="opts"></div>
+  <pre id="opts-result" hidden></pre>
+  <p class="hint">
+    对应 <code>GET /api/scanner-options?device=</code> 和 <code>POST /api/scanner-options</code>。
+    控件是按服务端给的 <code>control</code> 通用渲染的（select / radio / switch / slider / number），
+    没有写死任何一台扫描仪的取值 —— 客户端也应该这么做。
+  </p>
+</div>
+
+<!-- 4. 扫描 -->
+<div class="card">
   <h2>3. 扫描</h2>
   <div class="row">
-    <label>页数 <input id="count" type="number" value="1" min="0" style="width:70px"></label>
-    <label><input id="continuous" type="checkbox"> 连续扫描（扫到没纸）</label>
-    <button id="btn-scan" disabled>开始扫描</button>
-    <span id="msg"></span>
+    <label>格式</label>
+    <select id="sel-ext"><option>jpeg</option><option>png</option></select>
+    <label>页数</label>
+    <input id="inp-count" type="number" value="1" min="0" style="width:90px">
+    <label class="hint">0 = 走送纸器扫到没纸</label>
+    <label><input id="chk-with-opts" type="checkbox" checked> 带上当前设置项</label>
+    <button id="btn-scan">开始扫描</button>
+    <span id="pill-scan" class="pill">空闲</span>
   </div>
-  <p class="hint">连续扫描需要设备支持 ADF，并且勾上"使用送纸器"和"自动进纸"再应用参数。扫描期间 TWAIN 线程被占满，其它请求会排队，只有状态查询不受影响。</p>
+  <div id="shots" class="grid"><span class="hint">扫描结果会显示在这里，点一张选中，用于下面的上传测试</span></div>
+  <p class="hint">
+    对应 <code>POST /api/scan/start</code> + 每秒轮询 <code>GET /api/scan/status?job=</code>。
+    图片地址就是返回里的 <code>url</code>，直接用即可。
+  </p>
 </div>
 
-<div class="panel">
-  <h2>4. 结果</h2>
-  <div id="shots"><span style="color:#8c959f">扫描结果会显示在这里</span></div>
+<!-- 5. 上传 -->
+<div class="card">
+  <h2>4. 转发上传</h2>
+  <div class="row">
+    <label style="width:90px">业务系统地址</label>
+    <input id="inp-server" style="flex:1;min-width:320px" placeholder="https://业务系统/api/file/upload">
+  </div>
+  <div class="row">
+    <label style="width:90px">token 头</label>
+    <input id="inp-token" style="flex:1;min-width:320px" placeholder="没有就留空">
+  </div>
+  <div class="row" style="align-items:flex-start">
+    <label style="width:90px">附加字段</label>
+    <textarea id="inp-extra" placeholder="每行一个 key=value，会原样透传给业务系统&#10;archive_id=123&#10;sort=1"></textarea>
+  </div>
+  <div class="row">
+    <button id="btn-upload">上传选中的图片</button>
+    <span id="txt-upload-file" class="hint">未选中图片</span>
+  </div>
+  <pre id="upload-result" hidden></pre>
+  <p class="hint">
+    对应 <code>POST /file/upload</code>：服务把这张图从磁盘读出来，以 multipart（文件字段名 <code>image</code>）
+    发给业务系统，其余字段原样带上，业务系统的响应原样转回。
+  </p>
+</div>
+
+<!-- 6. 日志 -->
+<div class="card">
+  <h2>请求日志</h2>
+  <div class="row">
+    <button id="btn-clear-log" class="ghost">清空</button>
+  </div>
+  <div id="log" class="log"></div>
+</div>
+
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
-let connected = false;
 
-function setMsg(text, isErr) {
-  $('msg').textContent = text;
-  $('msg').className = isErr ? 'err' : '';
+let options = [];        // 服务端返回的设置项
+let formValues = {};     // 当前表单里的取值 {key: value}
+let pages = [];          // 已扫出的页
+let selected = null;     // 选中的那张图（上传用）
+
+// ---- 请求封装：所有请求都记日志，出错时把服务端给的中文原因带出来 ----
+
+function log(text, isErr) {
+  const el = document.createElement('div');
+  if (isErr) el.className = 'err';
+  el.textContent = new Date().toLocaleTimeString() + '  ' + text;
+  $('log').prepend(el);
 }
 
-async function api(path, options) {
-  const res = await fetch(path, options);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
-  return data;
+async function api(path, init) {
+  const started = Date.now();
+  let res, body;
+  try {
+    res = await fetch(path, init);
+  } catch (e) {
+    log((init && init.method || 'GET') + ' ' + path + '  连接失败：' + e.message, true);
+    throw new Error('连不上扫描服务，确认 scansvc.exe 已启动');
+  }
+  const text = await res.text();
+  try { body = JSON.parse(text); } catch (e) { body = text; }
+
+  const ms = Date.now() - started;
+  log((init && init.method || 'GET') + ' ' + path + '  → ' + res.status + '  ' + ms + 'ms', !res.ok);
+  if (!res.ok) {
+    throw new Error((body && (body.error || body.msg)) || text || ('HTTP ' + res.status));
+  }
+  return body;
 }
 
-function post(path, body) {
-  return api(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body || {}),
-  });
+const postJSON = (path, data) =>
+  api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+
+function fail(e) {
+  log(e.message, true);
+  alert(e.message);
 }
 
-// 按连接状态开关按钮，避免在 state 3 上发只有 state 4 才接受的请求。
-function applyStatus(st) {
-  connected = st.connected;
-  const pill = $('pill');
-  pill.className = 'pill' + (st.scanning ? ' busy' : (st.connected ? ' on' : ''));
-  $('pill-text').textContent = st.scanning ? '扫描中'
-    : (st.connected ? '已连接 ' + st.device : st.stateText);
-
-  $('btn-disconnect').disabled = !st.connected;
-  $('btn-reconnect').disabled = !st.connected;
-  $('btn-config').disabled = !st.connected;
-  $('btn-setting-ui').disabled = !st.connected;
-  $('btn-scan').disabled = !st.connected;
-}
+// ---- 0. 状态 ----
 
 async function refreshStatus() {
   try {
-    applyStatus(await api('/api/status'));
-  } catch (e) {
-    // 状态查询不该打扰用户，服务没起来时页面本来也打不开
-  }
+    $('txt-version').textContent = await api('/version');
+    const st = await api('/api/status');
+    const pill = $('pill-state');
+    pill.className = 'pill ' + (st.connected ? 'ok' : '');
+    pill.textContent = st.stateText + (st.scanning ? ' · 扫描中' : '');
+  } catch (e) { fail(e); }
 }
 
-$('btn-refresh').onclick = async () => {
-  setMsg('枚举中…');
+// ---- 1. 设备 ----
+
+async function loadDevices() {
   try {
-    const data = await api('/api/devices');
-    const sel = $('devices');
+    const res = await api('/api/devices');
+    const sel = $('sel-device');
     sel.innerHTML = '';
-    if (!data.devices.length) {
-      sel.innerHTML = '<option value="">未找到任何 TWAIN 驱动</option>';
-      setMsg('未找到扫描仪驱动，确认驱动已安装', true);
-      return;
-    }
-    for (const name of data.devices) {
-      const opt = document.createElement('option');
-      opt.value = opt.textContent = name;
-      sel.appendChild(opt);
-    }
-    setMsg('找到 ' + data.count + ' 个驱动，选中当前实际接着的那台再连接');
-  } catch (e) {
-    setMsg('枚举失败：' + e.message, true);
-  }
-};
-
-$('btn-connect').onclick = async () => {
-  const device = $('devices').value;
-  if (!device) { setMsg('先枚举并选一台设备', true); return; }
-
-  $('btn-connect').disabled = true;
-  setMsg('连接中…（设备不在线时驱动要等二十几秒才报错）');
-  try {
-    const data = await post('/api/connect', { device });
-    applyStatus(data.status);
-    setMsg('已连接 ' + device);
-  } catch (e) {
-    setMsg('连接失败：' + e.message, true);
-  } finally {
-    $('btn-connect').disabled = false;
-  }
-};
-
-$('btn-disconnect').onclick = async () => {
-  try {
-    applyStatus((await post('/api/disconnect')).status);
-    setMsg('已断开');
-  } catch (e) {
-    setMsg('断开失败：' + e.message, true);
-  }
-};
-
-$('btn-reconnect').onclick = async () => {
-  const deep = $('deep').checked;
-  setMsg(deep ? '深度重连中…' : '重连中…');
-  try {
-    const data = await post('/api/reconnect', { deep });
-    applyStatus(data.status);
-    setMsg('已重连 ' + data.device);
-  } catch (e) {
-    setMsg('重连失败：' + e.message, true);
-  }
-};
-
-function collectConfig() {
-  const cfg = {};
-  const dpi = Number($('resolution').value);
-  if (dpi > 0) cfg.resolution = dpi;
-  if ($('pixelType').value !== '') cfg.pixelType = Number($('pixelType').value);
-  cfg.feeder = $('feeder').checked;
-  cfg.autoFeed = $('autoFeed').checked;
-  cfg.duplex = $('duplex').checked;
-  return cfg;
+    (res.devices || []).forEach(d => {
+      const o = document.createElement('option');
+      o.value = o.textContent = d;
+      sel.appendChild(o);
+    });
+    if (!res.count) log('没有发现扫描仪：驱动没装 / 设备没接 / 32 位驱动', true);
+  } catch (e) { fail(e); }
 }
 
-function renderConfigResults(results) {
-  const box = $('config-results');
+const device = () => $('sel-device').value;
+
+// ---- 2. 设置项 ----
+
+async function loadOptions() {
+  if (!device()) return alert('先获取扫描仪列表并选一台');
+  try {
+    const data = await api('/api/scanner-options?device=' + encodeURIComponent(device()));
+    options = data.options || [];
+    formValues = {};
+    options.forEach(o => { formValues[o.key] = o.value; });
+    renderOptions();
+
+    const pill = $('pill-opts');
+    if (!options.length) {
+      pill.className = 'pill bad';
+      pill.textContent = '没有设置项（这台设备还没连过，先扫一次）';
+    } else if (data.connected) {
+      pill.className = 'pill ok';
+      pill.textContent = options.length + ' 项 · 设备连着，实时读取';
+    } else {
+      pill.className = 'pill';
+      pill.textContent = options.length + ' 项 · 缓存（' + (data.updatedAt || '') + '）';
+    }
+  } catch (e) { fail(e); }
+}
+
+// 按 control 通用渲染。遇到不认识的类型跳过——以后服务端加了新控件，老客户端也不会崩。
+function renderOptions() {
+  const box = $('opts');
   box.innerHTML = '';
-  if (!results || !results.length) return;
+  options.forEach(o => {
+    const row = document.createElement('div');
+    row.className = 'opt';
+    row.innerHTML = '<div class="name">' + o.label + ' <span class="key">' + o.key + '</span></div>';
 
-  const table = document.createElement('table');
-  table.className = 'results';
-  for (const r of results) {
-    const tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + r.field + '</td><td>' + r.cap + '</td><td>' + r.value + '</td>' +
-      '<td class="' + (r.ok ? 'good' : 'bad') + '">' + (r.ok ? '已生效' : (r.error || '失败')) + '</td>';
-    table.appendChild(tr);
-  }
-  box.appendChild(table);
+    const ctl = document.createElement('div');
+    ctl.className = 'ctl';
+    const set = (v) => { formValues[o.key] = v; };
+
+    if (o.control === 'select' || o.control === 'radio') {
+      if (o.control === 'select') {
+        const sel = document.createElement('select');
+        (o.choices || []).forEach(c => {
+          const op = document.createElement('option');
+          op.value = JSON.stringify(c.value);
+          op.textContent = c.label;
+          if (c.value === o.value) op.selected = true;
+          sel.appendChild(op);
+        });
+        sel.onchange = () => set(JSON.parse(sel.value));
+        ctl.appendChild(sel);
+      } else {
+        (o.choices || []).forEach(c => {
+          const lab = document.createElement('label');
+          const r = document.createElement('input');
+          r.type = 'radio';
+          r.name = 'opt-' + o.key;
+          r.checked = c.value === o.value;
+          r.onchange = () => set(c.value);
+          lab.appendChild(r);
+          lab.appendChild(document.createTextNode(' ' + c.label));
+          ctl.appendChild(lab);
+        });
+      }
+    } else if (o.control === 'switch') {
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!o.value;
+      cb.onchange = () => set(cb.checked);
+      ctl.appendChild(cb);
+    } else if (o.control === 'slider' || o.control === 'number') {
+      const inp = document.createElement('input');
+      inp.type = o.control === 'slider' ? 'range' : 'number';
+      if (o.min !== undefined) inp.min = o.min;
+      if (o.max !== undefined) inp.max = o.max;
+      if (o.step !== undefined) inp.step = o.step;
+      inp.value = o.value;
+      const val = document.createElement('span');
+      val.className = 'hint';
+      val.textContent = o.value + (o.unit ? ' ' + o.unit : '');
+      inp.oninput = () => { set(Number(inp.value)); val.textContent = inp.value + (o.unit ? ' ' + o.unit : ''); };
+      ctl.appendChild(inp);
+      ctl.appendChild(val);
+    } else {
+      ctl.innerHTML = '<span class="hint">不认识的控件类型 ' + o.control + '，已跳过</span>';
+    }
+
+    row.appendChild(ctl);
+    box.appendChild(row);
+  });
 }
 
-$('btn-config').onclick = async () => {
-  setMsg('下发参数…');
+async function applyOptions() {
+  if (!device()) return alert('先选一台扫描仪');
   try {
-    const data = await post('/api/config', collectConfig());
-    renderConfigResults(data.results);
-    setMsg(data.success ? '参数已全部生效' : '部分参数未生效，见下表');
-  } catch (e) {
-    setMsg('设置失败：' + e.message, true);
-  }
-};
+    const res = await postJSON('/api/scanner-options', { device: device(), scannerOptions: formValues });
+    $('opts-result').hidden = false;
+    $('opts-result').textContent = JSON.stringify(res.results, null, 2);
+    if (!res.success) {
+      log('部分设置未生效：' + res.error, true);
+      alert('部分设置未生效：' + res.error);
+    }
+    // 下发后服务端会现读一份最新的，直接用它刷新面板
+    if (res.options && res.options.options) {
+      options = res.options.options;
+      formValues = {};
+      options.forEach(o => { formValues[o.key] = o.value; });
+      renderOptions();
+    }
+  } catch (e) { fail(e); }
+}
 
-$('btn-setting-ui').onclick = async () => {
-  $('btn-setting-ui').disabled = true;
-  setMsg('设置面板已打开，请在面板里改完后关闭它…');
-  const poll = setInterval(refreshStatus, 1000);
-  try {
-    await post('/api/setting-ui');
-    setMsg('设置面板已关闭，新参数由驱动自己保存');
-  } catch (e) {
-    setMsg('打开设置面板失败：' + e.message, true);
-  } finally {
-    clearInterval(poll);
-    await refreshStatus();
-  }
-};
+// ---- 3. 扫描 ----
 
-$('continuous').onchange = () => {
-  if ($('continuous').checked) {
-    $('count').value = 0;
-    $('count').disabled = true;
-  } else {
-    $('count').disabled = false;
-    if (Number($('count').value) === 0) $('count').value = 1;
+async function startScan() {
+  if (!device()) return alert('先选一台扫描仪');
+  const body = {
+    device: device(),
+    extension: $('sel-ext').value,
+    count: Number($('inp-count').value),
+  };
+  if ($('chk-with-opts').checked && Object.keys(formValues).length) {
+    body.scannerOptions = formValues;
   }
-};
-
-$('btn-scan').onclick = async () => {
-  const count = $('continuous').checked ? 0 : Number($('count').value);
 
   $('btn-scan').disabled = true;
-  setMsg('扫描中，请稍候…');
-  const poll = setInterval(refreshStatus, 1000);
+  setScanPill('发起中…', '');
+  try {
+    const started = await postJSON('/api/scan/start', body);
+    await pollScan(started.job.id);
+  } catch (e) {
+    setScanPill('失败', 'bad');
+    fail(e);
+  } finally {
+    $('btn-scan').disabled = false;
+  }
+}
+
+function setScanPill(text, cls) {
+  const pill = $('pill-scan');
+  pill.className = 'pill ' + cls;
+  pill.textContent = text;
+}
+
+async function pollScan(jobId) {
+  let shown = 0;
+  for (;;) {
+    await new Promise(r => setTimeout(r, 1000));
+    const res = await api('/api/scan/status?job=' + encodeURIComponent(jobId));
+    const job = res.job;
+
+    while (shown < job.pages.length) {
+      addShot(job.pages[shown]);
+      shown++;
+    }
+    setScanPill(job.state === 'scanning' ? ('扫描中 · 已 ' + job.pages.length + ' 页')
+                                         : (job.state === 'done' ? ('完成 · ' + job.pages.length + ' 页') : '失败'),
+                job.state === 'done' ? 'ok' : (job.state === 'failed' ? 'bad' : ''));
+
+    if (job.state === 'done') return;
+    if (job.state === 'failed') throw new Error(job.error);
+  }
+}
+
+function addShot(page) {
+  if (!pages.length) $('shots').innerHTML = '';
+  pages.push(page);
+
+  const box = document.createElement('div');
+  box.className = 'shot';
+  const img = document.createElement('img');
+  img.src = page.url;
+  img.title = '点击选中，双击在新窗口打开';
+  img.onclick = () => selectShot(box, page);
+  img.ondblclick = () => window.open(page.url, '_blank');
+  const fn = document.createElement('div');
+  fn.className = 'fn';
+  fn.textContent = '第 ' + page.page + ' 页 · ' + page.file;
+  box.appendChild(img);
+  box.appendChild(fn);
+  $('shots').appendChild(box);
+
+  if (!selected) selectShot(box, page);
+}
+
+function selectShot(box, page) {
+  document.querySelectorAll('.shot').forEach(el => el.classList.remove('sel'));
+  box.classList.add('sel');
+  selected = page;
+  $('txt-upload-file').textContent = '将上传：' + page.file;
+}
+
+// ---- 4. 上传 ----
+
+async function upload() {
+  if (!selected) return alert('先扫一张图，并点一下选中它');
+  const server = $('inp-server').value.trim();
+  if (!server) return alert('填业务系统的接收地址');
+
+  const fd = new FormData();
+  fd.append('filename', selected.file);
+  fd.append('server', server);
+  $('inp-extra').value.split('\n').forEach(line => {
+    const i = line.indexOf('=');
+    if (i > 0) fd.append(line.slice(0, i).trim(), line.slice(i + 1).trim());
+  });
+
+  const headers = {};
+  const token = $('inp-token').value.trim();
+  if (token) headers.token = token;
 
   try {
-    const data = await post('/api/scan', { count });
-    const shots = $('shots');
-    shots.innerHTML = '';
-    for (const img of data.images) {
-      const fig = document.createElement('figure');
-      const el = document.createElement('img');
-      el.src = img.url;
-      const cap = document.createElement('figcaption');
-      cap.textContent = img.name + ' · ' + (img.size / 1024 / 1024).toFixed(2) + ' MB';
-      fig.append(el, cap);
-      shots.appendChild(fig);
+    const res = await api('/file/upload', { method: 'POST', headers, body: fd });
+    $('upload-result').hidden = false;
+    $('upload-result').textContent = typeof res === 'string' ? res : JSON.stringify(res, null, 2);
+    if (res && res.errorCode !== 0) {
+      log('转发上传失败：' + res.msg, true);
+      alert('转发上传失败：' + res.msg);
     }
-    setMsg('完成，共 ' + data.count + ' 张');
-  } catch (e) {
-    setMsg('扫描失败：' + e.message, true);
-  } finally {
-    clearInterval(poll);
-    await refreshStatus();
-  }
-};
+  } catch (e) { fail(e); }
+}
+
+// ---- 绑定 ----
+
+$('btn-status').onclick = refreshStatus;
+$('btn-devices').onclick = loadDevices;
+$('btn-get-opts').onclick = loadOptions;
+$('btn-set-opts').onclick = applyOptions;
+$('btn-scan').onclick = startScan;
+$('btn-upload').onclick = upload;
+$('btn-clear-log').onclick = () => { $('log').innerHTML = ''; };
 
 refreshStatus();
-$('btn-refresh').click();
+loadDevices();
 </script>
-
 </body>
 </html>
