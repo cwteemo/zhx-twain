@@ -12,6 +12,9 @@ capdump/
 # 设置项缓存（options.go）
 cache/
 
+# 临时文件（截图、抓包之类，随手放的，不进仓库）
+temp/
+
 # 日志
 twain.log
 
