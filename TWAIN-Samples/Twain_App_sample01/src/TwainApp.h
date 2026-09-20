@@ -101,6 +101,24 @@ bool operator== (const TW_FIX32& _fix1, const TW_FIX32& _fix2);
 void PrintCMDMessage(const char* const pStr, ...);
 
 /**
+* 每传完一页就回调一次的钩子。
+*
+* 上游的 initiateTransfer_* 是"整叠纸传完才返回"的，DLL 层原来只能等它返回、
+* 再比对扫描目录里多出来的文件，才知道扫了几页——一叠 50 页要等全部扫完
+* 才一次性报给调用方，前端只能盯着空白界面等一两分钟。
+* 装上这个钩子，每页一落盘就报一次，做到边扫边出图。
+*
+* 由 main.cpp 的 zhx_Scan 装上、退出时摘下；为 0 表示不回调。
+* 参数是图片的完整路径。多页 TIFF（TWFF_TIFFMULTI）例外：整叠纸只有一个文件，
+* 传完才算数，所以那种格式下不逐页回调。
+*
+* 注意：它是在 TWAIN 线程的传输循环里被调用的，实现要尽快返回——
+* 卡在这里就是卡住扫描本身。
+*/
+typedef void (*PageDoneHook)(const char* _pszFileName);
+extern PageDoneHook gPageDoneHook;
+
+/**
 * The Main Application Class.
 */
 class TwainApp
@@ -173,6 +191,14 @@ public:
 * Sources available and build a list of DS and store them in m_DataSources.
 */
   void getSources();
+
+/**
+* 把一台数据源的 identity（厂商、协议版本、SupportedGroups 等）完整写进日志，
+* 排查"某个牌子的扫描仪枚举不出来"时要靠这些字段。
+* @param[in] _pszPrefix 日志行的前缀
+* @param[in] _ident 要记录的 identity
+*/
+  void logSourceIdentity(const char* _pszPrefix, const TW_IDENTITY& _ident);
 
   /**
 * 获取当前数据源标识(ProductName)

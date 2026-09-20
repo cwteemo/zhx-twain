@@ -11,9 +11,12 @@
 //
 //	cd TWAIN-Samples\Twain_App_sample01\src\scansvc
 //	go run ./tools/mkicon favicon.ico rsrc_windows_amd64.syso
+//	go run ./tools/mkicon favicon.ico rsrc_windows_386.syso
 //
-// 文件名必须是 *_windows_amd64.syso：Go 只在编 Windows/amd64 时才带上它，
-// 别的平台（比如在 Linux 上 go vet）会自动忽略，不会报错。
+// 文件名必须是 *_windows_amd64.syso / *_windows_386.syso：Go 只在编对应平台时
+// 才带上它，别的平台（比如在 Linux 上 go vet）会自动忽略，不会报错。
+// 目标架构也是从这个文件名认出来的——COFF 的 machine 字段和重定位类型跟架构相关，
+// 拿 amd64 的 .syso 去链 32 位 exe，链接器会直接报"machine type conflict"。
 //
 // 图标里的每一张图原样搬进资源，不做缩放——Windows 自己会挑合适的尺寸。
 package main
@@ -23,6 +26,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 // Windows 资源类型编号，见 winuser.h。
@@ -30,6 +35,35 @@ const (
 	rtIcon      = 3
 	rtGroupIcon = 14
 )
+
+// coffArch 是一个目标架构在 COFF 里的两处差异。
+type coffArch struct {
+	name    string
+	machine uint16 // IMAGE_FILE_MACHINE_*
+	// 相对映像基址的 32 位地址重定位，资源表要用的就是它。
+	// amd64 是 IMAGE_REL_AMD64_ADDR32NB，i386 是 IMAGE_REL_I386_DIR32NB，编号不同。
+	relocDir32NB uint16
+}
+
+var (
+	archAMD64 = coffArch{name: "amd64", machine: 0x8664, relocDir32NB: 0x0003}
+	arch386   = coffArch{name: "386", machine: 0x014c, relocDir32NB: 0x0007}
+)
+
+// archFromSysoName 按 .syso 的文件名认出目标架构。
+// Go 就是按这个后缀决定哪个平台带上这个文件的，架构信息本来就在文件名里，
+// 再加一个命令行参数只会多一个能填错的地方。
+func archFromSysoName(path string) (coffArch, error) {
+	base := strings.ToLower(filepath.Base(path))
+	switch {
+	case strings.Contains(base, "_amd64"):
+		return archAMD64, nil
+	case strings.Contains(base, "_386"):
+		return arch386, nil
+	default:
+		return coffArch{}, fmt.Errorf("从文件名认不出架构: %s（应形如 rsrc_windows_amd64.syso 或 rsrc_windows_386.syso）", base)
+	}
+}
 
 // icoEntry 是 .ico 文件里的一条目录项（ICONDIRENTRY）。
 type icoEntry struct {
@@ -59,8 +93,13 @@ func run(icoPath, sysoPath string) error {
 		return err
 	}
 
+	target, err := archFromSysoName(sysoPath)
+	if err != nil {
+		return err
+	}
+
 	rsrc := buildResourceSection(entries, images)
-	obj := buildCOFF(rsrc)
+	obj := buildCOFF(rsrc, target)
 
 	if err := os.WriteFile(sysoPath, obj, 0o644); err != nil {
 		return err
@@ -245,12 +284,8 @@ func layoutResources(res []resource) rsrcSection {
 
 // buildCOFF 把 .rsrc 节包成一个 COFF 目标文件（amd64）。
 // Go 编译时会把同目录下的 .syso 当成外部目标文件交给链接器。
-func buildCOFF(rsrc rsrcSection) []byte {
-	const (
-		machineAMD64    = 0x8664
-		relocAddr32NB   = 0x0003 // 相对映像基址的 32 位地址：正是资源表要的
-		sectionRsrcFlag = 0x40000040
-	)
+func buildCOFF(rsrc rsrcSection, target coffArch) []byte {
+	const sectionRsrcFlag = 0x40000040
 
 	symbolCount := 1 // 一个节符号就够：重定位都指向节首
 	sizeOfRelocs := len(rsrc.relocs) * 10
@@ -263,7 +298,7 @@ func buildCOFF(rsrc rsrcSection) []byte {
 	le := binary.LittleEndian
 
 	// 文件头
-	le.PutUint16(out[0:], machineAMD64)
+	le.PutUint16(out[0:], target.machine)
 	le.PutUint16(out[2:], 1) // 节数
 	le.PutUint32(out[8:], uint32(symOffset))
 	le.PutUint32(out[12:], uint32(symbolCount))
@@ -282,7 +317,7 @@ func buildCOFF(rsrc rsrcSection) []byte {
 		p := relocOffset + i*10
 		le.PutUint32(out[p:], r)   // 要改的位置（节内偏移）
 		le.PutUint32(out[p+4:], 0) // 符号表下标：第 0 个，即节符号
-		le.PutUint16(out[p+8:], relocAddr32NB)
+		le.PutUint16(out[p+8:], target.relocDir32NB)
 	}
 
 	// 符号表：一个 .rsrc 节符号

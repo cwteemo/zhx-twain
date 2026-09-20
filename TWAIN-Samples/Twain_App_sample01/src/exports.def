@@ -1,4 +1,7 @@
-LIBRARY TWAIN_APP_CMD64
+; 故意不写 LIBRARY 语句：写了就会被当成导入库里记的 DLL 名，
+; 32 位构建（产物是 TWAIN_APP_CMD32.dll）会被记成 TWAIN_APP_CMD64.dll，
+; 运行时照着这个名字去加载，只能失败。省略时链接器用真正的输出文件名，
+; 同一份 def 就能同时供 Win32 和 x64 两个配置用。
 EXPORTS
     zhx_twain_test
     zhx_twain

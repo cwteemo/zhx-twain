@@ -23,25 +23,33 @@ HTTP 和 WebSocket 两条路都通。另外带一组文件 / 目录管理接口�
 **完整用法、依赖、部署和常见问题见 [BUILD.md](../../../../BUILD.md)**，下面只列常用命令。
 
 ```powershell
-build.bat                  rem DLL(Release|x64) + scansvc.exe(无控制台窗口) -> dist\
+build.bat                  rem DLL(Release|x64) + scansvc.exe(无控制台窗口) -> dist\x64\
+build.bat -x86             rem 改编 32 位，产物进 dist\x86\（同一份代码）
 build.bat dll              rem 只编 DLL
 build.bat go               rem 只编 scansvc.exe
 build.bat -debug           rem DLL 用 Debug 配置
 build.bat -console         rem exe 带控制台窗口（调试用）
 build.bat -notest          rem 跳过 Go 单元测试
-build.bat -out D:\deploy    rem 换个输出目录
+build.bat -out D:\deploy    rem 换个输出目录（不再追加架构子目录）
 ```
+
+**什么时候要 32 位版**：TWAIN 驱动（`.ds`）要加载进本进程，位数必须一致。
+只发 32 位驱动的机型（几款老柯达就是这样）在 64 位服务里根本枚举不出来。
+拿不准就在目标机器上跑 `GET /api/diagnose`，`conclusion` 会直接说是不是这个原因。
+两套 `dist` 不要混装：`FreeImage.dll` / `TWAINDSM.dll` 两边同名但位数不同。
 
 它会做这些事，任一步失败就停下并说清楚原因：
 
 1. 用 `vswhere` 找 MSBuild（找不到就提示装 VS 的 C++ 工作负载，或从"VS 开发人员命令提示"里跑）
-2. 编 DLL，把 `TWAIN_APP_CMD64.dll` / `.lib` 拷到 `src\scansvc\`（cgo 链接要用）
-3. 检查 Go 和 **64 位** gcc（`gcc -dumpmachine` 不是 `x86_64-*` 直接报错——装成 32 位 MinGW 是个老坑）
-4. 跑 `go test ./imgfmt ./scanopt`（纯 Go 那两个包，主包要 DLL 没法在这一步测）
+2. 编 DLL，把 `TWAIN_APP_CMD64.dll`（`-x86` 时是 `…CMD32.dll`）/ `.lib` 拷到
+   `src\scansvc\`（cgo 链接要用；链哪个由 `link_windows_amd64.go` / `link_windows_386.go` 决定）
+3. 检查 Go 和 **位数匹配的** gcc（`gcc -dumpmachine` 对不上直接报错——位数装错是个老坑。
+   编 32 位时优先用 PATH 里的 `i686-w64-mingw32-gcc.exe`）
+4. 跑 `go test ./imgfmt ./scanopt ./twaindiag`（纯 Go 那几个包，主包要 DLL 没法在这一步测）
 5. 编 `scansvc.exe`
-6. 拷贝到 `dist\`：`scansvc.exe`、`TWAIN_APP_CMD64.dll`、`FreeImage.dll`、
-   `scansvc-tools.bat` / `.ps1`，并尝试从 `C:\Windows\twain_64\` 找 `TWAINDSM.dll`；
-   找不到会明确提示（少了它枚举不到任何扫描仪）
+6. 拷贝到 `dist\<架构>\`：`scansvc.exe`、`TWAIN_APP_CMD<32|64>.dll`、`FreeImage.dll`、
+   `scansvc-tools.bat` / `.ps1`，并尝试从 `C:\Windows\twain_64`（32 位时 `twain_32`）
+   找 `TWAINDSM.dll`；找不到会明确提示（少了它枚举不到任何扫描仪）
 
 `dist\` 整个目录拷到操作员机器上，双击 `scansvc.exe` 即可。目标机器上已有的
 `scansvc.conf`、`scans\`、`cache\` 不要删。
@@ -57,8 +65,11 @@ build.bat -out D:\deploy    rem 换个输出目录
   两个配置都能编：上游代码在 `/W4` 下有不少警告，原来 Release 开着"警告视为错误"(`/WX`)，
   一编就是一串 `C2220 以下警告被视为错误`，现已关掉（Debug|x64 本来就是关的）。
   警告仍然会显示，只是不再中断编译。
-- **32 位配置（Win32）没有配 `exports.def`**，编出来的 DLL 不导出 `zhx_*` 函数，Go 那边链接不上。
-  要用 32 位得先把 `ModuleDefinitionFile` 补上；平时用 x64 就行。
+- **32 位配置（Win32）现在也能用了**：补齐了 `exports.def`、`ZHX_TWAIN_EXPORTS` 宏，
+  中间目录也和 x64 分开（`Debug_Win32\` / `Release_Win32\`，否则两种位数的 `.obj`
+  在同一个目录里打架）。`exports.def` 里的 `LIBRARY` 语句已删掉——留着会把导入库里记的
+  DLL 名钉成 `TWAIN_APP_CMD64.dll`，32 位产物（`…CMD32.dll`）运行时照那个名字去加载，只能失败。
+  产物是 `TWAIN_APP_CMD32.dll`，配 `pub\external\lib\win32` 下的 FreeImage。
 - 生成后把产物拷到本目录：
 
 ```
@@ -76,12 +87,13 @@ TWAINDSM.dll        ← TWAIN 数据源管理器，缺了它枚举不到任何�
 
 ## 2. 编译运行服务
 
-需要 Go 1.19+ 和 **64 位 MinGW-w64 gcc**（cgo 依赖）：
+需要 Go 1.19+ 和 **位数匹配的 MinGW-w64 gcc**（cgo 依赖）：
 
 ```powershell
 cd TWAIN-Samples\Twain_App_sample01\src\scansvc
 set CGO_ENABLED=1
 set GOARCH=amd64
+rem 32 位改成：set GOARCH=386  再加 set CC=i686-w64-mingw32-gcc
 
 rem 交付用：没有控制台窗口，双击就缩到托盘后台运行
 go build -ldflags "-H=windowsgui" -o scansvc.exe .
@@ -130,6 +142,7 @@ go build -o scansvc.exe .
 ```powershell
 scansvc-tools.bat status
 scansvc-tools.bat devices
+scansvc-tools.bat diagnose                 # TWAIN 环境体检：某台扫描仪枚举不出来时先跑这个
 scansvc-tools.bat dump "Uniscan Q400"      # 导出能力，存到 capdump\ 下
 scansvc-tools.bat options "Uniscan Q400"   # 看这台设备的设置项
 scansvc-tools.bat config                   # 设置项配置用的是内置还是现场覆盖
@@ -284,6 +297,17 @@ GET  /api/devices
   TWAIN 没有便宜的在线探测：CAP_DEVICEONLINE 要先把数据源打开（state 4）才能查，
   而打不开正是这里要判断的事情。
 
+GET  /api/diagnose
+  → {"processBits":64,"dsmNextToExe":"D:\\scansvc\\TWAINDSM.dll","dsmNextToExeFound":true,
+     "dsmPath":"C:\\Windows\\twain_64\\TWAINDSM.dll","dsmFound":true,
+     "enumerated":["Scanner A"],"dirs":[{"path":"C:\\Windows\\twain_32","bits":32,"usable":false,
+     "sources":[{"name":"KODAKS.ds",...}]},...],"conclusion":["..."]}
+  "驱动装了却枚举不到"就发这个。conclusion 是可以直接给人看的结论。
+  最常见的原因是位数不匹配：TWAIN 驱动（.ds）要加载进本进程，32 位进程只能用
+  C:\Windows\twain_32 下的，64 位只能用 twain_64 下的，跨位数没有任何办法。
+  只发 32 位驱动的机型（几款老柯达就是）在 64 位服务里一定枚举不出来，只能换 32 位版。
+  实现见 twaindiag/ 子包（纯 Go，有测试）。
+
 GET  /api/status
   → {"state":4,"stateText":"已连接扫描仪","ready":true,
      "connected":true,"device":"Scanner A","scanning":false}
@@ -351,9 +375,10 @@ POST /api/setting-ui
 ### 扫描（HTTP 异步任务，和 WebSocket 等价）
 
 ```
-POST /api/scan/start   {"device":"...","extension":"jpg","count":1,"scannerOptions":{...}}   # jpg / tiff / png
+POST /api/scan/start   {"device":"...","extension":"jpg","count":0,"scannerOptions":{...}}   # jpg / tiff / png
   → {"success":true,"job":{"id":"...","state":"scanning","pages":[]}}
   立刻返回，扫描在后台跑。同一时刻只允许一个任务，重复发起给 409。
+  count 不传或 <=0 = 扫到送纸器没纸；只扫一页要显式传 1。
   产出和 WebSocket 一致：转成 jpeg/png、平铺到扫描根目录、给 /file/<文件名> 地址。
 
 GET  /api/scan/status[?job=<id>]
@@ -364,10 +389,10 @@ GET  /api/scan/status[?job=<id>]
 ### 扫描（同步，调试用）
 
 ```
-POST /api/scan          {"count":1}
+POST /api/scan          {"count":0}
   → {"success":true,"count":1,
      "images":[{"id":"...","name":"xxx.bmp","size":11220054,"url":"/api/image?id=..."}]}
-  用当前已连接的设备扫描。count=0 表示走送纸器一直扫到没纸。
+  用当前已连接的设备扫描。count 不传或 <=0 表示走送纸器一直扫到没纸，只扫一页传 1。
   可选 "device"：传了就先确保连上这台（省掉一次 /api/connect）。
   可选 "config"：扫之前顺手把参数设了，内容同 POST /api/config。
   扫完**保持连接**，可以接着扫下一批。
@@ -377,15 +402,34 @@ GET  /api/image?id=xxx  → 图片字节流
 
 跨域已开（`Access-Control-Allow-Origin: *`），业务系统可以从别的域名直接调。
 
-### 连续扫描怎么开
+### 连续扫描怎么做的
 
-1. `POST /api/config` 带 `{"feeder":true,"autoFeed":true}`——先让设备走送纸器
-2. `POST /api/scan` 带 `{"count":0}`——一直扫到 `CAP_FEEDERLOADED` 报没纸为止
+**所有扫描入口默认都是扫到没纸**（旧 WebSocket 协议的 `scan`、`/api/scan`、
+`/api/scan/start`）。只扫一页要显式传 `count: 1`。
 
-设备不支持 `CAP_FEEDERLOADED`（平板扫描仪基本都不支持）时，`count=0` 只会扫一页就停。
-这是有意的：DLL 里 `checkIfMorePagesAvailable()` 原来写死 `return true`，
-无限模式永远等不到结束条件，会一直空转。现在查不到送纸器状态就当作没纸了。
-无限模式另有 1000 页的兜底上限。
+一叠纸是在**一次 `MSG_ENABLEDS` 会话里**传完的，不是反复开关设备凑页数：
+
+1. 开扫前 DLL 先谈两个能力（`prepareContinuousScan()`，main.cpp）：
+   - `CAP_XFERCOUNT = -1`（不限张数）。**不设的话按驱动默认值来，有的机型默认就是 1，
+     一次会话只给一张图**——这正是以前"每次只扫一张"的根源。
+     指定了页数时把页数本身设进去，让驱动自己扫够了停。
+   - `CAP_AUTOFEED`：读出来是 FALSE 才打开（关掉的话 ADF 扫完第一张就不再进纸）。
+   - `CAP_FEEDERENABLED` **故意不动**：那是"走平板还是走送纸器"，归设置项管
+     （scanopt 的 `source`），在这里覆盖会把用户选的平板扫描改掉。
+2. 传输循环在 `initiateTransfer_File()` 里，按 `DAT_PENDINGXFERS` 的 `Count`
+   一张接一张传，传到 0 为止。
+3. 外层还有一圈兜底：驱动不认 `CAP_XFERCOUNT`、一次会话只给一张时，
+   靠 `CAP_FEEDERLOADED` 判断"还有纸"再开一轮。设备不支持这个能力
+   （平板扫描仪基本都不支持）就当没纸，不再开新的一轮——`checkIfMorePagesAvailable()`
+   原来写死 `return true`，无限模式永远等不到结束条件会一直空转。
+   无限模式另有 1000 页的兜底上限。
+
+每页一落盘就报给上层（DLL 里的 `gPageDoneHook`，详见第 6 章"扫描回调"），所以
+前端是**边扫边出图**，不是等整叠扫完才一次性收到一堆。
+
+旧 WebSocket 协议那边还有一条：**扫描进行中又来的 `scan` 会被直接忽略**（legacy.go）。
+老前端靠定时器循环发 `scan` 实现连续扫描，那些请求现在是多余的；不忽略的话它们会排在
+TWAIN 线程队列里，等这叠扫完再一个个执行，每个都报"没纸"，前端会连弹好几条。
 
 ## 4. WebSocket
 
@@ -419,7 +463,10 @@ GET  /api/image?id=xxx  → 图片字节流
 **以扩展名结尾的地址**，`/api/image?id=xxx` 那种带查询串的形式它认不了。
 图片由 `/file/` 静态路由提供。
 
-一次 `scan` 只扫一页——连续扫描由前端自己的定时器循环发起，和被替换的服务端一致。
+一条 `scan` 会**一直扫到送纸器没纸**，每扫出一张推一条（原来是一次只扫一页、
+靠前端定时器循环发起）。扫描还没结束时又发来的 `scan` 会被忽略、不回任何消息，
+所以老前端那个定时器循环不用改：纸走完之后它再发的那一次才真的开一轮扫描，
+扫不到纸回 `code:-1`，正好是它停止循环的信号。
 
 已实现：`scannerList`、`scan`、`show_setting`、`export`/`import`（前端只拿来关 loading）。
 
@@ -463,7 +510,8 @@ TWAIN 细节全在服务端。**有哪些设置项、下拉框有哪些选项都
 
 ### 4.3 图片格式
 
-DLL 只会吐 BMP——`zhx_Scan` 靠 `*.bmp` 通配符比对扫描前后的目录来认产物，换格式就认不出来。
+DLL 只会吐 BMP——`zhx_Scan` 的兜底路径靠 `*.bmp` 通配符比对扫描前后的目录来认产物，
+换格式那条路就认不出来了（每页回调的钩子给的是完整路径，不受这个限制，但兜底还得能用）。
 所以转换放在 Go 侧：**转成什么只看请求里的 `extension`，源文件是什么只看内容**
 （`imgfmt.Sniff` 认 BMP / JPEG / PNG / TIFF 的文件头），不看源文件的后缀——后缀谁都能改，内容才是事实。
 转完删掉原图（一张十几 MB，连扫几百页很快吃满盘）。
@@ -640,7 +688,18 @@ POST /dir/upload            dir=<目录>&filepath=<相对路径>&file=<文件>
 
 扫描期间该线程被占满，其它请求会排队等待——这是 TWAIN 的固有限制，不是 bug。
 
-**扫描回调**（`callback.go` 的 `goScanCallback`）由 DLL 在扫描线程上同步调用，只做文件路径登记，不做重活。
+**扫描回调**（`callback.go` 的 `goScanCallback`）由 DLL 在扫描线程上同步调用，只做文件路径登记和
+一次非阻塞推送，不做重活。
+
+它是**每传完一页就回调一次**的：DLL 侧在 `TwainApp` 的传输循环里装了个钩子
+（`gPageDoneHook`，见 TwainApp.h），每页落盘就报一次。原来只能等
+`initiateTransfer_*` 把整叠纸传完返回之后，再比对目录里多出来的文件才知道扫了几页——
+一叠 50 页要等全部扫完才一次性收到 50 条，前端只能盯着空白界面等。
+目录比对没删，退化成兜底（多页 TIFF 一个文件，只能等传输结束）；
+钩子报过的文件名 DLL 记着，比对时跳过，不会重复报。
+
+**代价**：回调是在传输循环里同步执行的，格式转换那几百毫秒会让驱动等着。
+换来的是边扫边出图。真嫌慢就把转换挪出 TWAIN 线程，但要自己保证页序和原图不被提前删掉。
 
 **状态镜像**。扫描期间 TWAIN 线程被占满，任何走 `inTwain()` 的调用都得排队等扫描结束，
 而 `/api/status` 恰恰是扫描时最需要能立刻回答的接口。所以每次 TWAIN 操作结束时
@@ -657,7 +716,25 @@ POST /dir/upload            dir=<目录>&filepath=<相对路径>&file=<文件>
 把设备关掉、退回 state 3。会话模型下每次扫描后调它，等于每扫一批就断一次连接，
 下一批又要重新打开设备（几秒到几十秒）。真正要断开时用 `zhx_CloseDevice()`。
 
-## 7. 打不开设备时怎么查
+## 7. 枚举不到 / 打不开设备时怎么查
+
+### 7.0 设备列表里根本没有这台扫描仪
+
+先跑体检：`scansvc-tools.bat diagnose`（或 `GET /api/diagnose`），`conclusion` 直接给结论。
+按出现频率：
+
+1. **驱动只有另一个位数**——TWAIN 驱动（`.ds`）要加载进本服务进程，位数必须一致：
+   32 位服务只认 `C:\Windows\twain_32`，64 位只认 `twain_64`。厂商只发 32 位驱动的机型
+   （几款老柯达就是这样）在 64 位服务里**一定**枚举不出来，换 32 位版服务（`build.bat -x86`）。
+   体检会点名是哪几个驱动文件。
+2. **`TWAINDSM.dll` 不在 exe 旁边**——少了它一台都枚举不到，体检会报缺失。
+3. **驱动装了但枚举中途报错**——`twain.log` 里找 `MSG_GETNEXT failed`。
+   一台报错不再中断整张清单（`TwainApp::getSources()`，以前一报错就 `return`，
+   排在它后面的扫描仪会全部"消失"），跳过它继续问下一台，连续失败 3 次才放弃。
+   日志里每台设备都记了厂商、TWAIN 协议版本、`SupportedGroups`，
+   带 `(no DG_IMAGE!)` 的说明那个数据源根本不提供图像能力。
+
+### 7.1 设备列在列表里，但打不开
 
 症状：`/api/scan` 卡二三十秒，然后报打开失败，`twain.log` 里是
 

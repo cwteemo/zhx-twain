@@ -140,9 +140,8 @@ type scanStartRequest struct {
 	Device string `json:"device"`
 	// Extension 是图片格式：jpeg / jpg / png，默认 png。和 WebSocket 的 extension 一致。
 	Extension string `json:"extension"`
-	// Count 是扫几页；显式传 0 表示走送纸器一直扫到没纸。
-	// 用指针是为了区分"没传"和"传了 0"：没传按 1 处理。要是把没传也当 0，
-	// 客户端只想扫一页却会把整叠纸都走完，这个坑很贵。
+	// Count 是扫几页，<=0 表示走送纸器一直扫到没纸；不传就是不限（扫到没纸）。
+	// 只想扫一页就显式传 count: 1。
 	Count          *int           `json:"count"`
 	ScannerOptions map[string]any `json:"scannerOptions"`
 }
@@ -157,12 +156,10 @@ func handleScanStart(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "请求体不是合法 JSON: "+err.Error())
 		return
 	}
-	count := 1
-	if req.Count != nil {
+	// 默认扫到送纸器空。<=0 一律按"不限"传给 DLL。
+	count := 0
+	if req.Count != nil && *req.Count > 0 {
 		count = *req.Count
-		if count < 0 {
-			count = 1
-		}
 	}
 	ext := normalizeExt(req.Extension)
 

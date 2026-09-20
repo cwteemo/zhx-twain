@@ -82,6 +82,10 @@ DSMCallback(pTW_IDENTITY _pOrigin,
             TW_MEMREF    _pData);
 
 //////////////////////////////////////////////////////////////////////////////
+// 每页回调钩子，见 TwainApp.h 的说明。默认不回调。
+PageDoneHook gPageDoneHook = 0;
+
+//////////////////////////////////////////////////////////////////////////////
 bool operator== (const TW_FIX32& _fix1, const TW_FIX32& _fix2)
 {
   return((_fix1.Whole == _fix2.Whole) &&
@@ -654,6 +658,24 @@ void TwainApp::unloadDS()
   return;
 }
 
+// 把一台数据源的 identity 完整记进日志。设备"枚举不出来"或者"能枚举但打不开"时，
+// 光有 ProductName 不够判断：厂商、TWAIN 协议版本、SupportedGroups 才看得出
+// 是老驱动（协议 1.x）、还是根本不支持图像组（DG_IMAGE 没置位）。
+void TwainApp::logSourceIdentity(const char* _pszPrefix, const TW_IDENTITY& _ident)
+{
+  Logger::Log("%s: %s | Manufacturer=%s | ProductFamily=%s | Version=%u.%u | "
+              "TWAIN protocol=%u.%u | SupportedGroups=0x%08X%s",
+              _pszPrefix,
+              _ident.ProductName,
+              _ident.Manufacturer,
+              _ident.ProductFamily,
+              _ident.Version.MajorNum, _ident.Version.MinorNum,
+              _ident.ProtocolMajor, _ident.ProtocolMinor,
+              (unsigned int)_ident.SupportedGroups,
+              (_ident.SupportedGroups & DG_IMAGE) ? "" : " (no DG_IMAGE!)");
+}
+
+//////////////////////////////////////////////////////////////////////////////
 void TwainApp::getSources()
 {
   Logger::Log("=== Starting Get Sources Process ===");
@@ -686,12 +708,17 @@ void TwainApp::getSources()
   switch (twrc)
   {
   case TWRC_SUCCESS:
-    Logger::Log("First source found: %s", Source.ProductName);
+    logSourceIdentity("First source found", Source);
     m_DataSources.push_back(Source);
     break;
 
   case TWRC_FAILURE:
-    Logger::Log("Error: Failed to get first data source");
+    {
+      // 第一台就报错也要接着往下问：DSM 的游标已经走过它了，后面的设备还在。
+      TW_INT16 cc = TWCC_SUCCESS;
+      getTWCC(0, cc);
+      Logger::Log("@WARN MSG_GETFIRST failed (condition code %d), skipping it and continuing", cc);
+    }
     printError(0, "Failed to get the data source info!");
     break;
 
@@ -702,7 +729,20 @@ void TwainApp::getSources()
   }
 
   Logger::Log("Getting remaining sources...");
-  do
+
+  // 枚举中途有一台设备报错，不能让整张清单就断在那里。
+  // 老驱动（装了多年的机型上常见）在 MSG_GETNEXT 上返回 TWRC_FAILURE，
+  // 原来这里直接 return，结果排在它后面的扫描仪全都"消失"了——
+  // 界面上看就是某个品牌的机器怎么都枚举不出来。
+  // 现在跳过报错那一台接着问下一台，用"连续失败次数"和"总轮数"兜底，
+  // 免得驱动一直报错时在这里死循环。
+  const int kMaxFailuresInARow = 3;
+  const int kMaxSources        = 64;
+  int  nFailuresInARow = 0;
+  int  nRounds         = 0;
+  bool bDone           = false;
+
+  while(!bDone && nRounds++ < kMaxSources)
   {
     memset(&Source, 0, sizeof(TW_IDENTITY));
 
@@ -719,22 +759,42 @@ void TwainApp::getSources()
     switch (twrc)
     {
     case TWRC_SUCCESS:
-      Logger::Log("Additional source found: %s", Source.ProductName);
+      nFailuresInARow = 0;
+      logSourceIdentity("Additional source found", Source);
       m_DataSources.push_back(Source);
       break;
 
     case TWRC_FAILURE:
-      Logger::Log("Error: Failed to get next data source");
-      printError(0, "Failed to get the rest of the data source info!");
-      return;
+      {
+        TW_INT16 cc = TWCC_SUCCESS;
+        getTWCC(0, cc);
+        Logger::Log("@WARN MSG_GETNEXT failed (condition code %d), skipping this source and continuing", cc);
+      }
+      printError(0, "Failed to get the info of one data source, skipping it!");
+      if(++nFailuresInARow >= kMaxFailuresInARow)
+      {
+        Logger::Log("@WARN MSG_GETNEXT failed %d times in a row, giving up on the rest of the list",
+                    nFailuresInARow);
+        bDone = true;
+      }
       break;
 
     case TWRC_ENDOFLIST:
       Logger::Log("Reached end of sources list");
+      bDone = true;
+      break;
+
+    default:
+      Logger::Log("@WARN Unexpected return code %u from MSG_GETNEXT, stopping enumeration", twrc);
+      bDone = true;
       break;
     }
   }
-  while (TWRC_SUCCESS == twrc);
+
+  if(nRounds >= kMaxSources)
+  {
+    Logger::Log("@WARN Stopped enumerating after %d rounds (safety cap)", kMaxSources);
+  }
 
   Logger::Log("Total sources found: %d", m_DataSources.size());
   Logger::Log("=== Get Sources Process Completed ===");
@@ -1153,9 +1213,13 @@ void TwainApp::initiateTransfer_Native()
         pFile = 0;
 
         PrintCMDMessage("app: File \"%s\" saved...\n", szOutFileName);
-#ifdef _WINDOWS
-        ShellExecute(m_Parent, "open", szOutFileName, NULL, NULL, SW_SHOWNORMAL);
-#endif
+        // 上游示例这里会用系统默认程序把图打开给人看效果。本仓库是以 DLL 形式跑在
+        // 后台服务里的，一叠纸会弹出几十个图片查看器窗口抢焦点，还拖慢扫描；
+        // 改成把刚落盘的这一页报给上层，由它去转格式、推给前端。
+        if(gPageDoneHook)
+        {
+          gPageDoneHook(szOutFileName);
+        }
       }
 
       _DSM_UnlockMemory(hImg);
@@ -1599,12 +1663,9 @@ void TwainApp::initiateTransfer_File(TW_UINT16 fileformat /*= TWFF_TIFF*/)
       twrc = DSM_Entry(DG_CONTROL, DAT_SETUPFILEXFER, MSG_GET, (TW_MEMREF)&(filexfer));
 
       PrintCMDMessage("app: File \"%s\" saved...\n", filexfer.FileName);
-#ifdef _WINDOWS
-      if(fileformat!=TWFF_TIFFMULTI)
-      {
-        ShellExecute(m_Parent, "open", filexfer.FileName, NULL, NULL, SW_SHOWNORMAL);
-      }
-#endif
+      // 这里原来会用系统默认程序打开图片（上游示例的做法）。服务化之后不能弹窗，
+      // 改成在下面 MSG_ENDXFER 之后把这一页报给上层——那时这一页才真的结束，
+      // 回调里去动这个文件（转格式、挪走）才是安全的。
       
       updateEXTIMAGEINFO();
 
@@ -1630,6 +1691,14 @@ void TwainApp::initiateTransfer_File(TW_UINT16 fileformat /*= TWFF_TIFF*/)
         printError(m_pDataSource, "failed to properly end the transfer");
         bPendingXfers = false;
       }
+
+      // 这一页彻底结束了，报给上层，做到边扫边出图。
+      // 多页 TIFF 除外：整叠纸写的是同一个文件，中途报等于把一个还没写完的文件
+      // 反复报好几遍；那种格式只能等传输全部结束，由 zhx_Scan 比对目录兜底。
+      if(gPageDoneHook && fileformat != TWFF_TIFFMULTI)
+      {
+        gPageDoneHook(filexfer.FileName);
+      }
     }
     else if(TWRC_CANCEL == twrc)
     {
@@ -1642,12 +1711,6 @@ void TwainApp::initiateTransfer_File(TW_UINT16 fileformat /*= TWFF_TIFF*/)
       break;
     }
   }
-#ifdef _WINDOWS
-  if(TWRC_SUCCESS == twrc && fileformat==TWFF_TIFFMULTI)
-  {
-    ShellExecute(m_Parent, "open", filexfer.FileName, NULL, NULL, SW_SHOWNORMAL);
-  }
-#endif
   // Check to see if we left the scan loop before we were actualy done scanning
   // This will hapen if we had an error.  Need to let the DS know we are not going 
   // to transfer more images
@@ -1808,9 +1871,11 @@ void TwainApp::initiateTransfer_Memory()
           }
 
           PrintCMDMessage("app: File \"%s\" saved...\n", szOutFileName);
-#ifdef _WINDOWS
-          ShellExecute(m_Parent, "open", szOutFileName, NULL, NULL, SW_SHOWNORMAL);
-#endif
+          // 同 initiateTransfer_Native：不弹图片查看器，改成把这一页报给上层。
+          if(gPageDoneHook)
+          {
+            gPageDoneHook(szOutFileName);
+          }
           updateEXTIMAGEINFO();
           break;
         }

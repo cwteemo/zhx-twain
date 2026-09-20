@@ -27,7 +27,7 @@
 
 ```
 0. 服务状态    → GET /version、GET /api/status
-1. 扫描仪列表  → GET /api/devices
+1. 扫描仪列表  → GET /api/devices（列表里少了某台设备？看 GET /api/diagnose 的 conclusion）
 2. 设置项      → GET/POST /api/scanner-options（控件是按返回值通用渲染的）
 3. 扫描        → POST /api/scan/start + 轮询 /api/scan/status，扫出来的图直接显示
 4. 转发上传    → POST /file/upload，填上你的业务系统地址就能试
@@ -52,7 +52,7 @@
 6. POST http://127.0.0.1:18080/file/upload         → 让本服务把图转发上传到业务系统
 ```
 
-连续扫描由**客户端自己控制**：一次 `scan` 扫一轮，扫完想继续就再发一条。
+一条 `scan` 就会**一直扫到送纸器没纸**，每扫出一张推一条。扫描期间重复发的 `scan` 会被忽略。
 
 ---
 
@@ -103,8 +103,14 @@
    "base64":"http://127.0.0.1:18080/file/SCAN_20260916_095614_861_000001N.jpeg"}
 ```
 
-- 一次 `scan` 可能推**多条**：走送纸器时驱动会把这一叠纸一次传完，有几张推几条。
-- 扫描期间界面要保持"扫描中"，直到不再收到新消息；连续扫描就是扫完再发一条 `scan`。
+- **一条 `scan` 会一直扫到送纸器没纸**，每扫出一张推一条，有几张推几条。
+  只想扫一张就一张一张地放纸，或者走 HTTP 接口传 `count: 1`（见 7.2）。
+- 扫描期间界面要保持"扫描中"，直到不再收到新消息。
+- 扫描还没结束时又发来的 `scan` **会被忽略，不回任何消息**。
+  老前端靠定时器循环发 `scan` 来实现连续扫描，那些请求现在都是多余的，
+  直接忽略掉——否则它们会排在后面，等纸扫完再一个个执行、每个都报"没纸"。
+  这样老前端不用改：纸走完之后它再发的那一次才真的开一轮扫描，扫不到纸回
+  `code:-1`（"送纸器里没有纸"），正好是停止循环的信号。
 - 失败时只回一条 `code:-1`，`msg` 说明原因（见 8.1 的对照表）。
 - `show_setting:true` 时**成功不回任何消息**（面板是模态的，用户关掉就结束），失败才回 `code:-1`。
   所以这个分支要靠客户端自己的超时/定时器复位界面状态。
@@ -204,6 +210,7 @@ server   = https://业务系统/api/file/upload         # 目标地址，完整 
 |---|---|
 | `GET /version` | 一行文本：服务版本 + 工作目录 + 进程目录。用来探测服务在不在 |
 | `GET /api/devices` | `{"devices":[...],"count":2}`，和 `scannerList` 等价 |
+| `GET /api/diagnose` | TWAIN 环境体检：装了哪些驱动、本服务是 32 位还是 64 位、某台设备为什么枚举不出来。`conclusion` 是可以直接给人看的结论。**"驱动装了却枚举不到"时先发这个** |
 | `GET /api/status` | 当前状态：`{"state":4,"stateText":"已连接扫描仪","ready":true,"connected":true,"device":"...","scanning":false}`，扫描期间也能立刻返回 |
 | `GET /api/scanner-options?device=<设备名>` | 设置项，和 `getScannerOptions` 等价 |
 | `POST /api/scanner-options` | 下发设置项，和 `setScannerOptions` 等价，body `{"device":"...","scannerOptions":{...}}` |
@@ -259,7 +266,7 @@ Content-Type: application/json
 {
   "device": "Uniscan Q400",       // 设备名；不传则用当前已连接的那台
   "extension": "jpg",             // 图片格式：jpg / tiff / png，默认 png。见 4.1
-  "count": 1,                     // 扫几页；不传按 1 算，显式传 0 表示走送纸器一直扫到没纸
+  "count": 0,                     // 扫几页；不传或 <=0 都表示走送纸器一直扫到没纸，只扫一页传 1
   "scannerOptions": {"dpi": 300}  // 可选，同 SCANNER_OPTIONS_API.md
 }
 ```
@@ -302,7 +309,7 @@ GET http://127.0.0.1:18080/api/scan/status?job=<id>     # 不带 job 参数时�
 ### 7.4 一次连续扫描怎么写
 
 ```
-POST /api/scan/start {"device":"...","extension":"jpeg","count":0}   // 0 = 扫到没纸
+POST /api/scan/start {"device":"...","extension":"jpeg"}   // count 不传 = 扫到没纸
 循环: GET /api/scan/status?job=<id>  每秒一次
        state == "scanning" → 把新出现的 pages 显示出来，继续
        state == "done"     → 全部页都在 pages 里，结束
@@ -452,6 +459,7 @@ async function scanOnce(device, sort) {
   const started = await fetch(HTTP_URL + '/api/scan/start', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    // count: 1 = 只扫一页。想一次扫到没纸就把 count 去掉
     body: JSON.stringify({ device, extension: 'jpeg', count: 1, scannerOptions: options }),
   }).then(r => r.json())
 

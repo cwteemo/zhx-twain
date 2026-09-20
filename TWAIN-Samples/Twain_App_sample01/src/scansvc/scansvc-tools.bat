@@ -8,6 +8,7 @@ rem
 rem    scansvc-tools.bat                    menu
 rem    scansvc-tools.bat status
 rem    scansvc-tools.bat devices
+rem    scansvc-tools.bat diagnose           TWAIN environment check
 rem    scansvc-tools.bat dump "Uniscan Q400"
 rem    scansvc-tools.bat options "Uniscan Q400"
 rem    scansvc-tools.bat config

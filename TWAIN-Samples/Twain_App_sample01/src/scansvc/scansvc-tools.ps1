@@ -8,6 +8,7 @@ scansvc 维护小工具：导出扫描仪能力、查看设置项、查看配置
   scansvc-tools.bat                     打开菜单
   scansvc-tools.bat status              服务状态
   scansvc-tools.bat devices             扫描仪列表
+  scansvc-tools.bat diagnose            TWAIN 环境体检（某台扫描仪枚举不出来时先跑这个）
   scansvc-tools.bat dump [设备名]        导出扫描仪能力（不带设备名会让你选）
   scansvc-tools.bat options [设备名]     查看设置项
   scansvc-tools.bat set [设备名] -Set "dpi=300,colorMode=gray"     修改设置项（不带 -Set 会让你挑）
@@ -30,8 +31,8 @@ param(
     [int] $Port = 0,
     # set / scan 用：设置项，形如 "dpi=300,colorMode=gray"
     [string] $Set = '',
-    # scan 用：扫几页（0 = 走送纸器扫到没纸）、图片格式
-    [int] $Count = 1,
+    # scan 用：扫几页（0 = 走送纸器扫到没纸，默认）、图片格式
+    [int] $Count = 0,
     [string] $Extension = 'jpeg',
     # upload 用：业务系统的接收地址、令牌
     [string] $Server = '',
@@ -197,12 +198,59 @@ function Show-Devices {
     $devices = Get-Devices
     Write-Host ''
     if ($devices.Count -eq 0) {
-        Write-Host '没有发现扫描仪。常见原因：驱动没装、TWAINDSM.dll 不在 exe 旁边、设备是 32 位数据源。' -ForegroundColor Yellow
+        Write-Host '没有发现扫描仪。常见原因：驱动没装、TWAINDSM.dll 不在 exe 旁边、驱动位数和本服务不符。' -ForegroundColor Yellow
+        Write-Host '跑一下 “scansvc-tools.bat diagnose” 会直接给出结论。' -ForegroundColor Yellow
         return
     }
     Write-Host ('发现 ' + $devices.Count + ' 台扫描仪（来自已安装的驱动，不代表设备接着）:')
     for ($i = 0; $i -lt $devices.Count; $i++) {
         Write-Host ('  [' + ($i + 1) + '] ' + $devices[$i])
+    }
+}
+
+# Show-Diagnosis 把 /api/diagnose 的结果排版出来。
+# 这是"驱动装了却枚举不到"的第一手段：绝大多数是驱动只装了 32 位、服务却是 64 位的，
+# 这种情况在服务里无解，只能换对应位数的 scansvc。
+function Show-Diagnosis {
+    $d = Invoke-Api -Path '/api/diagnose' -TimeoutSec 30
+    if ($null -eq $d) { return }
+
+    Write-Host ''
+    Write-Host ('本服务  : ' + $d.processBits + ' 位 (' + $d.processArch + ')')
+    # DSM 是用裸文件名 LoadLibrary 加载的，真正生效的是 exe 旁边那一份，
+    # 系统目录下的 twain_xx\TWAINDSM.dll 不在搜索路径里，所以两处都要报。
+    if ($d.dsmNextToExeFound) {
+        Write-Host ('DSM     : ' + $d.dsmNextToExe + '   (exe 旁边, 生效的就是这份)')
+    } else {
+        Write-Host ('DSM     : ' + $d.dsmNextToExe + '   ** exe 旁边没有 **') -ForegroundColor Yellow
+    }
+    if ($d.dsmFound) {
+        Write-Host ('          ' + $d.dsmPath + '   (系统目录, 安装包装的那份)')
+    } else {
+        Write-Host ('          ' + $d.dsmPath + '   (系统目录也没有)')
+    }
+
+    Write-Host ''
+    Write-Host '已安装的 TWAIN 驱动:'
+    foreach ($dir in @($d.dirs)) {
+        $tag = if ($dir.usable) { '本服务可用' } else { '本服务用不了' }
+        Write-Host ('  ' + $dir.path + '  [' + $dir.bits + ' 位, ' + $tag + ']')
+        $names = @($dir.sources | ForEach-Object { $_.name })
+        if ($names.Count -eq 0) {
+            Write-Host '      (空)'
+        } else {
+            foreach ($n in $names) { Write-Host ('      ' + $n) }
+        }
+    }
+
+    $found = @($d.enumerated)
+    Write-Host ''
+    Write-Host ('枚举到 ' + $found.Count + ' 台: ' + $(if ($found.Count) { $found -join '、' } else { '(无)' }))
+
+    Write-Host ''
+    Write-Host '结论:'
+    foreach ($c in @($d.conclusion)) {
+        Write-Host ('  · ' + $c) -ForegroundColor Cyan
     }
 }
 
@@ -621,6 +669,7 @@ function Show-Menu {
         Write-Host '==============================================='
         Write-Host '  1) 服务状态'
         Write-Host '  2) 扫描仪列表'
+        Write-Host '  2d) TWAIN 环境体检（扫描仪枚举不出来时用）'
         Write-Host '  3) 导出扫描仪能力（适配新扫描仪时发给开发）'
         Write-Host '  4) 查看某台扫描仪的设置项'
         Write-Host '  5) 修改设置项（会连接扫描仪）'
@@ -639,6 +688,7 @@ function Show-Menu {
         switch ($choice) {
             '1' { Show-Status }
             '2' { Show-Devices }
+            '2d' { Show-Diagnosis }
             '3' { Invoke-Dump -Name '' }
             '4' { Show-Options -Name '' }
             '5' { Set-Options -Name '' -Pairs '' }
@@ -662,6 +712,7 @@ switch ($Command.ToLower()) {
     'menu'            { Show-Menu }
     'status'          { Show-Status }
     'devices'         { Show-Devices }
+    'diagnose'        { Show-Diagnosis }
     'dump'            { Invoke-Dump -Name $Device }
     'options'         { Show-Options -Name $Device }
     'set'             { Set-Options -Name $Device -Pairs $Set }
@@ -674,7 +725,7 @@ switch ($Command.ToLower()) {
     'autostart'       { Set-Autostart }
     default {
         Write-Host ('不认识的命令: ' + $Command) -ForegroundColor Yellow
-        Write-Host '可用: status | devices | dump [设备名] | options [设备名] | set [设备名] | scan [设备名] | upload [文件名] | config | builtin-config | start | stop | autostart'
+        Write-Host '可用: status | devices | diagnose | dump [设备名] | options [设备名] | set [设备名] | scan [设备名] | upload [文件名] | config | builtin-config | start | stop | autostart'
         exit 1
     }
 }

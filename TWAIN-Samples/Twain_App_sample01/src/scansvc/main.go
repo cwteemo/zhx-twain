@@ -4,6 +4,7 @@
 //
 //	GET  /                 内置演示页面
 //	GET  /api/devices      枚举扫描仪（返回的是已装驱动，不代表设备在线）
+//	GET  /api/diagnose     TWAIN 环境体检：装了哪些驱动、为什么某台枚举不出来（见 diagnose.go）
 //	GET  /api/status       当前连接状态，扫描期间也能立刻返回
 //	POST /api/connect      连接扫描仪并保持（JSON: {"device":"..."}）
 //	POST /api/disconnect   断开当前扫描仪
@@ -182,6 +183,7 @@ func main() {
 	mux.HandleFunc("/", handleIndex)
 	mux.HandleFunc("/favicon.ico", handleFavicon)
 	mux.HandleFunc("/api/devices", handleDevices)
+	mux.HandleFunc("/api/diagnose", handleDiagnose)
 	mux.HandleFunc("/api/status", handleStatus)
 	mux.HandleFunc("/api/connect", handleConnect)
 	mux.HandleFunc("/api/disconnect", handleDisconnect)
@@ -458,8 +460,9 @@ func handleScan(root string) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "请求体不是合法 JSON: "+err.Error())
 			return
 		}
+		// count 不传或 <=0 都表示扫到送纸器空；只想扫一页要显式传 count: 1。
 		if req.Count < 0 {
-			req.Count = 1
+			req.Count = 0
 		}
 
 		// 先连上再设参数：TWAIN 的能力协商只在数据源打开(state 4)之后有效。

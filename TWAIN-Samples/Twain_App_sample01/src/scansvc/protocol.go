@@ -218,8 +218,9 @@ func (c *wsClient) handleScanCmd(req wsRequest) {
 	if !c.bindParams(req, &p) {
 		return
 	}
+	// count 不传或 <=0 都表示扫到送纸器空；只想扫一页要显式传 count: 1。
 	if p.Count < 0 {
-		p.Count = 1
+		p.Count = 0
 	}
 
 	// 先连上再设参数：TWAIN 的能力协商只在数据源打开(state 4)之后有效。

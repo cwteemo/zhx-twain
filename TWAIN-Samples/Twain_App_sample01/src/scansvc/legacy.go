@@ -139,6 +139,19 @@ func handleLegacyScan(c *wsClient, msg legacyMsg) {
 		return
 	}
 
+	// 扫描中又来一条 scan：丢掉，什么都不回。
+	//
+	// 旧前端靠定时器循环发 scan 来实现"连续扫描"，而现在一次请求就扫到没纸，
+	// 那些定时请求全是多余的。不丢的话它们会排在 TWAIN 线程队列里，
+	// 等这一叠扫完再一个个执行，每个都扫不到纸，前端就会连弹好几条"没纸"。
+	// 不回响应是安全的：前端本来就靠 updateScanStatus 的定时器复位 loading，
+	// 它要的图这会儿正由进行中的那次扫描逐页推给它。
+	// show_setting 是用户点"设置"，不能丢，所以只挡真正的扫描请求。
+	if !msg.boolean("show_setting") && isBusy() {
+		log.Printf("扫描进行中，忽略重复的 scan 请求（scanner=%s）", device)
+		return
+	}
+
 	// 顺序照搬旧服务端：先打开设备，再看是不是只要弹设置面板。
 	// 设置面板要在数据源已打开(state 4)的前提下才能开。
 	if err := TwainConnect(device); err != nil {
@@ -204,9 +217,11 @@ func handleLegacyScan(c *wsClient, msg legacyMsg) {
 		one.send(c, legacyCodeOK)
 	}
 
-	// 前端自己控制连续扫描（定时器循环发 scan），所以这里一次只扫一页，
-	// 和旧服务端的 deRunScan 行为对齐。
-	_, err = TwainScan("", dir, 1, progress)
+	// 一次请求就把送纸器里的纸全部扫完（count=0）。
+	// 每扫出一张仍然照原样推一条，所以前端不用改：它那个"定时器循环发 scan"的老逻辑
+	// 在这次扫描期间发来的请求会被上面的 isBusy 挡掉，等纸走完之后再发的那一次
+	// 才真的开一轮扫描、扫不到纸回"没纸"——和旧服务端一样，正好是前端停止循环的信号。
+	_, err = TwainScan("", dir, 0, progress)
 	// 图都已经挪到扫描根目录了，临时目录空了就删掉；没空（有页处理失败）就留着备查。
 	os.Remove(dir)
 	if err != nil {

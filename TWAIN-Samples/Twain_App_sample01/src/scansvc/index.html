@@ -69,8 +69,15 @@
   <div class="row">
     <button id="btn-devices" class="ghost">获取列表</button>
     <select id="sel-device" style="min-width:280px"></select>
+    <button id="btn-diagnose" class="ghost">环境体检</button>
   </div>
-  <p class="hint">对应 <code>GET /api/devices</code>。列表来自已安装的驱动，不代表设备接着或开机。</p>
+  <pre id="diag-result" hidden></pre>
+  <p class="hint">
+    对应 <code>GET /api/devices</code>。列表来自已安装的驱动，不代表设备接着或开机。<br>
+    少了某台设备就点「环境体检」（<code>GET /api/diagnose</code>）：它会列出
+    <code>twain_32</code> / <code>twain_64</code> 里实际装了哪些驱动，并直接给结论。
+    最常见的原因是驱动只有 32 位、而服务是 64 位的 —— 那种情况只能换 32 位版服务。
+  </p>
 </div>
 
 <!-- 3. 设置项 -->
@@ -97,8 +104,8 @@
     <label>格式</label>
     <select id="sel-ext"><option>jpg</option><option>tiff</option><option>png</option></select>
     <label>页数</label>
-    <input id="inp-count" type="number" value="1" min="0" style="width:90px">
-    <label class="hint">0 = 走送纸器扫到没纸</label>
+    <input id="inp-count" type="number" value="0" min="0" style="width:90px">
+    <label class="hint">0 = 走送纸器扫到没纸（默认）</label>
     <label><input id="chk-with-opts" type="checkbox" checked> 带上当前设置项</label>
     <button id="btn-scan">开始扫描</button>
     <span id="pill-scan" class="pill">空闲</span>
@@ -218,11 +225,38 @@ async function loadDevices() {
       o.value = o.textContent = d;
       sel.appendChild(o);
     });
-    if (!res.count) log('没有发现扫描仪：驱动没装 / 设备没接 / 32 位驱动', true);
+    if (!res.count) log('没有发现扫描仪：驱动没装，或只装了和本服务位数不符的驱动。点「环境体检」看结论', true);
   } catch (e) { fail(e); }
 }
 
 const device = () => $('sel-device').value;
+
+// 体检：结论给人看，完整数据留在 pre 里给排查用
+async function diagnose() {
+  const box = $('diag-result');
+  try {
+    const d = await api('/api/diagnose');
+    const lines = [];
+    lines.push('本服务：' + d.processBits + ' 位（' + d.processArch + '）');
+    // DSM 是用裸文件名加载的，真正生效的是 exe 旁边那份，两处都要显示
+    lines.push('DSM(exe 旁边)：' + d.dsmNextToExe + (d.dsmNextToExeFound ? '  在' : '  不在'));
+    lines.push('DSM(系统目录)：' + d.dsmPath + (d.dsmFound ? '  在' : '  不在'));
+    (d.dirs || []).forEach(dir => {
+      const names = (dir.sources || []).map(x => x.name);
+      lines.push(dir.path + '  [' + dir.bits + ' 位' + (dir.usable ? '，本服务可用' : '，本服务用不了') + ']  '
+        + (names.length ? names.join('、') : '（空）'));
+    });
+    lines.push('');
+    lines.push('枚举到 ' + (d.enumerated || []).length + ' 台：' + ((d.enumerated || []).join('、') || '（无）'));
+    lines.push('');
+    (d.conclusion || []).forEach(c => lines.push('· ' + c));
+    box.textContent = lines.join('\n');
+    box.hidden = false;
+  } catch (e) {
+    box.hidden = true;
+    fail(e);
+  }
+}
 
 // ---- 2. 设置项 ----
 
@@ -450,6 +484,7 @@ async function upload() {
 
 $('btn-status').onclick = refreshStatus;
 $('btn-devices').onclick = loadDevices;
+$('btn-diagnose').onclick = diagnose;
 $('btn-get-opts').onclick = loadOptions;
 $('btn-set-opts').onclick = applyOptions;
 $('btn-scan').onclick = startScan;

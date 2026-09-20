@@ -1043,6 +1043,98 @@ static int readBoolCapability(TW_UINT16 capId) {
     return value;
 }
 
+// ---- 每页回调 ----
+//
+// 上游的传输函数一次会话就把整叠纸传完才返回，所以 zhx_Scan 原来只能在它返回之后
+// 比对目录里多出来的文件，再逐个报给调用方——扫 50 页就是让前端空等一两分钟，
+// 然后一次性收到 50 张。改成装 TwainApp 的 gPageDoneHook：每页一落盘就报一次。
+//
+// 目录比对没有去掉，退化成兜底：多页 TIFF、以及钩子没覆盖到的路径还得靠它。
+// 两者会重叠，所以钩子报过的文件名记在 g_scanPagesReported 里，比对时跳过。
+static ScanCallback            g_scanPageCb = NULL;
+static std::vector<std::string> g_scanPagesReported;  // 本轮已经报过的文件名（不含目录）
+static int                     g_scanCancelRequested = 0;
+
+// 从完整路径里取文件名，和目录比对用的口径保持一致。
+static std::string basenameOf(const std::string& path) {
+    size_t pos = path.find_last_of("\\/");
+    return (pos == std::string::npos) ? path : path.substr(pos + 1);
+}
+
+static void onPageDone(const char* pszFileName) {
+    if (!pszFileName || !*pszFileName) {
+        return;
+    }
+    std::string full(pszFileName);
+    g_scanPagesReported.push_back(basenameOf(full));
+    Logger::Log("@INFO page %d done: %s", (int)g_scanPagesReported.size(), full.c_str());
+
+    if (!g_scanPageCb) {
+        return;
+    }
+    int r = g_scanPageCb(const_cast<char*>(full.c_str()));
+    if (r <= 0) {
+        // 调用方要求停。这一轮会话没法从中间掐断（TWAIN 不允许在传输过程里乱插指令），
+        // 只记一笔，由 zhx_Scan 决定不再开下一轮。
+        g_scanCancelRequested = 1;
+        Logger::Log("@INFO callback returned %d, will not start another pass", r);
+    }
+}
+
+// zhx_Scan 有好几条返回路径，钩子忘了摘的话下一次别人调传输函数会打到失效的回调上，
+// 所以用个小对象来管生命周期。
+struct PageHookGuard {
+    explicit PageHookGuard(ScanCallback cb) {
+        g_scanPageCb = cb;
+        g_scanCancelRequested = 0;
+        g_scanPagesReported.clear();
+        gPageDoneHook = onPageDone;
+    }
+    ~PageHookGuard() {
+        gPageDoneHook = NULL;
+        g_scanPageCb = NULL;
+        g_scanPagesReported.clear();
+    }
+};
+
+// 开扫之前把"一次会话吃完整叠纸"要用的能力谈好。必须在 state 4（数据源已打开、
+// 还没 MSG_ENABLEDS）的时候调用，进了 state 5 就只能 get 不能 set 了。
+//
+// CAP_XFERCOUNT：本次会话最多允许传几张。-1 = 不限，一直传到送纸器空。
+//   不设的话按驱动自己的默认值来，有的机型默认就是 1，一次 MSG_ENABLEDS 只给一张图，
+//   上层只能反复 enable/disable 去凑页数——每次都要重新启动走纸，慢，
+//   而且两次会话之间纸路会复位，连续送纸的机器上容易漏纸。
+// CAP_AUTOFEED：FALSE 时 ADF 扫完第一张就不再自动进纸。多数驱动默认 TRUE，
+//   被别的扫描程序改过设置的机器上见过 FALSE，这里统一打开。
+// CAP_FEEDERENABLED 故意不动：那是"走平板还是走送纸器"，归前端设置项管
+//   （scanopt 的 source 选项），在这里覆盖会把用户选的平板扫描改掉。
+static void prepareContinuousScan(int count) {
+    if (!gpTwainApplicationCMD || gpTwainApplicationCMD->m_DSMState != 4) {
+        Logger::Log("@WARN prepareContinuousScan skipped, state=%d (need 4)",
+                    gpTwainApplicationCMD ? gpTwainApplicationCMD->m_DSMState : -1);
+        return;
+    }
+
+    // count<=0（不限张数）→ -1；指定了页数就把上限交给驱动，让它自己扫够页数停下
+    const TW_INT16 target = (count > 0) ? (TW_INT16)count : (TW_INT16)-1;
+    TW_UINT16 rc = gpTwainApplicationCMD->set_CapabilityOneValue(CAP_XFERCOUNT, target, TWTY_INT16);
+    if (rc == TWRC_SUCCESS || rc == TWRC_CHECKSTATUS) {
+        Logger::Log("@INFO CAP_XFERCOUNT set to %d (rc=%u)", (int)target, rc);
+    } else {
+        // 设不上不算致命：外层还有一层按 CAP_FEEDERLOADED 续扫的兜底
+        Logger::Log("@WARN Failed to set CAP_XFERCOUNT=%d (rc=%u), falling back to the outer feeder loop",
+                    (int)target, rc);
+    }
+
+    int autoFeed = readBoolCapability(CAP_AUTOFEED);
+    if (autoFeed == 0) {
+        rc = gpTwainApplicationCMD->set_CapabilityOneValue(CAP_AUTOFEED, 1, TWTY_BOOL);
+        Logger::Log("@INFO CAP_AUTOFEED was off, turned it on (rc=%u)", rc);
+    } else {
+        Logger::Log("@INFO CAP_AUTOFEED = %d (1=on 0=off -1=unsupported), left as is", autoFeed);
+    }
+}
+
 /**
  * 取最近一次 zhx_Scan 的诊断信息（只在扫出 0 页时有意义）。
  * 四个输出参数的含义见上面 g_diag* 的注释，传 NULL 表示不要这一项。
@@ -1129,6 +1221,14 @@ int zhx_Scan(char *path, ScanCallback cb, int count) {
     // 也不至于把服务扫到天荒地老。正常 ADF 作业远到不了这个量。
     const int kMaxUnlimitedPages = 1000;
 
+    // 一次 MSG_ENABLEDS 就把整叠纸吃完，靠的是这里先把 XFERCOUNT / AUTOFEED 谈好。
+    // 下面的 while 只是兜底：驱动不认 XFERCOUNT、一次会话只给一张图时，
+    // 才靠 CAP_FEEDERLOADED 判断"还有纸"再开一轮。
+    prepareContinuousScan(count);
+
+    // 每页一落盘就通过 cb 报出去，而不是等整叠扫完再一次性报。
+    PageHookGuard hookGuard(cb);
+
     try {
         // 多页扫描循环
         while (unlimitedScan || scannedPages < count) {
@@ -1140,7 +1240,12 @@ int zhx_Scan(char *path, ScanCallback cb, int count) {
             Logger::Log("@INFO Starting scan for page %d %s", 
                         scannedPages + 1, 
                         unlimitedScan ? "(unlimited mode)" : "");
-            
+
+            // 这一轮由钩子报出去的页，记录清空重新数
+            g_scanPagesReported.clear();
+
+            // 扫描前后比对目录，作为钩子的兜底。只看 .bmp 是历史约定（服务侧固定
+            // 用 BMP + 文件传输）；钩子给的是完整路径，不受这个模式限制。
             // 获取扫描前的文件列表
             std::vector<std::string> filesBefore;
             WIN32_FIND_DATAA findData;
@@ -1184,49 +1289,54 @@ int zhx_Scan(char *path, ScanCallback cb, int count) {
                 }
             }
             
-            // 记录扫描到的新文件数量
-            if (newFiles.empty()) {
-                Logger::Log("@WARN No new files were found after scan");
-            } else {
-                Logger::Log("@INFO Found %d new file(s) after scan", newFiles.size());
-            }
-            
-            // 对每个新文件调用回调
-            bool cancelScan = false;
-            if (cb && !newFiles.empty()) {
-                for (const auto& newFile : newFiles) {
-                    std::string fullPath = basePath + newFile;
-                    Logger::Log("@INFO Processing scanned file: %s", fullPath.c_str());
-                    
+            // 这一轮扫了几页：钩子在传输过程中已经逐页报过，这里先按它的计数算。
+            int pagesThisPass = (int)g_scanPagesReported.size();
+            Logger::Log("@INFO Pass reported %d page(s) via the per-page hook, %d new file(s) left in the folder",
+                        pagesThisPass, (int)newFiles.size());
+
+            // 钩子没报过的新文件补报一次。走到这条路的是多页 TIFF（整叠纸一个文件，
+            // 只能等传输结束）和钩子没覆盖的路径。已经报过的必须跳过，否则重复一遍。
+            // 注意钩子报过的文件通常已经不在目录里了——回调把原图转格式之后会删掉它，
+            // 所以这里的 newFiles 常常是空的，不能再拿它判断"这一轮有没有扫到东西"。
+            for (const auto& newFile : newFiles) {
+                if (std::find(g_scanPagesReported.begin(), g_scanPagesReported.end(), newFile)
+                    != g_scanPagesReported.end()) {
+                    continue;
+                }
+
+                std::string fullPath = basePath + newFile;
+                Logger::Log("@INFO Reporting file the hook did not cover: %s", fullPath.c_str());
+                ++pagesThisPass;
+
+                if (cb) {
                     int callbackResult = cb(const_cast<char*>(fullPath.c_str()));
                     Logger::Log("@INFO Callback for file %s returned: %d", newFile.c_str(), callbackResult);
-                    
-                    // 如果回调返回值小于等于0，视为用户请求取消
                     if (callbackResult <= 0) {
                         Logger::Log("@INFO Callback requested to cancel scanning");
-                        cancelScan = true;
-                        //break;
+                        g_scanCancelRequested = 1;
                     }
                 }
             }
-            
+
             // 更新扫描页数
-            if (!newFiles.empty()) {
-                scannedPages += (int)newFiles.size();
+            if (pagesThisPass > 0) {
+                scannedPages += pagesThisPass;
                 Logger::Log("@INFO Total pages scanned so far: %d", scannedPages);
             } else {
-                // 这一轮没有产出任何文件，多半是送纸器空了或者传输失败。
+                // 这一轮一页都没出来，多半是送纸器空了或者传输失败。
                 // 原来这里照样 scannedPages++ 接着扫下一轮，无限模式下就是纯空转，
                 // 还会把没扫到的页数算进返回值里。
-                Logger::Log("@WARN No new files produced by this pass, stopping scan loop");
+                Logger::Log("@WARN No page produced by this pass, stopping scan loop");
                 break;
             }
-            
-            // 检查是否需要取消扫描
-            if (cancelScan) {
-                //break;
+
+            // 回调要求停就不再开下一轮。中途掐断当前会话是做不到的（TWAIN 不允许
+            // 在传输过程里乱插指令），所以取消只能停在轮次边界上。
+            if (g_scanCancelRequested) {
+                Logger::Log("@INFO Cancel requested by the callback, not starting another pass");
+                break;
             }
-            
+
             // 检查是否还有更多页可扫描（对于无限模式或剩余页数）
             if (unlimitedScan || scannedPages < count) {
                 bool hasMorePages = checkIfMorePagesAvailable();

@@ -1,7 +1,8 @@
 package main
 
 /*
-#cgo LDFLAGS: -L${SRCDIR} -lTWAIN_APP_CMD64 -lstdc++
+// 链接哪个 DLL 由 link_windows_amd64.go / link_windows_386.go 决定：
+// 32 位和 64 位的产物名不一样，这里不能写死。
 
 #include <stdlib.h>
 
@@ -120,6 +121,14 @@ func setBusy(busy bool) {
 	stateMu.Lock()
 	mirrorBusy = busy
 	stateMu.Unlock()
+}
+
+// isBusy 报告当前是不是正在扫描。TwainScan 一进门就置位，所以它涵盖了
+// "还排在 TWAIN 线程队列里等着"的那段时间，不只是真正在走纸的时候。
+func isBusy() bool {
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	return mirrorBusy
 }
 
 // ---- 状态 ----
