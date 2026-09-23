@@ -798,6 +798,18 @@ Data source enabled successfully (TWRC_SUCCESS)
 - 等待改成每秒醒一次，**2 分钟**还没等到就放弃这次扫描、关掉数据源回到 state 4，
   日志 `@ERROR No MSG_XFERREADY after 120 s`，客户端收到"扫描未产出任何图片"，服务继续可用。
 
+2026-09-23 加了 `@DIAG` 日志后再测 S2000w：启用成功、`CAP_FEEDERLOADED=1`、`CAP_DEVICEONLINE=1`，
+2 分钟里**回调 0 次、本线程消息 0 条**。当时 `MSG_OPENDSM` / `MSG_ENABLEDS` 的父窗口都是
+`GetDesktopWindow()`，它属于别的进程（日志里 `hParent=... owned by ... pid` 能看出来），
+TWAINDSM 或驱动往父窗口投的消息本线程根本收不到。现在：
+
+- 父窗口改成 TWAIN 线程上自建的隐藏窗口（`getTwainParentWindow`），日志 `Created hidden TWAIN parent window`；
+- 等待期间每秒拿一条合成的 `WM_NULL` 主动调一次 `MSG_PROCESSEVENT`，DSM 手里有待领的消息就能取到，
+  日志 `poll PROCESSEVENT -> TWRC_DSEVENT`；数据源消息不管从哪条路来都会记
+  `Data source message 0x0101 received via ...`；
+- 超时单独诊断（`zhx_GetScanDiagnosis` 的 `enableFailed=2`），送纸器状态取等待期间读到的值——
+  S2000w 停用后再读会报没纸，以前因此误报"送纸器里没有纸"。
+
 还是超时的话，说明驱动根本没发通知：看纸是否放到位、驱动有没有弹出等人点的窗口（界面扫描关着，
 弹窗会没人管）、面板上有没有要按的键。
 

@@ -758,17 +758,27 @@ func scanFailureOnTwainThread() error {
 	var enableFailed, cc, feederLoaded, deviceOnline C.int
 	C.zhx_GetScanDiagnosis(&enableFailed, &cc, &feederLoaded, &deviceOnline)
 
-	return errors.New(scanFailureText(int(enableFailed) != 0, int(cc), int(feederLoaded), int(deviceOnline)))
+	return errors.New(scanFailureText(int(enableFailed), int(cc), int(feederLoaded), int(deviceOnline)))
 }
 
 // scanFailureText 是 scanFailureOnTwainThread 的纯函数部分，参数含义见 DLL 的 zhx_GetScanDiagnosis：
+// enableFailed 为 0 启用成功、1 MSG_ENABLEDS 失败、2 启用成功但驱动一直没发 MSG_XFERREADY；
 // cc 为 -1 表示没有 condition code；feederLoaded / deviceOnline 为 1 / 0，-1 表示设备不支持该能力。
-func scanFailureText(enableFailed bool, cc, feederLoaded, deviceOnline int) string {
+func scanFailureText(enableFailed, cc, feederLoaded, deviceOnline int) string {
 	if deviceOnline == 0 || cc == twccCheckDeviceOnline {
 		return "扫描失败：扫描仪未连接或未开机（请检查电源、USB 线，或是否被其他扫描程序占用）"
 	}
 
-	if enableFailed {
+	if enableFailed == enableXferTimeout {
+		// 超时时 feederLoaded 是等待期间读的（停用后再读不可信），有纸就别再说"没放纸"。
+		if feederLoaded == 0 {
+			return "扫描失败：扫描仪启动后 2 分钟一直没有开始送纸，送纸器里也没检测到纸，请放纸后重试"
+		}
+		return "扫描失败：扫描仪启动后 2 分钟一直没有开始送纸（驱动没有发出就绪通知）。" +
+			"请看设备面板上有没有要按的键或错误提示，驱动有没有弹出等人点的窗口，详见 twain.log"
+	}
+
+	if enableFailed == enableFailedDS {
 		switch cc {
 		case twccNoMedia:
 			return "扫描失败：送纸器里没有纸，请放纸后重试"
@@ -800,6 +810,12 @@ func scanFailureText(enableFailed bool, cc, feederLoaded, deviceOnline int) stri
 	}
 	return "扫描未产出任何图片（检查是否放纸、盖板是否合上，详见 twain.log）"
 }
+
+// zhx_GetScanDiagnosis 的 enableFailed 取值
+const (
+	enableFailedDS    = 1 // MSG_ENABLEDS 失败
+	enableXferTimeout = 2 // 启用成功，但等 MSG_XFERREADY 超时
+)
 
 // TWAIN condition code，取值见 twain.h 的 TWCC_*。
 const (

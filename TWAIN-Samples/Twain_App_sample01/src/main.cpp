@@ -289,6 +289,96 @@ void negotiateCaps()
 // 投一条 WM_NULL 把它叫醒。
 static DWORD g_enableThreadId = 0;
 
+// 最近一次 EnableDS 是不是"启用成功、但等满 2 分钟驱动也没发 MSG_XFERREADY"。
+// 这时数据源已经停用，再读 CAP_FEEDERLOADED 不可信（2026-09-23 实测 S2000w 等待期间报 1，停用后报 0），
+// 所以把等待期间最后一次读到的值一起留下来给诊断用。
+static int g_xferWaitTimedOut = 0;
+static int g_xferWaitFeederLoaded = -1;
+
+// ---- TWAIN 父窗口 ----
+//
+// 原来 MSG_OPENDSM / MSG_ENABLEDS 传的都是 GetDesktopWindow()。桌面窗口属于别的进程
+// （实测 pid 824），往它 PostMessage 的东西本线程永远收不到：
+// TWAINDSM 在"数据源有消息待领"时会往父窗口投消息叫应用来 MSG_PROCESSEVENT，
+// 按 TWAIN 1.x 习惯直接往 hParent 投消息的驱动也一样。2026-09-23 实测 Kodak S2000w：
+// 启用成功、纸在、设备在线，等 2 分钟回调 0 次、本线程消息 0 条。
+// 改成在 TWAIN 线程上自建一个不显示的顶层窗口，消息就落进本线程的队列。
+static HWND  g_twainParentWnd = NULL;
+static DWORD g_twainParentThread = 0;
+
+static LRESULT CALLBACK twainParentWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+  return DefWindowProcA(hWnd, msg, wParam, lParam);
+}
+
+// 取当前线程的 TWAIN 父窗口，没有就建一个。窗口只能在创建它的线程上收消息，
+// 所以线程变了要重建（旧的不能跨线程 DestroyWindow，只能留着）。建不出来退回桌面窗口。
+static HWND getTwainParentWindow()
+{
+  const DWORD tid = GetCurrentThreadId();
+  if(g_twainParentWnd && g_twainParentThread == tid && IsWindow(g_twainParentWnd))
+  {
+    return g_twainParentWnd;
+  }
+  if(g_twainParentWnd)
+  {
+    Logger::Log("@WARN TWAIN parent window 0x%p belongs to thread %lu, creating a new one on thread %lu",
+                (void*)g_twainParentWnd, (unsigned long)g_twainParentThread, (unsigned long)tid);
+  }
+
+  static const char *kClassName = "ZhxTwainParentWindow";
+  static bool classRegistered = false;
+  HINSTANCE hInst = GetModuleHandleA(NULL);
+  if(!classRegistered)
+  {
+    WNDCLASSA wc = {0};
+    wc.lpfnWndProc = twainParentWndProc;
+    wc.hInstance = hInst;
+    wc.lpszClassName = kClassName;
+    if(!RegisterClassA(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
+    {
+      Logger::Log("@ERROR RegisterClass for TWAIN parent window failed (%lu), falling back to the desktop window",
+                  (unsigned long)GetLastError());
+      return GetDesktopWindow();
+    }
+    classRegistered = true;
+  }
+
+  // 顶层窗口、从不 ShowWindow。不用 HWND_MESSAGE：驱动弹对话框时要拿它当 owner，
+  // message-only 窗口当 owner 有的驱动会出问题。
+  HWND hWnd = CreateWindowExA(0, kClassName, "zhx twain", WS_OVERLAPPED,
+                              0, 0, 0, 0, NULL, NULL, hInst, NULL);
+  if(!hWnd)
+  {
+    Logger::Log("@ERROR CreateWindow for TWAIN parent window failed (%lu), falling back to the desktop window",
+                (unsigned long)GetLastError());
+    return GetDesktopWindow();
+  }
+  g_twainParentWnd = hWnd;
+  g_twainParentThread = tid;
+  Logger::Log("@INFO Created hidden TWAIN parent window 0x%p on thread %lu", (void*)hWnd, (unsigned long)tid);
+  return hWnd;
+}
+
+// 数据源事件（不管是回调、消息循环还是主动轮询拿到的）统一在这里落到 m_DSMessage
+static void acceptDSMessage(TW_UINT16 twMsg, const char *via)
+{
+  switch(twMsg)
+  {
+    case MSG_XFERREADY:
+    case MSG_CLOSEDSREQ:
+    case MSG_CLOSEDSOK:
+      Logger::Log("@INFO Data source message 0x%04x received via %s", (unsigned)twMsg, via);
+      gpTwainApplicationCMD->m_DSMessage = twMsg;
+      break;
+    case MSG_NULL:
+      break;
+    default:
+      Logger::Log("@WARN Unknown data source message 0x%04x via %s, ignored", (unsigned)twMsg, via);
+      break;
+  }
+}
+
 // 定义在后面（每页回调那一段之前），等 MSG_XFERREADY 时要用来打快照
 static int readBoolCapability(TW_UINT16 capId);
 
@@ -302,12 +392,13 @@ static void logWaitSnapshot(const char *tag, unsigned long msgCount, unsigned lo
   {
     pszCC = convertConditionCode_toString(cc);
   }
+  const int feederLoaded = readBoolCapability(CAP_FEEDERLOADED);
+  const int deviceOnline = readBoolCapability(CAP_DEVICEONLINE);
+  g_xferWaitFeederLoaded = feederLoaded;
   Logger::Log("@DIAG [%s] state=%d, m_DSMessage=0x%04x, messages pumped=%lu, DSEVENT=%lu, "
               "CAP_FEEDERLOADED=%d, CAP_DEVICEONLINE=%d, DS condition code=%d (%s)",
               tag, gpTwainApplicationCMD->m_DSMState, (unsigned)gpTwainApplicationCMD->m_DSMessage,
-              msgCount, dsEventCount,
-              readBoolCapability(CAP_FEEDERLOADED), readBoolCapability(CAP_DEVICEONLINE),
-              (int)cc, pszCC);
+              msgCount, dsEventCount, feederLoaded, deviceOnline, (int)cc, pszCC);
 }
 #endif
 
@@ -316,6 +407,8 @@ void EnableDS()
   gpTwainApplicationCMD->m_DSMessage = 0;
 #ifdef TWNDS_OS_WIN
   g_enableThreadId = GetCurrentThreadId();
+  g_xferWaitTimedOut = 0;
+  g_xferWaitFeederLoaded = -1;
 #endif
 
   #ifdef TWNDS_OS_LINUX
@@ -342,17 +435,16 @@ void EnableDS()
   // that was registered earlier.
 #ifdef TWNDS_OS_WIN
   {
-    // 父窗口是桌面窗口，不属于本线程：驱动如果往 hParent 投消息（TWAIN 1.x 的做法），
-    // 本线程的消息队列收不到。这里记下来，卡住时好对照。
-    HWND hDesktop = GetDesktopWindow();
+    // 父窗口必须属于本线程，驱动 / DSM 往它投的消息才进得了下面的等待循环，见 getTwainParentWindow。
+    HWND hParent = getTwainParentWindow();
     DWORD ownerPid = 0;
-    DWORD ownerTid = GetWindowThreadProcessId(hDesktop, &ownerPid);
-    Logger::Log("@DIAG EnableDS on thread %lu (pid %lu); hParent=desktop 0x%p owned by thread %lu pid %lu; callbacks=%s",
+    DWORD ownerTid = GetWindowThreadProcessId(hParent, &ownerPid);
+    Logger::Log("@DIAG EnableDS on thread %lu (pid %lu); hParent=0x%p owned by thread %lu pid %lu; callbacks=%s",
                 (unsigned long)GetCurrentThreadId(), (unsigned long)GetCurrentProcessId(),
-                (void*)hDesktop, (unsigned long)ownerTid, (unsigned long)ownerPid,
+                (void*)hParent, (unsigned long)ownerTid, (unsigned long)ownerPid,
                 gUSE_CALLBACKS ? "yes" : "no");
   }
-  if(!gpTwainApplicationCMD->enableDS(GetDesktopWindow(), FALSE))
+  if(!gpTwainApplicationCMD->enableDS(getTwainParentWindow(), FALSE))
 #else
   if(!gpTwainApplicationCMD->enableDS(0, TRUE,callbackFunc))
 #endif
@@ -384,6 +476,32 @@ void EnableDS()
     if(!PeekMessage((LPMSG)&Msg, NULL, 0, 0, PM_REMOVE))
     {
       MsgWaitForMultipleObjects(0, NULL, FALSE, 1000, QS_ALLINPUT);
+
+      // 队列里没东西也主动问一次 DSM：用一条合成的 WM_NULL 走 MSG_PROCESSEVENT。
+      // TWAINDSM 把待领的数据源消息挂在自己那儿，只有应用调 MSG_PROCESSEVENT 时才交出来；
+      // 它投来叫醒我们的那条窗口消息万一丢了（父窗口不在本线程之类），这里兜底。
+      {
+        MSG pollMsg = {0};
+        pollMsg.hwnd = g_twainParentWnd;
+        pollMsg.message = WM_NULL;
+        TW_EVENT pollEvent = {0};
+        pollEvent.pEvent = (TW_MEMREF)&pollMsg;
+        pollEvent.TWMessage = MSG_NULL;
+        TW_UINT16 pollRC = _DSM_Entry(gpTwainApplicationCMD->getAppIdentity(),
+                                      gpTwainApplicationCMD->getDataSource(),
+                                      DG_CONTROL, DAT_EVENT, MSG_PROCESSEVENT,
+                                      (TW_MEMREF)&pollEvent);
+        if(pollRC == TWRC_DSEVENT)
+        {
+          ++dsEventCount;
+          Logger::Log("@DIAG poll PROCESSEVENT -> TWRC_DSEVENT, TWMessage=0x%04x", (unsigned)pollEvent.TWMessage);
+          acceptDSMessage(pollEvent.TWMessage, "polling MSG_PROCESSEVENT");
+          if(gpTwainApplicationCMD->m_DSMessage)
+          {
+            break;
+          }
+        }
+      }
       // 不界面扫描时驱动通常 1~2 秒内就发 MSG_XFERREADY。等满 2 分钟还没来，
       // 就当这次失败，走下面的 disableDS 回到 state 4。不设上限的话 TWAIN 线程
       // 永远占着，之后所有设备 / 设置 / 扫描请求都在队列里排到服务重启。
@@ -391,6 +509,7 @@ void EnableDS()
       {
         logWaitSnapshot("timeout", msgCount, dsEventCount);
         Logger::Log("@ERROR No MSG_XFERREADY after 120 s, giving up this scan and disabling the source");
+        g_xferWaitTimedOut = 1;
         break;
       }
       if(GetTickCount() - lastWaitLog >= 30000)
@@ -437,14 +556,7 @@ void EnableDS()
     {
       Logger::Log("@WARN Data source delivered 0x%04x through the message loop although callbacks are registered, accepting it",
                   (unsigned)twEvent.TWMessage);
-      switch (twEvent.TWMessage)
-      {
-        case MSG_XFERREADY:
-        case MSG_CLOSEDSREQ:
-        case MSG_CLOSEDSOK:
-          gpTwainApplicationCMD->m_DSMessage = twEvent.TWMessage;
-          break;
-      }
+      acceptDSMessage(twEvent.TWMessage, "message loop");
     }
 
     if(!gUSE_CALLBACKS && twRC==TWRC_DSEVENT)
@@ -782,10 +894,10 @@ void zhx_Init() {
             gpTwainApplicationCMD = NULL;
         }
 
-        // 获取桌面窗口作为父窗口
+        // 父窗口用 TWAIN 线程上自建的隐藏窗口，不再用桌面窗口，原因见 getTwainParentWindow
         HWND parentWindow = NULL;
         #ifdef TWH_CMP_MSC
-        parentWindow = GetDesktopWindow();
+        parentWindow = getTwainParentWindow();
         #endif
         
         // 创建 TWAIN 应用实例
@@ -1148,7 +1260,7 @@ std::vector<std::string> GetDirectoryFiles(const std::string& path) {
 
 // 最近一次 zhx_Scan 没扫出图时的诊断信息，由 zhx_GetScanDiagnosis 取走。
 // 调用方拿"0 页"根本分不清是没放纸、设备掉线还是数据源状态不对，只能去翻日志。
-static int g_diagEnableFailed = 0;   // 1 = MSG_ENABLEDS 失败，扫描根本没开始
+static int g_diagEnableFailed = 0;   // 1 = MSG_ENABLEDS 失败，扫描根本没开始；2 = 启用成功但等 MSG_XFERREADY 超时
 static int g_diagConditionCode = -1; // MSG_ENABLEDS 失败时的 TWCC；-1 = 无
 static int g_diagFeederLoaded = -1;  // CAP_FEEDERLOADED：1 有纸 / 0 没纸 / -1 不支持或没读
 static int g_diagDeviceOnline = -1;  // CAP_DEVICEONLINE：1 在线 / 0 离线 / -1 不支持或没读
@@ -1440,6 +1552,8 @@ int zhx_Scan(char *path, ScanCallback cb, int count) {
             if (gpTwainApplicationCMD->m_lastEnableCC != -1) {
                 g_diagEnableFailed = 1;
                 g_diagConditionCode = gpTwainApplicationCMD->m_lastEnableCC >= 0 ? gpTwainApplicationCMD->m_lastEnableCC : -1;
+            } else if (g_xferWaitTimedOut) {
+                g_diagEnableFailed = 2;  // 启用成功，但驱动一直没发 MSG_XFERREADY
             }
             
             // 获取扫描后的文件列表
@@ -1529,7 +1643,10 @@ int zhx_Scan(char *path, ScanCallback cb, int count) {
         
         if (scannedPages == 0) {
             // 一页都没扫出来：趁数据源还开着（state 4），把能分辨原因的状态读出来。
-            g_diagFeederLoaded = readBoolCapability(CAP_FEEDERLOADED);
+            // 等 MSG_XFERREADY 超时的，送纸器状态以等待期间读到的为准：
+            // S2000w 停用后报没纸，照读会把"驱动没动"误报成"没放纸"。
+            g_diagFeederLoaded = (g_diagEnableFailed == 2) ? g_xferWaitFeederLoaded
+                                                           : readBoolCapability(CAP_FEEDERLOADED);
             g_diagDeviceOnline = readBoolCapability(CAP_DEVICEONLINE);
             Logger::Log("@ERROR Scan produced no pages. diagnosis: enableFailed=%d, conditionCode=%d, "
                         "CAP_FEEDERLOADED=%d, CAP_DEVICEONLINE=%d (1=true 0=false -1=unsupported)",

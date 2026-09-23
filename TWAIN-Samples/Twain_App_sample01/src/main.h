@@ -121,6 +121,7 @@ extern "C" __declspec(dllexport) const char* zhx_GetCurrentDevice();
 // 打开驱动自带的设置面板，阻塞到用户关闭
 extern "C" __declspec(dllexport) int   zhx_ShowSettingUI();
 // 最近一次 zhx_Scan 扫出 0 页时的原因诊断（MSG_ENABLEDS 的 condition code、送纸器有无纸、设备是否在线）
+// enableFailed：0 = 启用成功；1 = MSG_ENABLEDS 失败；2 = 启用成功但 2 分钟内驱动没发 MSG_XFERREADY
 extern "C" __declspec(dllexport) int   zhx_GetScanDiagnosis(int *enableFailed, int *conditionCode, int *feederLoaded, int *deviceOnline);
 // 最近一次 zhx_OpenDevice 里 MSG_OPENDS 的返回码（TWRC_*），用来区分"设备忙"和"真打不开"
 extern "C" __declspec(dllexport) int   zhx_GetLastOpenResult(int *conditionCode);
