@@ -80,11 +80,19 @@ $script:BaseUrl = 'http://127.0.0.1:{0}' -f (Resolve-Port)
 function Get-ErrorDetail {
     param($ErrorRecord)
     try {
-        $response = $ErrorRecord.Exception.Response
-        if (-not $response) { return '' }
-        $reader = New-Object System.IO.StreamReader($response.GetResponseStream())
-        $body = $reader.ReadToEnd()
-        $reader.Close()
+        # Windows PowerShell 5.1 的 Invoke-RestMethod 出错时已经把响应流读完了，
+        # 再去 GetResponseStream() 只能读到空串，响应体放在 ErrorDetails.Message 里。
+        # 以前只读流，结果服务端给的中文原因全丢了，只剩一句"(500) 内部服务器错误"。
+        $body = ''
+        if ($ErrorRecord.ErrorDetails -and $ErrorRecord.ErrorDetails.Message) {
+            $body = $ErrorRecord.ErrorDetails.Message
+        } else {
+            $response = $ErrorRecord.Exception.Response
+            if (-not $response) { return '' }
+            $reader = New-Object System.IO.StreamReader($response.GetResponseStream())
+            $body = $reader.ReadToEnd()
+            $reader.Close()
+        }
         if (-not $body) { return '' }
         try {
             $json = $body | ConvertFrom-Json
@@ -257,9 +265,38 @@ function Show-Diagnosis {
 # Select-Device 让用户从列表里挑一台；已经给了设备名就直接用。
 function Select-Device {
     param([string] $Name)
-    if ($Name) { return $Name }
 
     $devices = Get-Devices
+
+    if ($Name) {
+        # 服务端按设备全名精确匹配，现场常只敲半截（"KODAK Scanner" 而不是
+        # "KODAK Scanner: i2000"），结果只拿到一个看不出原因的 500。这里先对一遍：
+        # 全名 → 直接用；纯数字 → 按 devices 的编号取；否则按包含关系找唯一的一台。
+        if ($devices.Count -eq 0) { return $Name }   # 列表拿不到就原样交给服务端判断
+        foreach ($d in $devices) {
+            if ($d -eq $Name) { return $d }
+        }
+        $index = $Name -as [int]
+        if ($null -ne $index -and $index -ge 1 -and $index -le $devices.Count) {
+            Write-Host ('按编号 ' + $index + ' 选中: ' + $devices[$index - 1])
+            return $devices[$index - 1]
+        }
+        $hits = @($devices | Where-Object { $_.ToLower().Contains($Name.ToLower()) })
+        if ($hits.Count -eq 1) {
+            Write-Host ('"' + $Name + '" 不是完整设备名，按唯一匹配选中: ' + $hits[0]) -ForegroundColor Yellow
+            return $hits[0]
+        }
+        if ($hits.Count -gt 1) {
+            Write-Host ('"' + $Name + '" 匹配到多台，请写完整名称或用编号:') -ForegroundColor Yellow
+        } else {
+            Write-Host ('没有叫 "' + $Name + '" 的扫描仪，请写完整名称或用编号:') -ForegroundColor Yellow
+        }
+        for ($i = 0; $i -lt $devices.Count; $i++) {
+            Write-Host ('  [' + ($i + 1) + '] ' + $devices[$i])
+        }
+        return $null
+    }
+
     if ($devices.Count -eq 0) {
         Write-Host '没有发现扫描仪，无法继续。' -ForegroundColor Yellow
         return $null
