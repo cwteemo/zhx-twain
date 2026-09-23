@@ -7,9 +7,10 @@ cd D:\code\twain\zhx-twain
 build.bat
 ```
 
-跑完看到 `done -> ...\dist\x64` 就成功了，把那个目录整个拷到操作员机器上即可。
+跑完看到 `done -> ...\dist\x86` 就成功了，把那个目录整个拷到操作员机器上即可。
 
-要 32 位版就加 `-x86`（产物进 `dist\x86\`）：**同一份代码，只是产出分两套**。
+**默认编 32 位**（几乎所有厂商都提供 32 位驱动，兼容面最广）。要 64 位版就加 `-x64`
+（产物进 `dist\x64\`）：**同一份代码，只是产出分两套**。
 什么时候需要它见 [第 8 节](#8-32-位还是-64-位)。
 
 ---
@@ -33,8 +34,8 @@ build.bat
 ## 2. 命令
 
 ```powershell
-build.bat                  DLL(Release|x64) + scansvc.exe（无控制台窗口）-> dist\x64\
-build.bat -x86             改编 32 位 -> dist\x86\（-x64 是默认值，写出来也行）
+build.bat                  DLL(Release|x86) + scansvc.exe（无控制台窗口）-> dist\x86\
+build.bat -x64             改编 64 位 -> dist\x64\（-x86 是默认值，写出来也行）
 build.bat dll              只编 DLL
 build.bat go               只编 scansvc.exe（要求 DLL 已经编过）
 build.bat -debug           DLL 用 Debug 配置
@@ -47,7 +48,7 @@ build.bat -out D:\deploy   换个输出目录（给了这个就不再追加架�
 
 ```powershell
 build.bat
-build.bat -x86
+build.bat -x64
 ```
 
 参数可以组合，例如调试用一版：
@@ -146,7 +147,7 @@ go run ./tools/mkicon favicon.ico rsrc_windows_386.syso
 | `[ERROR] MSBuild not found` | VS 没装 C++ 工作负载，或装的是不带 vswhere 的老版本。也可以从"VS 开发人员命令提示"里跑这个脚本 |
 | `C2220 以下警告被视为错误` | 旧版仓库里 Release 开着 `/WX`，已经关掉，拉最新代码即可 |
 | `[ERROR] the C compiler is "...", but a x64 build needs x86_64` | MinGW 位数和目标不符。装对应位数的 MinGW-w64，把它的 `bin` 放在 PATH 前面；编 32 位时装 `i686-w64-mingw32` 那套 |
-| `[ERROR] ...TWAIN_APP_CMD64.lib is missing` | 先 `build.bat dll`（32 位是 `build.bat dll -x86`） |
+| `[ERROR] ...TWAIN_APP_CMD32.lib is missing` | 先 `build.bat dll`（64 位是 `build.bat dll -x64`） |
 | `MISSING TWAINDSM.dll` | 装 `releases\` 下对应位数的 msi，或从别的机器上拷一份放进输出目录 |
 | 编出来的 exe 双击没反应 | 正常：默认没有窗口，图标在右下角托盘（可能被折叠进"显示隐藏的图标"）。日志看 `scansvc.log` |
 | 服务起来了但扫描仪列表是空的 | `TWAINDSM.dll` 不在 exe 旁边，或驱动没装。先看 `http://127.0.0.1:18080/api/diagnose` 的 `conclusion`，它会直接说是哪种情况 |

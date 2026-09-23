@@ -3,21 +3,23 @@ rem ============================================================
 rem  scansvc build script -- full docs in BUILD.md (same folder)
 rem
 rem  USAGE
-rem    build.bat                 build DLL + service (64-bit), package into dist\x64\
-rem    build.bat -x86            32-bit build instead, into dist\x86\
+rem    build.bat                 build DLL + service (32-bit), package into dist\x86\
+rem    build.bat -x64            64-bit build instead, into dist\x64\
 rem    build.bat dll             only the TWAIN DLL (Visual Studio / MSBuild)
 rem    build.bat go              only scansvc.exe (Go); needs the DLL built before
 rem    build.bat -debug          Debug build of the DLL (default: Release)
 rem    build.bat -console        keep the console window (default: no window, tray only)
 rem    build.bat -notest         skip Go unit tests
 rem    build.bat -out D:\deploy  package into another folder (no arch subfolder added)
-rem    flags can be combined:    build.bat -x86 -debug -console -out D:\test
+rem    flags can be combined:    build.bat -x64 -debug -console -out D:\test
 rem
 rem  32-BIT OR 64-BIT?
 rem    A TWAIN driver (.ds) is a DLL loaded into this very process, so service,
 rem    DLL, DSM and driver must all have the same bitness. Scanners whose vendor
 rem    only ships a 32-bit driver (several older Kodak models) cannot be
-rem    enumerated by the 64-bit service at all -- for those, ship the 32-bit one.
+rem    enumerated by the 64-bit service at all. That is why 32-bit is the default:
+rem    nearly every vendor ships a 32-bit driver. Use -x64 only for a scanner that
+rem    has nothing but a 64-bit driver.
 rem    Same sources for both; GET /api/diagnose on a running service tells you
 rem    which drivers are installed for which bitness.
 rem
@@ -37,7 +39,7 @@ rem    2. go test ./imgfmt ./scanopt ./twaindiag  (pure-Go packages; main needs 
 rem    3. go build scansvc.exe
 rem    4. copy everything the service needs at runtime into the output folder
 rem
-rem  OUTPUT (dist\x64\ or dist\x86\)
+rem  OUTPUT (dist\x86\ or dist\x64\)
 rem    scansvc.exe  TWAIN_APP_CMD<32|64>.dll  FreeImage.dll  TWAINDSM.dll
 rem    scansvc-tools.bat  scansvc-tools.ps1
 rem    Copy the whole folder to the operator PC. When upgrading, keep the files
@@ -58,7 +60,7 @@ set "SVC=%ROOT%TWAIN-Samples\Twain_App_sample01\src\scansvc"
 set "CONFIG=Release"
 set "LDFLAGS=-H=windowsgui"
 set "OUT="
-set "ARCH=x64"
+set "ARCH=x86"
 set "DO_DLL=1"
 set "DO_GO=1"
 set "DO_TEST=1"

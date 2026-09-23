@@ -23,8 +23,8 @@ HTTP 和 WebSocket 两条路都通。另外带一组文件 / 目录管理接口�
 **完整用法、依赖、部署和常见问题见 [BUILD.md](../../../../BUILD.md)**，下面只列常用命令。
 
 ```powershell
-build.bat                  rem DLL(Release|x64) + scansvc.exe(无控制台窗口) -> dist\x64\
-build.bat -x86             rem 改编 32 位，产物进 dist\x86\（同一份代码）
+build.bat                  rem DLL(Release|x86) + scansvc.exe(无控制台窗口) -> dist\x86\（默认 32 位）
+build.bat -x64             rem 改编 64 位，产物进 dist\x64\（同一份代码）
 build.bat dll              rem 只编 DLL
 build.bat go               rem 只编 scansvc.exe
 build.bat -debug           rem DLL 用 Debug 配置
@@ -725,7 +725,7 @@ POST /dir/upload            dir=<目录>&filepath=<相对路径>&file=<文件>
 
 1. **驱动只有另一个位数**——TWAIN 驱动（`.ds`）要加载进本服务进程，位数必须一致：
    32 位服务只认 `C:\Windows\twain_32`，64 位只认 `twain_64`。厂商只发 32 位驱动的机型
-   （几款老柯达就是这样）在 64 位服务里**一定**枚举不出来，换 32 位版服务（`build.bat -x86`）。
+   （几款老柯达就是这样）在 64 位服务里**一定**枚举不出来，换 32 位版服务（`build.bat`，默认就是 32 位）。
    体检会点名是哪几个驱动文件。
 2. **`TWAINDSM.dll` 不在 exe 旁边**——少了它一台都枚举不到，体检会报缺失。
 3. **驱动装了但枚举中途报错**——`twain.log` 里找 `MSG_GETNEXT failed`。
