@@ -65,3 +65,6 @@ msbuild.wrn
 
 # 编译打包产物（build.bat 的输出）
 /dist/
+
+# 在 VS 里调试运行时扫出来的图（工作目录就是 visual_studio\）
+/TWAIN-Samples/Twain_App_sample01/visual_studio/FROM_SCANNER_*
