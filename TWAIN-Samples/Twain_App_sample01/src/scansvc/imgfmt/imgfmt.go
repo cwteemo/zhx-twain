@@ -9,7 +9,9 @@ package imgfmt
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"image/jpeg"
 	"image/png"
 	"os"
@@ -109,7 +111,7 @@ func Encode(im Image, ext string) ([]byte, error) {
 		if err := png.Encode(buf, im.Image); err != nil {
 			return nil, err
 		}
-		return buf.b, nil
+		return withPNGDensity(buf.b, im.DPIX, im.DPIY), nil
 	}
 	return nil, fmt.Errorf("不支持的格式 %q（支持 jpg / tiff / png）", ext)
 }
@@ -151,4 +153,50 @@ func withJPEGDensity(b []byte, dpiX, dpiY int) []byte {
 	out = append(out, b[0], b[1]) // SOI
 	out = append(out, seg...)
 	return append(out, b[2:]...)
+}
+
+// withPNGDensity 把 DPI 写进 PNG 的 pHYs 块。
+//
+// 和 JPEG 一样，Go 的 png 编码器不写 pHYs，看图软件只能当 96dpi / 72dpi 显示，
+// 而 png 恰好是服务不传 extension 时的默认格式。pHYs 只认"每米像素数"，
+// 必须出现在 IDAT 之前，这里紧跟在 IHDR 后面插一块：
+//
+//	长度(4)=9 | "pHYs" | X 每米像素(4) | Y 每米像素(4) | 单位(1)=1 米 | CRC(4)
+//
+// 已经有 pHYs 的（换个 Go 版本可能就有了）不重复插。
+func withPNGDensity(b []byte, dpiX, dpiY int) []byte {
+	if dpiX <= 0 || dpiY <= 0 {
+		return b
+	}
+	// 8 字节签名 + IHDR 块（4 长度 + 4 类型 + 13 数据 + 4 CRC）
+	const ihdrEnd = 8 + 4 + 4 + 13 + 4
+	if len(b) < ihdrEnd || string(b[1:4]) != "PNG" || string(b[12:16]) != "IHDR" {
+		return b // 不是 Go 写出来的那种标准 PNG，不碰
+	}
+	// 按块走到 IDAT 为止找 pHYs；不能在字节里直接搜，像素数据里碰巧有这 4 个字节就误判了
+	for off := 8; off+8 <= len(b); {
+		n := int(binary.BigEndian.Uint32(b[off : off+4]))
+		typ := string(b[off+4 : off+8])
+		if typ == "pHYs" {
+			return b
+		}
+		if typ == "IDAT" || n < 0 || off+12+n > len(b) {
+			break
+		}
+		off += 12 + n
+	}
+
+	ppm := func(dpi int) uint32 { return uint32(float64(dpi)/0.0254 + 0.5) }
+	chunk := make([]byte, 4+4+9+4)
+	binary.BigEndian.PutUint32(chunk[0:4], 9)
+	copy(chunk[4:8], "pHYs")
+	binary.BigEndian.PutUint32(chunk[8:12], ppm(dpiX))
+	binary.BigEndian.PutUint32(chunk[12:16], ppm(dpiY))
+	chunk[16] = 1 // 单位：米
+	binary.BigEndian.PutUint32(chunk[17:21], crc32.ChecksumIEEE(chunk[4:17]))
+
+	out := make([]byte, 0, len(b)+len(chunk))
+	out = append(out, b[:ihdrEnd]...)
+	out = append(out, chunk...)
+	return append(out, b[ihdrEnd:]...)
 }

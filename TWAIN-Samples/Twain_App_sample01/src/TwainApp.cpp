@@ -55,6 +55,7 @@
 #include "TwainString.h"
 #include "Logger.h"
 #include <time.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "utilities.h"
@@ -184,8 +185,8 @@ void TwainApp::fillIdentity(TW_IDENTITY& _identity)
 
 TW_UINT16 TwainApp::DSM_Entry(TW_UINT32 _DG,TW_UINT16 _DAT, TW_UINT16 _MSG, TW_MEMREF _pData)
 {
-  Logger::Log("DSM_Entry Parameters: Origin=0x%p, Dest=0x%p, DG=0x%x, DAT=0x%x, MSG=0x%x, Data=0x%p",
-              &m_MyInfo, m_pDataSource, _DG, _DAT, _MSG, _pData);
+  // Parameters are logged inside _DSM_Entry (DSMInterface.cpp); logging them here as
+  // well made every call show up twice in twain.log and looked like a double call.
   return _DSM_Entry(&m_MyInfo, m_pDataSource, _DG, _DAT, _MSG, _pData);
 }
 
@@ -1109,6 +1110,33 @@ void TwainApp::initiateTransfer_Native()
   // 设置起始文件序号为最大序号+1
   m_nXferNum = nMaxFileNum;
 
+  // DAT_IMAGEINFO 的分辨率是按 ICAP_UNITS 计的，换成"每英寸"要乘的系数。
+  // 取不到单位按 TWAIN 默认的英寸算；像素等没法换算的单位记 0，不去改 DIB 头。
+  float fResToDPI = 1.0f;
+  {
+    TW_CAPABILITY capUnits;
+    memset(&capUnits, 0, sizeof(capUnits));
+    capUnits.Cap = ICAP_UNITS;
+    TW_UINT32 units = TWUN_INCHES;
+    if(TWCC_SUCCESS == get_CAP(capUnits, MSG_GETCURRENT))
+    {
+      getCurrent(&capUnits, units);
+    }
+    if(capUnits.hContainer)
+    {
+      _DSM_Free(capUnits.hContainer);
+    }
+    switch(units)
+    {
+      case TWUN_INCHES:      fResToDPI = 1.0f;    break;
+      case TWUN_CENTIMETERS: fResToDPI = 2.54f;   break;
+      case TWUN_PICAS:       fResToDPI = 6.0f;    break;
+      case TWUN_POINTS:      fResToDPI = 72.0f;   break;
+      case TWUN_TWIPS:       fResToDPI = 1440.0f; break;
+      default:               fResToDPI = 0.0f;    break;
+    }
+  }
+
   while(bPendingXfers)
   {
     m_nXferNum++;
@@ -1138,6 +1166,36 @@ void TwainApp::initiateTransfer_Native()
       {
         printError(m_pDataSource, "App: Unable to lock memory, transfer failed");
         break;
+      }
+
+      // 图片里记录的 DPI 以这一页的 DAT_IMAGEINFO 为准。原来直接用驱动在 DIB 头里填的
+      // biX/YPelsPerMeter，有的驱动填 0、填 96/72dpi 的默认值，或者按页不稳定，
+      // 转出来的 jpeg/tiff/png 里 DPI 就偶发不对。
+      {
+        const float xDPI = FIX32ToFloat(m_ImageInfo.XResolution) * fResToDPI;
+        const float yDPI = FIX32ToFloat(m_ImageInfo.YResolution) * fResToDPI;
+        if(xDPI > 0.0f && yDPI > 0.0f)
+        {
+          const LONG xPPM = (LONG)floor(xDPI / 0.0254f + 0.5f);
+          const LONG yPPM = (LONG)floor(yDPI / 0.0254f + 0.5f);
+          if(pDIB->biXPelsPerMeter != xPPM || pDIB->biYPelsPerMeter != yPPM)
+          {
+            Logger::Log("@INFO Page %d: DIB header says %ld x %ld px/m (~%.0f x %.0f dpi), "
+                        "IMAGEINFO says %.2f x %.2f dpi; writing the IMAGEINFO value",
+                        m_nXferNum, (long)pDIB->biXPelsPerMeter, (long)pDIB->biYPelsPerMeter,
+                        pDIB->biXPelsPerMeter * 0.0254, pDIB->biYPelsPerMeter * 0.0254,
+                        xDPI, yDPI);
+          }
+          pDIB->biXPelsPerMeter = xPPM;
+          pDIB->biYPelsPerMeter = yPPM;
+        }
+        else
+        {
+          Logger::Log("@WARN Page %d: IMAGEINFO resolution unusable (%.2f x %.2f dpi), "
+                      "keeping the DIB header value %ld x %ld px/m",
+                      m_nXferNum, xDPI, yDPI,
+                      (long)pDIB->biXPelsPerMeter, (long)pDIB->biYPelsPerMeter);
+        }
       }
 
       // 设置文件名 - 使用序列号作为前缀

@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"image/png"
 	"os"
 	"testing"
 )
@@ -266,6 +267,37 @@ func TestEncodeJPEGWritesDPI(t *testing.T) {
 	// 改完还得是一张能解的 JPEG
 	if _, err := jpeg.Decode(bytes.NewReader(b)); err != nil {
 		t.Errorf("改 DPI 之后 JPEG 解不开了: %v", err)
+	}
+}
+
+// png 是不传 extension 时的默认格式，Go 的编码器不写 pHYs，要自己补。
+func TestEncodePNGWritesDPI(t *testing.T) {
+	img := image.NewGray(image.Rect(0, 0, 16, 16))
+	b, err := Encode(Image{Image: img, DPIX: 300, DPIY: 200}, "png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 签名 8 + IHDR 25 之后紧跟 pHYs
+	const at = 8 + 25
+	if string(b[at+4:at+8]) != "pHYs" {
+		t.Fatalf("IHDR 后面应当是 pHYs，得到 %q", b[at+4:at+8])
+	}
+	if x := binary.BigEndian.Uint32(b[at+8:]); x != 11811 {
+		t.Errorf("X 应当是 11811 像素/米（300dpi），得到 %d", x)
+	}
+	if y := binary.BigEndian.Uint32(b[at+12:]); y != 7874 {
+		t.Errorf("Y 应当是 7874 像素/米（200dpi），得到 %d", y)
+	}
+	if b[at+16] != 1 {
+		t.Errorf("单位应当是 1（米），得到 %d", b[at+16])
+	}
+	// CRC 错了标准解码器会拒收，能解开就说明块是好的
+	if _, err := png.Decode(bytes.NewReader(b)); err != nil {
+		t.Errorf("加了 pHYs 之后 PNG 解不开了: %v", err)
+	}
+	// 再过一遍不能插第二块
+	if again := withPNGDensity(b, 300, 200); len(again) != len(b) {
+		t.Errorf("已有 pHYs 时不应再插，长度 %d -> %d", len(b), len(again))
 	}
 }
 

@@ -47,6 +47,18 @@ func convertScan(srcPath, ext string) (string, error) {
 		return renameToExt(srcPath, ext)
 	}
 
+	// 源图没带 DPI 时：jpg / png 不写密度（看图软件按 96/72 显示），tiff 按 300 写。
+	// 两种都不是真实值，档案验收会挑出来，所以必须留痕，别让它悄悄过去。
+	// DLL 现在每页都用 DAT_IMAGEINFO 的分辨率回填 BMP 头，走到这里说明驱动连 IMAGEINFO 都没给。
+	if im.DPIX <= 0 || im.DPIY <= 0 {
+		fallback := "不写 DPI"
+		if ext == "tiff" {
+			fallback = "按 300dpi 写"
+		}
+		log.Printf("警告: %s 没有记录 DPI（%d x %d），转 %s 时%s，详见 twain.log 里这一页的 IMAGEINFO",
+			filepath.Base(srcPath), im.DPIX, im.DPIY, ext, fallback)
+	}
+
 	body, err := imgfmt.Encode(im, ext)
 	if err != nil {
 		return srcPath, fmt.Errorf("编码 %s 失败，保留原文件（%s）: %w", ext, orUnknown(srcFormat), err)

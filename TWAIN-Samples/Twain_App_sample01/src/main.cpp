@@ -282,10 +282,21 @@ void negotiateCaps()
 * Enables the source. The source will let us know when it is ready to scan by
 * calling our registered callback function.
 */
+#ifdef TWNDS_OS_WIN
+// 等 MSG_XFERREADY 的那个线程。部分驱动（实测 Kodak S2000w）从它自己的工作线程
+// 调 DSMCallback，只改了 m_DSMessage，本线程的消息队列里什么也没进来，
+// 原来的 GetMessage 就一直睡着，扫描永远卡在 state 5。回调里往这个线程
+// 投一条 WM_NULL 把它叫醒。
+static DWORD g_enableThreadId = 0;
+#endif
+
 void EnableDS()
 {
   gpTwainApplicationCMD->m_DSMessage = 0;
-  
+#ifdef TWNDS_OS_WIN
+  g_enableThreadId = GetCurrentThreadId();
+#endif
+
   #ifdef TWNDS_OS_LINUX
 
     int test;
@@ -319,17 +330,42 @@ void EnableDS()
 
 #ifdef TWNDS_OS_WIN
   // now we have to wait until we hear something back from the DS.
+  // 不用阻塞的 GetMessage：最多睡 1 秒就回来看一眼 m_DSMessage，回调从别的线程
+  // 来、WM_NULL 又没投到时也不会永远卡住；顺便每 30 秒记一笔，卡住时日志能看出来。
+  const DWORD waitStart = GetTickCount();
+  DWORD lastWaitLog = waitStart;
+  Logger::Log("@INFO Waiting for MSG_XFERREADY from the data source (callbacks: %s)",
+              gUSE_CALLBACKS ? "yes" : "no");
   while(!gpTwainApplicationCMD->m_DSMessage)
   {
     TW_EVENT twEvent = {0};
 
     // If we are using callbacks, there is nothing to do here except sleep
-    // and wait for our callback from the DS.  If we are not using them, 
+    // and wait for our callback from the DS.  If we are not using them,
     // then we have to poll the DSM.
 
     // Pumping messages is for Windows only
 	  MSG Msg;
-	  if(!GetMessage((LPMSG)&Msg, NULL, 0, 0))
+    if(!PeekMessage((LPMSG)&Msg, NULL, 0, 0, PM_REMOVE))
+    {
+      MsgWaitForMultipleObjects(0, NULL, FALSE, 1000, QS_ALLINPUT);
+      // 不界面扫描时驱动通常 1~2 秒内就发 MSG_XFERREADY。等满 2 分钟还没来，
+      // 就当这次失败，走下面的 disableDS 回到 state 4。不设上限的话 TWAIN 线程
+      // 永远占着，之后所有设备 / 设置 / 扫描请求都在队列里排到服务重启。
+      if(GetTickCount() - waitStart >= 120000)
+      {
+        Logger::Log("@ERROR No MSG_XFERREADY after 120 s, giving up this scan and disabling the source");
+        break;
+      }
+      if(GetTickCount() - lastWaitLog >= 30000)
+      {
+        lastWaitLog = GetTickCount();
+        Logger::Log("@INFO Still waiting for MSG_XFERREADY, %lu s so far",
+                    (unsigned long)((lastWaitLog - waitStart) / 1000));
+      }
+      continue;
+    }
+    if(Msg.message == WM_QUIT)
     {
       break;//WM_QUIT
     }
@@ -432,6 +468,15 @@ DSMCallback(pTW_IDENTITY _pOrigin,
     case MSG_CLOSEDSOK:
     case MSG_NULL:
       gpTwainApplicationCMD->m_DSMessage = _MSG;
+    #ifdef TWNDS_OS_WIN
+      // 记下是哪个线程回调的，并叫醒 EnableDS 里等消息的线程（见 g_enableThreadId）
+      Logger::Log("@INFO DS callback: MSG 0x%04x on thread %lu (waiting thread %lu)",
+                  (unsigned)_MSG, (unsigned long)GetCurrentThreadId(), (unsigned long)g_enableThreadId);
+      if(g_enableThreadId != 0 && g_enableThreadId != GetCurrentThreadId())
+      {
+        PostThreadMessage(g_enableThreadId, WM_NULL, 0, 0);
+      }
+    #endif
       // now signal the event semaphore
     #ifdef TWNDS_OS_LINUX
       {
@@ -2320,6 +2365,12 @@ int zhx_GetCurrentResolution() {
         return -1;
     }
     
+    // getICAP_X/YRESOLUTION 读的是 m_ICAP_X/YRESOLUTION 这份缓存，只在打开设备和
+    // zhx_SetResolution 时刷新；走 zhx_SetCapability_STR（scannerOptions 的 dpi）
+    // 改了分辨率之后缓存还是旧值，读出来的 DPI 就错了。每次读之前先向驱动重新取。
+    gpTwainApplicationCMD->get_CAP(gpTwainApplicationCMD->m_ICAP_XRESOLUTION);
+    gpTwainApplicationCMD->get_CAP(gpTwainApplicationCMD->m_ICAP_YRESOLUTION);
+
     // Get current X resolution
     TW_FIX32 xRes;
     if (!gpTwainApplicationCMD->getICAP_XRESOLUTION(xRes)) {
@@ -2336,9 +2387,9 @@ int zhx_GetCurrentResolution() {
         return -1;
     }
     
-    // Convert FIX32 to integer
-    int xDPI = xRes.Whole;
-    int yDPI = yRes.Whole;
+    // Convert FIX32 to integer，四舍五入：驱动报 299.99 时只取 Whole 会变成 299
+    int xDPI = (int)floor(FIX32ToFloat(xRes) + 0.5f);
+    int yDPI = (int)floor(FIX32ToFloat(yRes) + 0.5f);
     
     // Log the result
     if (xDPI == yDPI) {
