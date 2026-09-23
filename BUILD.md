@@ -61,7 +61,7 @@ build.bat -debug -console -out D:\test
 ## 3. 每一步做了什么
 
 ```
-[1/3] 编 DLL          MSBuild 编 TWAIN_APP_VS2017.sln（x64 或 Win32），
+[1/3] 编 DLL          MSBuild 编 TWAIN_APP_VS2017.sln（解决方案平台 x64 或 x86，x86 在工程里对应 Win32），
                       产物 TWAIN_APP_CMD64.dll / .lib（32 位是 …CMD32）拷到 src\scansvc\
 [2/3] 跑测试          go test ./imgfmt ./scanopt ./twaindiag
 [3/3] 编 scansvc.exe  go build（默认 -ldflags "-H=windowsgui"）

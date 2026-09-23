@@ -595,10 +595,12 @@ void TwainApp::loadDS(const TW_INT32 _dsID)
       // up in twain.log -- the log stopped at "Failed to open data source" with no reason.
       // Read the status exactly once: DG_CONTROL/DAT_STATUS/MSG_GET clears the current
       // condition code, so letting printError do a second read would report TWCC_SUCCESS.
+      // Ask the DSM (dest = NULL), not the DS: MSG_OPENDS is a DSM triplet and the DS is
+      // not open, so asking the DS always came back TWCC_NODS and hid the real reason.
       TW_INT16 cc = TWCC_SUCCESS;
       const char *pszCC = "unavailable (DAT_STATUS/MSG_GET failed too)";
 
-      if(TWRC_SUCCESS == getTWCC(m_pDataSource, cc))
+      if(TWRC_SUCCESS == getTWCC(0, cc))
       {
         pszCC = convertConditionCode_toString(cc);
       }

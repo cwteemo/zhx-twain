@@ -85,8 +85,10 @@ goto fail
 rem ---------------- everything that differs between the two bitnesses ----------------
 rem One set of sources, two outputs. The only thing the Go code needs to know is
 rem which DLL to link, and that is decided by link_windows_386.go / _amd64.go.
+rem MSPLAT is the SOLUTION platform: the .sln calls 32-bit "x86" and maps it to the
+rem project's "Win32" itself; passing Win32 to the .sln fails with MSB4126
 if /i "%ARCH%"=="x86" (
-    set "MSPLAT=Win32"
+    set "MSPLAT=x86"
     set "DLLNAME=TWAIN_APP_CMD32"
     set "GOARCHVAL=386"
     set "GCCWANT=i686"
