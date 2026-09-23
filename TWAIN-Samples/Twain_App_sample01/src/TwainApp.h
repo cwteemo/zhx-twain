@@ -399,6 +399,8 @@ std::string getSourceIdentity() {
   int             m_DSMState;             /**< The current TWAIN state of the dsm (2-7) */
   TW_UINT16       m_DSMessage;            /**< Statis to indicate if we are waiting for DS */
   int             m_lastEnableCC;         // 最近一次 enableDS 的结果：-1 成功；-2 失败但读不到 condition code；>=0 失败时的 condition code
+  int             m_lastOpenRC;           // 最近一次 loadDS 里 MSG_OPENDS 的返回码（TWRC_*）；-1 = 没走到 MSG_OPENDS（DSM 没开、找不到设备等）
+  int             m_lastOpenCC;           // 最近一次 loadDS 失败时的 condition code；-1 = 无（成功、BUSY/SCANNERLOCKED 这类不带 condition code 的，或读不到）
 
   void setSavePath(const string &path) { m_strSavePath = path; }
   const string& getSavePath() const { return m_strSavePath; }

@@ -122,6 +122,8 @@ extern "C" __declspec(dllexport) const char* zhx_GetCurrentDevice();
 extern "C" __declspec(dllexport) int   zhx_ShowSettingUI();
 // 最近一次 zhx_Scan 扫出 0 页时的原因诊断（MSG_ENABLEDS 的 condition code、送纸器有无纸、设备是否在线）
 extern "C" __declspec(dllexport) int   zhx_GetScanDiagnosis(int *enableFailed, int *conditionCode, int *feederLoaded, int *deviceOnline);
+// 最近一次 zhx_OpenDevice 里 MSG_OPENDS 的返回码（TWRC_*），用来区分"设备忙"和"真打不开"
+extern "C" __declspec(dllexport) int   zhx_GetLastOpenResult(int *conditionCode);
 extern "C" __declspec(dllexport) int zhx_SetTransferMechanism(int mechanism);
 extern "C" __declspec(dllexport) int zhx_SetImageFileFormat(int format);
 extern "C" __declspec(dllexport) int zhx_GetCurrentFileFormat();

@@ -762,6 +762,23 @@ Error: Failed to open data source, condition code = 23 (TWCC_CHECKDEVICEONLINE)
 
 `MSG_OPENDS` 的耗时和条件码都在 `twain.log` 里，卡二三十秒基本都是驱动在等一台够不着的设备。
 
+另一种是**设备回"忙"**，`twain.log` 里是
+
+```
+DSM_Entry return code: 10 TWRC_BUSY (MSG_OPENDS took 3.2 s)
+Error: Failed to open data source, TWRC_BUSY (device busy / locked, ...)
+```
+
+`TWRC_BUSY`（10）/ `TWRC_SCANNERLOCKED`（11）是 TWAIN 2.4 新增的返回码，不是 `TWRC_FAILURE`，
+**不带 condition code**——旧版日志在这里会写 `condition code = 0 (TWCC_SUCCESS)`，别被它误导。
+2026-09-23 实测 Kodak S2000w 每次都是 3.2 秒后回 `TWRC_BUSY`：驱动联系上了设备，设备说"忙"。
+服务会隔 2 秒重试 2 次（DLL 导出 `zhx_GetLastOpenResult` 取返回码），仍然忙就报"扫描仪忙，打不开"，
+不会去重建 TWAIN 环境。排查顺序：
+
+1. **被别的主机或程序连着**——网络款同一时间只接受一台主机，看设备面板上显示的主机名
+2. **面板上有待处理的提示**——卡纸、盖板、错误码，或正在唤醒
+3. **上一次会话没释放**——比如扫描卡住后强退了服务（见 7.2），把扫描仪断电重启
+
 ### 7.2 能打开，但一扫就卡住
 
 症状：设备打开、读能力都正常，`scan` 发出去就没有下文。`twain.log` 停在

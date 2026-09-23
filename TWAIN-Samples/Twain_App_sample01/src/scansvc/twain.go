@@ -20,6 +20,7 @@ int         zhx_GetState(void);
 const char* zhx_GetCurrentDevice(void);
 int         zhx_ShowSettingUI(void);
 int         zhx_GetScanDiagnosis(int *enableFailed, int *conditionCode, int *feederLoaded, int *deviceOnline);
+int         zhx_GetLastOpenResult(int *conditionCode);
 
 int   zhx_SetResolution(int dpi);
 int   zhx_GetCurrentResolution(void);
@@ -44,6 +45,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 	"unsafe"
 
 	"scansvc/imgfmt"
@@ -269,6 +271,31 @@ func connectOnTwainThread(device string) error {
 		return nil
 	}
 
+	// 设备忙（TWRC_BUSY / TWRC_SCANNERLOCKED）不是打不开，是"现在不行"：
+	// 刚唤醒、上一个会话还没释放完，隔一会儿往往就好了，先原地重试几次。
+	// 每次 MSG_OPENDS 驱动自己还要花几秒（S2000w 实测 3.2 s），重试次数别加太多，
+	// 这期间整条 TWAIN 线程是被占着的。
+	for i := 1; i <= openBusyRetries; i++ {
+		rc, _ := lastOpenResult()
+		if !isOpenBusy(rc) {
+			break
+		}
+		log.Printf("扫描仪忙（%s）: %s，%v 后第 %d/%d 次重试", twrcName(rc), device, openBusyRetryDelay, i, openBusyRetries)
+		time.Sleep(openBusyRetryDelay)
+		if C.zhx_OpenDevice(cDevice) != 0 {
+			log.Printf("扫描仪第 %d 次重试打开成功: %s", i, device)
+			return nil
+		}
+	}
+	if rc, _ := lastOpenResult(); isOpenBusy(rc) {
+		// 设备明确回了"忙"，DSM 环境是好的，不能走下面的 zhx_Init 重连。
+		return fmt.Errorf("扫描仪忙，打不开: %s（驱动返回 %s，重试 %d 次仍然忙。按这个顺序查："+
+			"1. 是否正被别的电脑或程序连着——网络款（如 S2000w）同一时间只接受一台主机，看设备面板上显示的主机名；"+
+			"2. 面板上是否有待处理的提示（卡纸、盖板、错误码）或正在唤醒；"+
+			"3. 上一次会话没释放干净——把扫描仪断电重启最快。详见 twain.log）",
+			device, twrcName(rc), openBusyRetries)
+	}
+
 	// 打开失败分两类，处理方式正好相反：
 	//   1) DSM 掉线（扫描仪拔插、旧版 DLL 的 zhx_CloseDevice 顺带断了 DSM）
 	//      —— 环境已经废了，必须 zhx_Init 重连
@@ -290,6 +317,40 @@ func connectOnTwainThread(device string) error {
 	}
 	return fmt.Errorf("打开扫描仪失败: %s（TWAIN 环境已重连仍打不开，"+
 		"确认设备已连接、驱动已安装；详见 twain.log）", device)
+}
+
+// 设备忙时的重试参数，见 connectOnTwainThread。
+const (
+	openBusyRetries    = 2
+	openBusyRetryDelay = 2 * time.Second
+)
+
+// lastOpenResult 取最近一次 zhx_OpenDevice 里 MSG_OPENDS 的返回码和 condition code，
+// 都是 -1 表示没有（没走到 MSG_OPENDS / 不是 TWRC_FAILURE）。**必须在 TWAIN 线程上**调用。
+func lastOpenResult() (rc, cc int) {
+	var ccC C.int
+	rc = int(C.zhx_GetLastOpenResult(&ccC))
+	return rc, int(ccC)
+}
+
+// TWAIN 返回码，取值见 twain.h 的 TWRC_*。
+const (
+	twrcBusy          = 10
+	twrcScannerLocked = 11
+)
+
+func isOpenBusy(rc int) bool {
+	return rc == twrcBusy || rc == twrcScannerLocked
+}
+
+func twrcName(rc int) string {
+	switch rc {
+	case twrcBusy:
+		return "TWRC_BUSY"
+	case twrcScannerLocked:
+		return "TWRC_SCANNERLOCKED"
+	}
+	return fmt.Sprintf("TWRC %d", rc)
 }
 
 // TwainDisconnect 关闭当前扫描仪，回到 state 3（DSM 仍连着，还能枚举、还能开别的设备）。

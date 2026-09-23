@@ -3810,6 +3810,14 @@ const char* convertReturnCode_toString(const TW_UINT16 _unItem)
     text = "TWRC_DATANOTAVAILABLE";
     break;
 
+  case TWRC_BUSY:
+    text = "TWRC_BUSY";
+    break;
+
+  case TWRC_SCANNERLOCKED:
+    text = "TWRC_SCANNERLOCKED";
+    break;
+
   default:
     {
       char * buff = nextTempBuffer();

@@ -136,6 +136,8 @@ TwainApp::TwainApp(HWND parent /*=NULL*/)
 , m_pExtImageInfo(NULL)
 , m_DSMessage((TW_UINT16)-1)
 , m_lastEnableCC(-1)
+, m_lastOpenRC(-1)
+, m_lastOpenCC(-1)
 , m_nGetLableSupported(TWCC_SUCCESS)
 , m_nGetHelpSupported(TWCC_SUCCESS)
 , m_strSavePath("")
@@ -475,6 +477,10 @@ void TwainApp::loadDS(const TW_INT32 _dsID)
   Logger::Log("Attempting to load DS with ID: %d", _dsID);
   Logger::Log("Current DSM State: %d", m_DSMState);
 
+  // 每次都先清掉，免得调用方读到上一次的结果
+  m_lastOpenRC = -1;
+  m_lastOpenCC = -1;
+
   if(m_DSMState < 3)
   {
     Logger::Log("Error: DSM not opened (State < 3)");
@@ -539,8 +545,9 @@ void TwainApp::loadDS(const TW_INT32 _dsID)
     MSG_OPENDS,
     (TW_MEMREF) m_pDataSource);
 
-  Logger::Log("DSM_Entry return code: %u (MSG_OPENDS took %.1f s)",
-              twrc, (double)(clock() - openStart) / CLOCKS_PER_SEC);
+  Logger::Log("DSM_Entry return code: %u %s (MSG_OPENDS took %.1f s)",
+              twrc, convertReturnCode_toString(twrc), (double)(clock() - openStart) / CLOCKS_PER_SEC);
+  m_lastOpenRC = twrc;
 
   switch (twrc)
   {
@@ -589,6 +596,18 @@ void TwainApp::loadDS(const TW_INT32 _dsID)
     #endif
     break;
 
+  case TWRC_BUSY:
+  case TWRC_SCANNERLOCKED:
+    // TWAIN 2.4 新增的两个返回码，不是 TWRC_FAILURE，不带 condition code——
+    // 再去读 DAT_STATUS 只会拿到 TWCC_SUCCESS，反而误导排查。
+    // 实测 KODAK S2000w（驱动 19.6）打不开时，MSG_OPENDS 稳定约 3 秒后返回 TWRC_BUSY，
+    // 常见原因是设备正被别的主机/程序占用，或面板上有待处理的提示。
+    Logger::Log("Error: Failed to open data source, %s (device busy / locked, e.g. in use by another host or program, or waiting on the panel)",
+                convertReturnCode_toString(twrc));
+    PrintCMDMessage("app: Failed to open data source: %s\n", convertReturnCode_toString(twrc));
+    m_pDataSource = 0;
+    break;
+
   default:
     {
       // This replaces the printError() call that used to be here.  printError writes the
@@ -604,6 +623,7 @@ void TwainApp::loadDS(const TW_INT32 _dsID)
       if(TWRC_SUCCESS == getTWCC(0, cc))
       {
         pszCC = convertConditionCode_toString(cc);
+        m_lastOpenCC = cc;
       }
 
       Logger::Log("Error: Failed to open data source, condition code = %d (%s)", (int)cc, pszCC);

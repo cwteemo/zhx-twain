@@ -832,6 +832,11 @@ int zhx_OpenDevice(char *device) {
         return 0;
     }
     
+    // 找不到设备这类在 loadDS 之前就返回的路径不会碰 m_lastOpenRC，这里先清掉，
+    // 免得 zhx_GetLastOpenResult 读到上一次的结果
+    gpTwainApplicationCMD->m_lastOpenRC = -1;
+    gpTwainApplicationCMD->m_lastOpenCC = -1;
+
     try {
         // Get device number from the device name
         int deviceNumber = zhx_GetDeviceNumber(device);
@@ -847,7 +852,10 @@ int zhx_OpenDevice(char *device) {
         //updateCapabilityMapFromDevice(device);
         // Verify scanner loaded successfully (should be in state 4)
         if (gpTwainApplicationCMD->m_DSMState != 4) {
-            Logger::Log("@ERROR Failed to load scanner, current state: %d", gpTwainApplicationCMD->m_DSMState);
+            Logger::Log("@ERROR Failed to load scanner, current state: %d, MSG_OPENDS rc: %d, condition code: %d",
+                        gpTwainApplicationCMD->m_DSMState,
+                        gpTwainApplicationCMD->m_lastOpenRC,
+                        gpTwainApplicationCMD->m_lastOpenCC);
             printf("[DLL ERROR] Failed to load scanner\n");
             return 0;
         }
@@ -1185,6 +1193,24 @@ static void prepareContinuousScan(int count) {
  * 四个输出参数的含义见上面 g_diag* 的注释，传 NULL 表示不要这一项。
  * @return 1 = 上次扫描出了问题、有诊断信息；0 = 上次正常或还没扫过
  */
+/**
+ * @brief 取最近一次 zhx_OpenDevice 的 MSG_OPENDS 结果
+ *
+ * zhx_OpenDevice 只回 0/1，调用方分不清"设备忙"（TWRC_BUSY/TWRC_SCANNERLOCKED，
+ * 稍后重试或去释放占用即可）和"真打不开"（TWRC_FAILURE + condition code）。
+ *
+ * @param conditionCode 可为 NULL；TWRC_FAILURE 时写入 condition code，其余情况写 -1
+ * @return MSG_OPENDS 的返回码（TWRC_*）；-1 = 没走到 MSG_OPENDS（环境没初始化、找不到设备等）
+ */
+int zhx_GetLastOpenResult(int *conditionCode) {
+    if (conditionCode) *conditionCode = -1;
+    if (!gpTwainApplicationCMD) {
+        return -1;
+    }
+    if (conditionCode) *conditionCode = gpTwainApplicationCMD->m_lastOpenCC;
+    return gpTwainApplicationCMD->m_lastOpenRC;
+}
+
 int zhx_GetScanDiagnosis(int *enableFailed, int *conditionCode, int *feederLoaded, int *deviceOnline) {
     if (enableFailed)  *enableFailed  = g_diagEnableFailed;
     if (conditionCode) *conditionCode = g_diagConditionCode;
