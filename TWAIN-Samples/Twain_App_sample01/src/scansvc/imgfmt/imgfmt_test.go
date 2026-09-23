@@ -234,6 +234,50 @@ func TestEncodeTIFFDefaultDPI(t *testing.T) {
 	}
 }
 
+func TestResolveDPI(t *testing.T) {
+	cases := []struct {
+		x, y, wx, wy int
+		fb           bool
+	}{
+		{300, 300, 300, 300, false},
+		{200, 400, 200, 400, false},
+		{0, 0, 300, 300, true},    // 驱动没填
+		{-1, 300, 300, 300, true}, // 一边坏了，跟另一边
+		{600, 0, 600, 600, true},
+		{1, 1, 300, 300, true},         // 1dpi 这种垃圾值
+		{65535, 65535, 300, 300, true}, // 离谱的大值
+		{MinValidDPI, MaxValidDPI, MinValidDPI, MaxValidDPI, false},
+	}
+	for _, c := range cases {
+		x, y, fb := ResolveDPI(c.x, c.y)
+		if x != c.wx || y != c.wy || fb != c.fb {
+			t.Errorf("ResolveDPI(%d, %d) = %d, %d, %v；应当是 %d, %d, %v", c.x, c.y, x, y, fb, c.wx, c.wy, c.fb)
+		}
+	}
+}
+
+// 没有 DPI 的图，jpg / png 也要按兜底值写，不能再空着。
+func TestEncodeFallbackDPI(t *testing.T) {
+	img := image.NewGray(image.Rect(0, 0, 8, 8))
+
+	jpg, err := Encode(Image{Image: img}, "jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if x := int(jpg[14])<<8 | int(jpg[15]); x != FallbackDPI {
+		t.Errorf("JPEG 兜底 X 密度应当是 %d，得到 %d", FallbackDPI, x)
+	}
+
+	p, err := Encode(Image{Image: img, DPIX: 0, DPIY: 0}, "png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const at = 8 + 25
+	if string(p[at+4:at+8]) != "pHYs" || binary.BigEndian.Uint32(p[at+8:]) != 11811 {
+		t.Errorf("PNG 兜底应当写 300dpi（11811 像素/米）的 pHYs")
+	}
+}
+
 // LZW 得真的压缩：大片同色的图压完要比原始像素小得多。
 func TestTIFFCompresses(t *testing.T) {
 	img := image.NewGray(image.Rect(0, 0, 600, 600)) // 全黑，最容易压

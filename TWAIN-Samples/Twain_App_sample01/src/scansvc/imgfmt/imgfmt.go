@@ -91,10 +91,41 @@ func min(a, b int) int {
 	return b
 }
 
+// FallbackDPI 是 DPI 缺失或异常时的兜底值。档案数字化最常用的就是 300。
+const FallbackDPI = 300
+
+// 合理 DPI 的范围。扫描仪最低档一般 75、最高到 1200~4800；超出这个范围的
+// 多半是驱动没填（0）、填了垃圾值，或者单位换算错了，一律当异常。
+const (
+	MinValidDPI = 50
+	MaxValidDPI = 9600
+)
+
+// ValidDPI 判断一个 DPI 是否可信。
+func ValidDPI(d int) bool { return d >= MinValidDPI && d <= MaxValidDPI }
+
+// ResolveDPI 决定真正写进文件的 DPI，fallback 表示用了兜底（调用方据此记日志）。
+//   - 两个都可信：原样用
+//   - 只有一个可信：另一个跟它一样（扫描几乎都是 X/Y 同分辨率）
+//   - 都不可信：都用 FallbackDPI
+func ResolveDPI(x, y int) (dx, dy int, fallback bool) {
+	vx, vy := ValidDPI(x), ValidDPI(y)
+	switch {
+	case vx && vy:
+		return x, y, false
+	case vx:
+		return x, x, true
+	case vy:
+		return y, y, true
+	}
+	return FallbackDPI, FallbackDPI, true
+}
+
 // Encode 按 ext 指定的格式编码。ext 先过 NormalizeExt。
-// dpi 会写进文件：TIFF 写 XResolution / YResolution，JPEG 写 JFIF 里的密度。
-// 档案验收要查图片里记录的 DPI，丢了等于白扫。
+// dpi 会写进文件：TIFF 写 XResolution / YResolution，JPEG 写 JFIF 里的密度，PNG 写 pHYs。
+// 档案验收要查图片里记录的 DPI，丢了等于白扫，所以缺失 / 异常时按 ResolveDPI 兜底。
 func Encode(im Image, ext string) ([]byte, error) {
+	im.DPIX, im.DPIY, _ = ResolveDPI(im.DPIX, im.DPIY)
 	switch NormalizeExt(ext) {
 	case "tiff":
 		return EncodeTIFFBytes(im.Image, im.DPIX, im.DPIY)

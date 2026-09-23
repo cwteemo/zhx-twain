@@ -1171,31 +1171,49 @@ void TwainApp::initiateTransfer_Native()
       // 图片里记录的 DPI 以这一页的 DAT_IMAGEINFO 为准。原来直接用驱动在 DIB 头里填的
       // biX/YPelsPerMeter，有的驱动填 0、填 96/72dpi 的默认值，或者按页不稳定，
       // 转出来的 jpeg/tiff/png 里 DPI 就偶发不对。
+      // 取值顺序：IMAGEINFO → DIB 头 → 兜底 300dpi。范围与 Go 侧 imgfmt.ValidDPI 保持一致。
       {
-        const float xDPI = FIX32ToFloat(m_ImageInfo.XResolution) * fResToDPI;
-        const float yDPI = FIX32ToFloat(m_ImageInfo.YResolution) * fResToDPI;
-        if(xDPI > 0.0f && yDPI > 0.0f)
+        const float kFallbackDPI = 300.0f;
+        const float kMinDPI = 50.0f, kMaxDPI = 9600.0f;
+        #define DPI_OK(d) ((d) >= kMinDPI && (d) <= kMaxDPI)
+
+        const float infoX = FIX32ToFloat(m_ImageInfo.XResolution) * fResToDPI;
+        const float infoY = FIX32ToFloat(m_ImageInfo.YResolution) * fResToDPI;
+        const float hdrX  = (float)(pDIB->biXPelsPerMeter * 0.0254);
+        const float hdrY  = (float)(pDIB->biYPelsPerMeter * 0.0254);
+
+        float useX = kFallbackDPI, useY = kFallbackDPI;
+        const char *from = "fallback 300dpi";
+        if(DPI_OK(infoX) && DPI_OK(infoY))
         {
-          const LONG xPPM = (LONG)floor(xDPI / 0.0254f + 0.5f);
-          const LONG yPPM = (LONG)floor(yDPI / 0.0254f + 0.5f);
-          if(pDIB->biXPelsPerMeter != xPPM || pDIB->biYPelsPerMeter != yPPM)
-          {
-            Logger::Log("@INFO Page %d: DIB header says %ld x %ld px/m (~%.0f x %.0f dpi), "
-                        "IMAGEINFO says %.2f x %.2f dpi; writing the IMAGEINFO value",
-                        m_nXferNum, (long)pDIB->biXPelsPerMeter, (long)pDIB->biYPelsPerMeter,
-                        pDIB->biXPelsPerMeter * 0.0254, pDIB->biYPelsPerMeter * 0.0254,
-                        xDPI, yDPI);
-          }
-          pDIB->biXPelsPerMeter = xPPM;
-          pDIB->biYPelsPerMeter = yPPM;
+          useX = infoX; useY = infoY; from = "IMAGEINFO";
         }
-        else
+        else if(DPI_OK(hdrX) && DPI_OK(hdrY))
+        {
+          useX = hdrX; useY = hdrY; from = "DIB header";
+        }
+        else if(DPI_OK(infoX) || DPI_OK(infoY))
+        {
+          // 只有一边可信时另一边跟它一样：扫描几乎都是 X/Y 同分辨率
+          useX = useY = DPI_OK(infoX) ? infoX : infoY; from = "IMAGEINFO (one axis)";
+        }
+        #undef DPI_OK
+
+        const LONG xPPM = (LONG)floor(useX / 0.0254f + 0.5f);
+        const LONG yPPM = (LONG)floor(useY / 0.0254f + 0.5f);
+        if(strcmp(from, "IMAGEINFO") != 0)
         {
           Logger::Log("@WARN Page %d: IMAGEINFO resolution unusable (%.2f x %.2f dpi), "
-                      "keeping the DIB header value %ld x %ld px/m",
-                      m_nXferNum, xDPI, yDPI,
-                      (long)pDIB->biXPelsPerMeter, (long)pDIB->biYPelsPerMeter);
+                      "DIB header %.2f x %.2f dpi; writing %.0f x %.0f dpi from %s",
+                      m_nXferNum, infoX, infoY, hdrX, hdrY, useX, useY, from);
         }
+        else if(pDIB->biXPelsPerMeter != xPPM || pDIB->biYPelsPerMeter != yPPM)
+        {
+          Logger::Log("@INFO Page %d: DIB header says %.2f x %.2f dpi, IMAGEINFO says %.2f x %.2f dpi; "
+                      "writing the IMAGEINFO value", m_nXferNum, hdrX, hdrY, infoX, infoY);
+        }
+        pDIB->biXPelsPerMeter = xPPM;
+        pDIB->biYPelsPerMeter = yPPM;
       }
 
       // 设置文件名 - 使用序列号作为前缀

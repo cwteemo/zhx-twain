@@ -67,12 +67,7 @@ func EncodeTIFFBytes(img image.Image, dpiX, dpiY int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if dpiX <= 0 {
-		dpiX = 300
-	}
-	if dpiY <= 0 {
-		dpiY = 300
-	}
+	dpiX, dpiY, _ = ResolveDPI(dpiX, dpiY)
 
 	rowBytes := src.rowBytes()
 	rowsPerStrip := stripTargetBytes / max(rowBytes, 1)
