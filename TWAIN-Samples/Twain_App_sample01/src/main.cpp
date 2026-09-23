@@ -288,6 +288,27 @@ void negotiateCaps()
 // 原来的 GetMessage 就一直睡着，扫描永远卡在 state 5。回调里往这个线程
 // 投一条 WM_NULL 把它叫醒。
 static DWORD g_enableThreadId = 0;
+
+// 定义在后面（每页回调那一段之前），等 MSG_XFERREADY 时要用来打快照
+static int readBoolCapability(TW_UINT16 capId);
+
+// 等 MSG_XFERREADY 期间的一份现场快照：送纸器有没有纸、设备在不在线、数据源的 condition code。
+// state 5 允许 MSG_GET 能力，读这些不会打断驱动。
+static void logWaitSnapshot(const char *tag, unsigned long msgCount, unsigned long dsEventCount)
+{
+  TW_INT16 cc = TWCC_SUCCESS;
+  const char *pszCC = "unavailable";
+  if(TWRC_SUCCESS == gpTwainApplicationCMD->getTWCC(gpTwainApplicationCMD->getDataSource(), cc))
+  {
+    pszCC = convertConditionCode_toString(cc);
+  }
+  Logger::Log("@DIAG [%s] state=%d, m_DSMessage=0x%04x, messages pumped=%lu, DSEVENT=%lu, "
+              "CAP_FEEDERLOADED=%d, CAP_DEVICEONLINE=%d, DS condition code=%d (%s)",
+              tag, gpTwainApplicationCMD->m_DSMState, (unsigned)gpTwainApplicationCMD->m_DSMessage,
+              msgCount, dsEventCount,
+              readBoolCapability(CAP_FEEDERLOADED), readBoolCapability(CAP_DEVICEONLINE),
+              (int)cc, pszCC);
+}
 #endif
 
 void EnableDS()
@@ -320,6 +341,17 @@ void EnableDS()
   // -The scan will not start until the source calls the callback function
   // that was registered earlier.
 #ifdef TWNDS_OS_WIN
+  {
+    // 父窗口是桌面窗口，不属于本线程：驱动如果往 hParent 投消息（TWAIN 1.x 的做法），
+    // 本线程的消息队列收不到。这里记下来，卡住时好对照。
+    HWND hDesktop = GetDesktopWindow();
+    DWORD ownerPid = 0;
+    DWORD ownerTid = GetWindowThreadProcessId(hDesktop, &ownerPid);
+    Logger::Log("@DIAG EnableDS on thread %lu (pid %lu); hParent=desktop 0x%p owned by thread %lu pid %lu; callbacks=%s",
+                (unsigned long)GetCurrentThreadId(), (unsigned long)GetCurrentProcessId(),
+                (void*)hDesktop, (unsigned long)ownerTid, (unsigned long)ownerPid,
+                gUSE_CALLBACKS ? "yes" : "no");
+  }
   if(!gpTwainApplicationCMD->enableDS(GetDesktopWindow(), FALSE))
 #else
   if(!gpTwainApplicationCMD->enableDS(0, TRUE,callbackFunc))
@@ -334,8 +366,11 @@ void EnableDS()
   // 来、WM_NULL 又没投到时也不会永远卡住；顺便每 30 秒记一笔，卡住时日志能看出来。
   const DWORD waitStart = GetTickCount();
   DWORD lastWaitLog = waitStart;
+  unsigned long msgCount = 0;      // 等待期间本线程取到的窗口消息数
+  unsigned long dsEventCount = 0;  // 其中被 MSG_PROCESSEVENT 认成数据源事件的
   Logger::Log("@INFO Waiting for MSG_XFERREADY from the data source (callbacks: %s)",
               gUSE_CALLBACKS ? "yes" : "no");
+  logWaitSnapshot("after enable", msgCount, dsEventCount);
   while(!gpTwainApplicationCMD->m_DSMessage)
   {
     TW_EVENT twEvent = {0};
@@ -354,6 +389,7 @@ void EnableDS()
       // 永远占着，之后所有设备 / 设置 / 扫描请求都在队列里排到服务重启。
       if(GetTickCount() - waitStart >= 120000)
       {
+        logWaitSnapshot("timeout", msgCount, dsEventCount);
         Logger::Log("@ERROR No MSG_XFERREADY after 120 s, giving up this scan and disabling the source");
         break;
       }
@@ -362,6 +398,7 @@ void EnableDS()
         lastWaitLog = GetTickCount();
         Logger::Log("@INFO Still waiting for MSG_XFERREADY, %lu s so far",
                     (unsigned long)((lastWaitLog - waitStart) / 1000));
+        logWaitSnapshot("waiting", msgCount, dsEventCount);
       }
       continue;
     }
@@ -380,6 +417,36 @@ void EnableDS()
                 MSG_PROCESSEVENT,
                 (TW_MEMREF)&twEvent);
 
+    // 等待期间本线程收到的消息：前 50 条逐条记，数据源事件每条都记。
+    // 看它们能判断驱动到底有没有往这个线程发东西、发的是什么。
+    ++msgCount;
+    if(twRC == TWRC_DSEVENT)
+    {
+      ++dsEventCount;
+    }
+    if(msgCount <= 50 || twRC == TWRC_DSEVENT)
+    {
+      Logger::Log("@DIAG wait msg #%lu: hwnd=0x%p msg=0x%04x wParam=0x%p lParam=0x%p -> PROCESSEVENT %s, TWMessage=0x%04x",
+                  msgCount, (void*)Msg.hwnd, (unsigned)Msg.message, (void*)Msg.wParam, (void*)Msg.lParam,
+                  convertReturnCode_toString(twRC), (unsigned)twEvent.TWMessage);
+    }
+
+    // 注册了回调也照收：规范上用回调的驱动不该再走消息队列，但有的驱动两条路都走，
+    // 或只走这一条。原来这里只在没有回调时才认，送来的 MSG_XFERREADY 会被直接丢掉。
+    if(gUSE_CALLBACKS && twRC==TWRC_DSEVENT && twEvent.TWMessage != MSG_NULL)
+    {
+      Logger::Log("@WARN Data source delivered 0x%04x through the message loop although callbacks are registered, accepting it",
+                  (unsigned)twEvent.TWMessage);
+      switch (twEvent.TWMessage)
+      {
+        case MSG_XFERREADY:
+        case MSG_CLOSEDSREQ:
+        case MSG_CLOSEDSOK:
+          gpTwainApplicationCMD->m_DSMessage = twEvent.TWMessage;
+          break;
+      }
+    }
+
     if(!gUSE_CALLBACKS && twRC==TWRC_DSEVENT)
     {
       // check for message from Source
@@ -393,6 +460,7 @@ void EnableDS()
           break;
 
         default:
+          Logger::Log("@WARN Unknown TWMessage 0x%04x in MSG_PROCESSEVENT loop", (unsigned)twEvent.TWMessage);
           cerr << "\nError - Unknown message in MSG_PROCESSEVENT loop\n" << endl;
           break;
       }
@@ -454,11 +522,24 @@ DSMCallback(pTW_IDENTITY _pOrigin,
 
   TW_UINT16 twrc = TWRC_SUCCESS;
 
+  // 进来就记一笔：下面的来源校验和未知消息分支原来都是悄悄返回失败，
+  // 驱动如果回调了但被这里拒掉，日志里完全看不出来。
+  {
+    pTW_IDENTITY pDS = gpTwainApplicationCMD ? gpTwainApplicationCMD->getDataSource() : 0;
+    Logger::Log("@DIAG DSMCallback entered: origin id=%ld (%s), expected id=%ld, DG=0x%lx DAT=0x%04x MSG=0x%04x, thread %lu",
+                _pOrigin ? (long)_pOrigin->Id : -1L,
+                _pOrigin ? _pOrigin->ProductName : "(null)",
+                pDS ? (long)pDS->Id : -1L,
+                (unsigned long)_DG, (unsigned)_DAT, (unsigned)_MSG,
+                (unsigned long)GetCurrentThreadId());
+  }
+
   // we are only waiting for callbacks from our datasource, so validate
   // that the originator.
   if(0 == _pOrigin ||
      _pOrigin->Id != gpTwainApplicationCMD->getDataSource()->Id)
   {
+    Logger::Log("@WARN DSMCallback rejected: origin does not match the open data source");
     return TWRC_FAILURE;
   }
   switch (_MSG)
@@ -487,6 +568,7 @@ DSMCallback(pTW_IDENTITY _pOrigin,
       break;
 
     default:
+      Logger::Log("@WARN DSMCallback: unhandled MSG 0x%04x, returning TWRC_FAILURE", (unsigned)_MSG);
       cerr << "Error - Unknown message in callback routine" << endl;
       twrc = TWRC_FAILURE;
       break;
@@ -1082,6 +1164,15 @@ static int readBoolCapability(TW_UINT16 capId) {
     cap.ConType = TWON_DONTCARE16;
     TW_UINT16 rc = gpTwainApplicationCMD->DSM_Entry(DG_CONTROL, DAT_CAPABILITY, MSG_GET, (TW_MEMREF)&cap);
     if (rc != TWRC_SUCCESS) {
+        // 原来这里直接返回 -1，日志里只能看到"不支持"，分不清是真不支持还是读失败
+        TW_INT16 cc = TWCC_SUCCESS;
+        const char *pszCC = "unavailable";
+        if (TWRC_SUCCESS == gpTwainApplicationCMD->getTWCC(gpTwainApplicationCMD->getDataSource(), cc)) {
+            pszCC = convertConditionCode_toString(cc);
+        }
+        Logger::Log("@DIAG readBoolCapability(0x%04x): MSG_GET %s, condition code=%d (%s), state=%d",
+                    (unsigned)capId, convertReturnCode_toString(rc), (int)cc, pszCC,
+                    gpTwainApplicationCMD->m_DSMState);
         return -1;
     }
     int value = -1;
@@ -1091,6 +1182,18 @@ static int readBoolCapability(TW_UINT16 capId) {
             value = (pVal->Item != 0) ? 1 : 0;
             _DSM_UnlockMemory(cap.hContainer);
         }
+    } else if (cap.ConType == TWON_ENUMERATION) {
+        // 有的驱动（如 Kodak）MSG_GET 布尔能力回的是枚举，当前值是 ItemList[CurrentIndex]
+        pTW_ENUMERATION pEnum = (pTW_ENUMERATION)_DSM_LockMemory(cap.hContainer);
+        if (pEnum) {
+            if (pEnum->ItemType == TWTY_BOOL && pEnum->CurrentIndex < pEnum->NumItems) {
+                value = (((TW_BOOL*)pEnum->ItemList)[pEnum->CurrentIndex] != 0) ? 1 : 0;
+            }
+            _DSM_UnlockMemory(cap.hContainer);
+        }
+    } else {
+        Logger::Log("@DIAG readBoolCapability(0x%04x): unexpected container type %u, treated as unsupported",
+                    (unsigned)capId, (unsigned)cap.ConType);
     }
     _DSM_Free(cap.hContainer);
     return value;
