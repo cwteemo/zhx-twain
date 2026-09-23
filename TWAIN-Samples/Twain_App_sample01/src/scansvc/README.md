@@ -532,7 +532,15 @@ DLL 只会吐 BMP——`zhx_Scan` 的兜底路径靠 `*.bmp` 通配符比对扫�
 |---|---|
 | `jpg` | 标准库，质量 85，另外补一段 JFIF APP0 把 DPI 写进去（Go 的编码器根本不写这段） |
 | `tiff` | **自己写的 TIFF + LZW**，见下 |
-| `png` | 标准库，早期默认值，留着兼容 |
+| `png` | 标准库，早期默认值，留着兼容。同样补一块 pHYs 写 DPI（Go 的编码器也不写） |
+
+**DPI 从哪来、坏了怎么办**：服务默认走原生传输，DLL 拿到驱动给的 DIB 后，先用这一页
+`DAT_IMAGEINFO` 的分辨率回填 BMP 头里的 `biX/YPelsPerMeter` 再落盘——驱动自己往 DIB 头填的值
+不可靠（有填 0 的、填 96/72 默认值的、按页不稳定的），不能直接用。取值顺序是
+**IMAGEINFO → DIB 头 → 300**；Go 侧转格式时再按 `imgfmt.ResolveDPI` 过一遍，
+可信范围 50~9600，只有一边可信时另一边跟它一样，都不可信写 300。
+用了兜底会在 `twain.log`（`@WARN Page N: IMAGEINFO resolution unusable…`）和
+`scansvc.log`（`警告: … DPI 缺失或异常…`）各留一笔。
 
 转 TIFF 时会**一并存一张同名 JPEG** 当预览（浏览器显示不了 TIFF），前端取预览加 `?thumbnail=1`。
 
@@ -754,6 +762,28 @@ Error: Failed to open data source, condition code = 23 (TWCC_CHECKDEVICEONLINE)
 
 `MSG_OPENDS` 的耗时和条件码都在 `twain.log` 里，卡二三十秒基本都是驱动在等一台够不着的设备。
 
+### 7.2 能打开，但一扫就卡住
+
+症状：设备打开、读能力都正常，`scan` 发出去就没有下文。`twain.log` 停在
+
+```
+Data source enabled successfully (TWRC_SUCCESS)
+@INFO Waiting for MSG_XFERREADY from the data source (callbacks: yes)
+@INFO Still waiting for MSG_XFERREADY, 30 s so far
+```
+
+启用成功之后，驱动要回调一个 `MSG_XFERREADY` 才开始传图。2026-09-23 实测 Kodak S2000w 会从
+**它自己的工作线程**回调，原来的等待循环阻塞在 `GetMessage` 上，线程消息队列里没有东西就永远
+醒不过来——而 TWAIN 线程被占住后，设备列表、设置、再次扫描全部在队列里排到服务重启。现在：
+
+- 回调里会给等待线程投一条 `WM_NULL` 叫醒它，日志里是
+  `DS callback: MSG 0x0101 on thread A (waiting thread B)`（A≠B 就是这种驱动）；
+- 等待改成每秒醒一次，**2 分钟**还没等到就放弃这次扫描、关掉数据源回到 state 4，
+  日志 `@ERROR No MSG_XFERREADY after 120 s`，客户端收到"扫描未产出任何图片"，服务继续可用。
+
+还是超时的话，说明驱动根本没发通知：看纸是否放到位、驱动有没有弹出等人点的窗口（界面扫描关着，
+弹窗会没人管）、面板上有没有要按的键。
+
 ## 8. 已知限制 / 下一步
 
 - **扫描仪设置相关的待办**（DLL 读能力的 bug、接口不一致、getScannerOptions 的遗留）汇总在
@@ -765,7 +795,6 @@ Error: Failed to open data source, condition code = 23 (TWCC_CHECKDEVICEONLINE)
   所以"用 scansvc 顶掉 zhxserver"要等这两块搬完。摸底见 [TODO-rfid-zebra.md](TODO-rfid-zebra.md)。
 
 - `zhx_GetDevicesList()` 返回的是 DLL 用 `_strdup` 分配的内存，而 DLL 静态链接了自己的 CRT，Go 侧 `C.free` 会跨堆释放导致崩溃，所以当前**不释放**（每次枚举泄漏一小段）。修法是在 C 侧补一个 `zhx_FreeString` 导出。
-- 图片按 BMP 原样回传，单张约 11 MB。后续应在服务端转 JPEG/PNG 再传。
 - 扫描是同步阻塞的，多页扫描时 HTTP 可能超时。下一步改成"提交任务返回 taskId + WebSocket 推进度"。
 - `images` 登记表只在内存里，服务重启后旧图片取不回来。
 - `zhx_Init()` 里父窗口用的是 `GetDesktopWindow()`，`zhx_Scan` 的消息泵也用它。
