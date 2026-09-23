@@ -23,8 +23,10 @@ build.bat
 | MinGW-w64 gcc，**位数要和目标一致** | cgo 要用。位数装错的话编译不报错、链接才炸，脚本会提前拦住 | `gcc -dumpmachine` → 64 位要 `x86_64-w64-mingw32`；32 位要 `i686-w64-mingw32`（脚本会自动优先用 PATH 里的 `i686-w64-mingw32-gcc.exe`） |
 
 `TWAINDSM.dll` 不在仓库里，由 `releases\Twain_App_sample01_*\twainapp.win64.installer.msi` 安装
-（32 位版对应 `twainapp.win32.installer.msi`）。装完它一般在 `C:\Windows\twain_64\`
-（32 位在 `twain_32\`），脚本会自动从那里取；取不到会提示（**少了它一台扫描仪都枚举不到**）。
+（32 位版对应 `twainapp.win32.installer.msi`）。装完它在系统目录：64 位是
+`C:\Windows\System32\TWAINDSM.dll`，32 位是 `C:\Windows\SysWOW64\TWAINDSM.dll`。
+脚本按 `src\scansvc\` → 系统目录 → `C:\Windows\twain_32|64\` 的顺序自动取，
+取不到会提示（**少了它一台扫描仪都枚举不到**）。想固定用某个版本，就把它放进 `src\scansvc\`。
 
 ---
 
@@ -165,8 +167,8 @@ Windows 按位数分了两个驱动目录，DSM 只看和自己同位数的那�
 
 | | 驱动目录 | DSM |
 |---|---|---|
-| 32 位服务 | `C:\Windows\twain_32\` | `C:\Windows\twain_32\TWAINDSM.dll` |
-| 64 位服务 | `C:\Windows\twain_64\` | `C:\Windows\twain_64\TWAINDSM.dll` |
+| 32 位服务 | `C:\Windows\twain_32\` | `C:\Windows\SysWOW64\TWAINDSM.dll`（或 exe 旁边那份） |
+| 64 位服务 | `C:\Windows\twain_64\` | `C:\Windows\System32\TWAINDSM.dll`（或 exe 旁边那份） |
 
 **结论**：厂商只发 32 位驱动的机型（几款老柯达就是这样，装在 64 位 Windows 上驱动也只会
 落到 `twain_32`），64 位服务**一定**枚举不出来，只能在那台机器上用 32 位版的 scansvc。

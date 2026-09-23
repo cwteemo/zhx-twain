@@ -93,6 +93,7 @@ if /i "%ARCH%"=="x86" (
     set "SYSO=rsrc_windows_386.syso"
     set "FREEIMAGE=%ROOT%TWAIN-Samples\pub\external\bin\win32\FreeImage.dll"
     set "DSMDIR=twain_32"
+    set "DSMSYS=SysWOW64"
     set "MSIHINT=twainapp.win32.installer.msi"
 ) else (
     set "MSPLAT=x64"
@@ -102,6 +103,7 @@ if /i "%ARCH%"=="x86" (
     set "SYSO=rsrc_windows_amd64.syso"
     set "FREEIMAGE=%ROOT%TWAIN-Samples\pub\external\bin\win64\FreeImage.dll"
     set "DSMDIR=twain_64"
+    set "DSMSYS=System32"
     set "MSIHINT=twainapp.win64.installer.msi"
 )
 if not defined OUT set "OUT=%ROOT%dist\%ARCH%"
@@ -239,18 +241,27 @@ call :copyto "%SVC%\scansvc-tools.bat"     "scansvc-tools.bat"     1
 call :copyto "%SVC%\scansvc-tools.ps1"     "scansvc-tools.ps1"     1
 
 rem TWAINDSM.dll is not in this repo: it comes from the TWAIN DSM installer.
-rem Without it no scanner can be enumerated, so try the usual places.
-if not exist "%OUT%\TWAINDSM.dll" (
-    if exist "%SVC%\TWAINDSM.dll"          ( copy /y "%SVC%\TWAINDSM.dll" "%OUT%\" >nul )
+rem Without it no scanner can be enumerated, so try the usual places, in order:
+rem   1. next to the Go sources (drop one there by hand to pin a version)
+rem   2. the system folder the DSM installer uses: System32 for 64-bit,
+rem      SysWOW64 for 32-bit (on a 32-bit Windows that is System32 again)
+rem   3. the twain_32 / twain_64 driver folder, where some vendors put a copy
+rem a TWAINDSM.dll already in the output folder is kept as is
+set "DSMFROM="
+if exist "%OUT%\TWAINDSM.dll" set "DSMFROM=%OUT%, kept"
+if /i "%ARCH%"=="x86" if not exist "%SystemRoot%\SysWOW64\" set "DSMSYS=System32"
+for %%d in ("%SVC%" "%SystemRoot%\%DSMSYS%" "%SystemRoot%\%DSMDIR%") do (
+    if not defined DSMFROM if exist "%%~d\TWAINDSM.dll" (
+        copy /y "%%~d\TWAINDSM.dll" "%OUT%\" >nul
+        set "DSMFROM=%%~d"
+    )
 )
-if not exist "%OUT%\TWAINDSM.dll" (
-    if exist "%SystemRoot%\%DSMDIR%\TWAINDSM.dll" ( copy /y "%SystemRoot%\%DSMDIR%\TWAINDSM.dll" "%OUT%\" >nul )
-)
-if exist "%OUT%\TWAINDSM.dll" (
-    echo   ok   TWAINDSM.dll  ^(%ARCH%, from %SystemRoot%\%DSMDIR%^)
+if defined DSMFROM (
+    echo   ok   TWAINDSM.dll  ^(%ARCH%, from !DSMFROM!^)
 ) else (
     echo   MISSING  TWAINDSM.dll  -- install releases\Twain_App_sample01_*\%MSIHINT%
-    echo            and copy the %ARCH% TWAINDSM.dll into %OUT%  ^(without it no scanner is found^)
+    echo            or copy the %ARCH% TWAINDSM.dll into %OUT%  ^(without it no scanner is found^)
+    echo            looked in: %SVC%  %SystemRoot%\%DSMSYS%  %SystemRoot%\%DSMDIR%
 )
 
 echo.
