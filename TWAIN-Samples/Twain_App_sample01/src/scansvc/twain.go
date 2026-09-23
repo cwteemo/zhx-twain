@@ -40,10 +40,13 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"log"
 	"runtime"
 	"strings"
 	"sync"
 	"unsafe"
+
+	"scansvc/imgfmt"
 )
 
 // TWAIN 状态机的几个档位，判断"能做什么"全看它。
@@ -484,8 +487,18 @@ func TwainCurrentConfig() (map[string]any, error) {
 			err = errors.New("尚未连接扫描仪，先调 /api/connect")
 			return
 		}
-		if dpi := int(C.zhx_GetCurrentResolution()); dpi > 0 {
+		// 读不到或读出异常值（驱动没填、单位换算错）时按 300dpi 兜底，和写进图片的
+		// 兜底规则一致（imgfmt.ResolveDPI）。调用方拿它去核对 / 回写图片 DPI，
+		// 字段缺失反而更容易出错。resolutionFallback 标明这不是设备读回来的真实值。
+		dpi := int(C.zhx_GetCurrentResolution())
+		if imgfmt.ValidDPI(dpi) {
 			out["resolution"] = dpi
+			out["resolutionFallback"] = false
+		} else {
+			log.Printf("警告: 读当前分辨率失败或异常（%d），/api/config 按 %d dpi 返回，详见 twain.log",
+				dpi, imgfmt.FallbackDPI)
+			out["resolution"] = imgfmt.FallbackDPI
+			out["resolutionFallback"] = true
 		}
 	})
 	if err != nil {

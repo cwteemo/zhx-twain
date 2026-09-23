@@ -122,12 +122,13 @@ GET /api/config
 ### 响应
 
 ```json
-{"resolution":300,"applied":{"resolution":"300","pixelType":"2","feeder":"1","duplex":"0"}}
+{"resolution":300,"resolutionFallback":false,"applied":{"resolution":"300","pixelType":"2","feeder":"1","duplex":"0"}}
 ```
 
 | 字段 | 说明 |
 |---|---|
-| `resolution` | **实时**从设备读的当前 X 分辨率。读失败时这个字段不出现 |
+| `resolution` | **实时**从设备读的当前 X 分辨率（四舍五入取整）。读失败或读出的值不在 50~9600 之间时，按 **300** 兜底，和写进图片的兜底规则一致 |
+| `resolutionFallback` | `true` 表示 `resolution` 是兜底值、不是设备读回来的，服务日志里会有一条警告；`false` 是真实值 |
 | `applied` | 本服务**成功设置过**的值的回显，不是从设备读的。键是 `/api/config` 的字段名，或 `/api/capability` 设置时传的 `name` 原样 |
 
 只实时读分辨率是历史原因：DLL 以前读能力时会把数据源临时 enable 到 state 5（已去掉，见 TODO-settings.md #2）。

@@ -335,8 +335,9 @@ POST /api/reconnect     {"deep":false}
 
 ```
 GET  /api/config
-  → {"resolution":300,"applied":{"feeder":"1","pixelType":"2"}}
+  → {"resolution":300,"resolutionFallback":false,"applied":{"feeder":"1","pixelType":"2"}}
   只实时读分辨率，其余是本服务设置过的值的回显。原因见下面的说明。
+  分辨率读不到或异常时按 300 兜底，此时 resolutionFallback 为 true。
 
 POST /api/config        {"resolution":300,"pixelType":2,"feeder":true,
                          "autoFeed":true,"duplex":false}
