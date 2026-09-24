@@ -13,6 +13,7 @@ scansvc 维护小工具：导出扫描仪能力、查看设置项、查看配置
   scansvc-tools.bat options [设备名]     查看设置项
   scansvc-tools.bat set [设备名] -Set "dpi=300,colorMode=gray"     修改设置项（不带 -Set 会让你挑）
   scansvc-tools.bat scan [设备名] -Count 1 -Extension jpeg -Set "dpi=300"   扫描测试（HTTP 异步接口）
+  scansvc-tools.bat scan [设备名] -Count 1 -NoConvert   不转格式，保留驱动原始输出（目前是 BMP）
   scansvc-tools.bat setting-ui [设备名]  打开扫描仪驱动自带的设置界面（关掉界面才会返回）
   scansvc-tools.bat upload <文件名> -Server <业务系统地址> -Token <令牌> -Set "archive_id=123"
                                         转发上传测试（文件名就是扫描返回地址的最后一段）
@@ -35,6 +36,8 @@ param(
     # scan 用：扫几页（0 = 走送纸器扫到没纸，默认）、图片格式
     [int] $Count = 0,
     [string] $Extension = 'jpeg',
+    # scan 用：不转格式，保留驱动原始输出（默认转成 -Extension 指定的格式）
+    [switch] $NoConvert,
     # upload 用：业务系统的接收地址、令牌
     [string] $Server = '',
     [string] $Token = ''
@@ -487,17 +490,25 @@ function Open-SettingUI {
 # Invoke-HttpScan 走 HTTP 异步扫描：发起任务，然后每秒轮询，把扫出来的页打印出来。
 # 和客户端文档第 7 章描述的流程完全一致，可以拿它验证服务端这条链路。
 function Invoke-HttpScan {
-    param([string] $Name, [string] $Pairs, [int] $Pages, [string] $Ext)
+    param([string] $Name, [string] $Pairs, [int] $Pages, [string] $Ext, [switch] $Raw)
 
     $device = Select-Device -Name $Name
     if (-not $device) { return }
+
+    # 不转格式：服务端只认 jpg / png / tiff，给别的值（这里用 bmp）就原样保留驱动的输出，
+    # 见 README 的格式转换表。驱动哪天直接出 JPEG，拿到的就是 JPEG，不会被硬改成 BMP。
+    $formatText = $Ext
+    if ($Raw) {
+        $Ext = 'bmp'
+        $formatText = '不转换（驱动原始输出，目前是 BMP）'
+    }
 
     $body = @{ device = $device; extension = $Ext; count = $Pages }
     $values = ParseOptionPairs $Pairs
     if ($values.Count -gt 0) { $body['scannerOptions'] = $values }
 
     Write-Host ''
-    Write-Host ('发起扫描: ' + $device + '  格式 ' + $Ext + '  页数 ' + $(if ($Pages -eq 0) { '扫到没纸' } else { $Pages }))
+    Write-Host ('发起扫描: ' + $device + '  格式 ' + $formatText + '  页数 ' + $(if ($Pages -eq 0) { '扫到没纸' } else { $Pages }))
     $started = Invoke-ApiPost -Path '/api/scan/start' -Body $body -TimeoutSec 120
     if ($null -eq $started) { return }
 
@@ -781,7 +792,7 @@ switch ($Command.ToLower()) {
     'dump'            { Invoke-Dump -Name $Device }
     'options'         { Show-Options -Name $Device }
     'set'             { Set-Options -Name $Device -Pairs $Set }
-    'scan'            { Invoke-HttpScan -Name $Device -Pairs $Set -Pages $Count -Ext $Extension }
+    'scan'            { Invoke-HttpScan -Name $Device -Pairs $Set -Pages $Count -Ext $Extension -Raw:$NoConvert }
     'setting-ui'      { Open-SettingUI -Name $Device }
     'upload'          { Invoke-UploadTest -FileName $Device -ServerUrl $Server -TokenValue $Token -Extra $Set }
     'config'          { Show-Config }

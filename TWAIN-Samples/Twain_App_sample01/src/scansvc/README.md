@@ -146,6 +146,8 @@ scansvc-tools.bat diagnose                 # TWAIN 环境体检：某台扫描�
 scansvc-tools.bat dump "Uniscan Q400"      # 导出能力，存到 capdump\ 下
 scansvc-tools.bat options "Uniscan Q400"   # 看这台设备的设置项
 scansvc-tools.bat setting-ui 4             # 打开驱动自带的设置界面（按编号或设备名；关掉界面才返回）
+scansvc-tools.bat scan 4 -Count 1           # 扫描测试，默认转 jpeg（-Extension png / tiff 换格式）
+scansvc-tools.bat scan 4 -Count 1 -NoConvert   # 不转格式，保留驱动原始输出（目前是 BMP）
 scansvc-tools.bat config                   # 设置项配置用的是内置还是现场覆盖
 scansvc-tools.bat builtin-config           # 下载内置配置，存成 scanner-options.jsonc
 scansvc-tools.bat -Port 18081 status       # 服务改过 HTTP 端口
