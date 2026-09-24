@@ -1468,7 +1468,13 @@ int zhx_Scan(char *path, ScanCallback cb, int count) {
         Logger::Cleanup();
         return 0;
     }
-    
+
+    // 每次扫描用自己的批次号。传输代码（TwainApp 的 initiateTransfer_*）只在批次号为空时才生成，
+    // 原来这里生成完没写回去，同一个进程里所有扫描都沿用第一次的批次号：
+    // 文件名里的时间不是这次扫描的时间，不同批次还会撞名，被加上 _1、_3 这类去重后缀。
+    gpTwainApplicationCMD->setSerialNumber(serinumber);
+    Logger::Log("@INFO Batch number for this scan: %s", serinumber.c_str());
+
     // 处理count参数
     bool unlimitedScan = false;
     if (count == 0) {
