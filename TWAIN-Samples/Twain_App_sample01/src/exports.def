@@ -15,6 +15,7 @@ EXPORTS
     zhx_GetState
     zhx_GetCurrentDevice
     zhx_ShowSettingUI
+    zhx_PumpMessages
     zhx_GetScanDiagnosis
     zhx_GetLastOpenResult
     zhx_SetTransferMechanism

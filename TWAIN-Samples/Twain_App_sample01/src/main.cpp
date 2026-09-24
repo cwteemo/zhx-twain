@@ -283,10 +283,11 @@ void negotiateCaps()
 * calling our registered callback function.
 */
 #ifdef TWNDS_OS_WIN
-// 等 MSG_XFERREADY 的那个线程。部分驱动（实测 Kodak S2000w）从它自己的工作线程
-// 调 DSMCallback，只改了 m_DSMessage，本线程的消息队列里什么也没进来，
-// 原来的 GetMessage 就一直睡着，扫描永远卡在 state 5。回调里往这个线程
-// 投一条 WM_NULL 把它叫醒。
+// 等 MSG_XFERREADY 的那个线程。驱动如果从它自己的工作线程调 DSMCallback，
+// 只改了 m_DSMessage，本线程的消息队列里什么也没进来，原来阻塞的 GetMessage
+// 就会一直睡着。回调里往这个线程投一条 WM_NULL 把它叫醒。
+// 这是防御性处理：Kodak S2000w 卡在 state 5 的真正原因是父窗口用了桌面窗口，
+// 见下面的 getTwainParentWindow；它是否从别的线程回调并没有日志证实。
 static DWORD g_enableThreadId = 0;
 
 // 最近一次 EnableDS 是不是"启用成功、但等满 2 分钟驱动也没发 MSG_XFERREADY"。
@@ -2015,6 +2016,37 @@ int zhx_ShowSettingUI() {
     Logger::Log("@INFO zhx_ShowSettingUI done, state: %d", gpTwainApplicationCMD->m_DSMState);
     Logger::Cleanup();
     return 1;
+}
+
+/**
+ * @brief 处理调用线程上积压的窗口消息，不阻塞
+ *
+ * TWAIN 线程上有一个自建的隐藏顶层窗口（见 getTwainParentWindow）。扫描时的等待循环会处理
+ * 它的消息，但空闲时线程只在等调用方的下一个任务，没人处理——别的程序向所有顶层窗口
+ * 广播消息并同步等回复（改系统设置、DDE 等）时会被它卡住，Windows 也会把它判成"未响应"。
+ * 调用方在 TWAIN 线程空闲时定期调一下（scansvc 是每 100ms）。
+ *
+ * 必须在创建窗口的那条线程（即 TWAIN 线程）上调用，在别的线程上调只会处理那条线程自己的消息。
+ *
+ * @return 本次处理的消息条数；一次最多处理 100 条，剩下的留给下一次，避免占住线程
+ */
+int zhx_PumpMessages() {
+#ifdef TWNDS_OS_WIN
+    int count = 0;
+    MSG msg;
+    while (count < 100 && PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+        ++count;
+        if (msg.message == WM_QUIT) {
+            // TWAIN 线程不靠 WM_QUIT 退出，收到也只是丢掉，不能让它结束调用方的循环
+            continue;
+        }
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+    return count;
+#else
+    return 0;
+#endif
 }
 
 

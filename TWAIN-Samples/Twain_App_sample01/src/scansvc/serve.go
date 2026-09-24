@@ -53,7 +53,6 @@ type servers struct {
 	mu        sync.Mutex
 	handler   http.Handler
 	listeners []net.Listener
-	stopping  bool
 	// fail 用来把"没人动它却挂了"的监听错误送出去。主动停止时不往里发。
 	fail chan error
 }
@@ -69,7 +68,6 @@ func (s *servers) Start() int {
 	if len(s.listeners) > 0 {
 		return len(s.listeners) // 已经在跑了
 	}
-	s.stopping = false
 
 	bindHost, wp, hp := cfg.Host, cfg.WSPort, cfg.HTTPPort
 	handler := s.handler
@@ -108,10 +106,20 @@ func (s *servers) Start() int {
 func (s *servers) serve(ln net.Listener, handler http.Handler) {
 	go func() {
 		err := http.Serve(ln, handler)
+		// 还在当前监听列表里才算"意外挂掉"；Stop 会先把它摘掉再关。
+		// 原来用一个全局 stopping 标记判断：托盘"重启"是 Stop 紧接着 Start，
+		// Start 把标记复位时旧监听的 goroutine 往往还没走到这里，
+		// 结果每次重启都误报两条"服务异常退出: use of closed network connection"。
 		s.mu.Lock()
-		stopping := s.stopping
+		current := false
+		for _, l := range s.listeners {
+			if l == ln {
+				current = true
+				break
+			}
+		}
 		s.mu.Unlock()
-		if stopping {
+		if !current {
 			return // 是我们自己关的，正常
 		}
 		select {
@@ -128,7 +136,6 @@ func (s *servers) Stop() {
 	if len(s.listeners) == 0 {
 		return
 	}
-	s.stopping = true
 	for _, ln := range s.listeners {
 		ln.Close()
 	}

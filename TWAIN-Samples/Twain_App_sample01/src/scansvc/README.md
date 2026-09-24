@@ -790,21 +790,24 @@ Data source enabled successfully (TWRC_SUCCESS)
 @INFO Still waiting for MSG_XFERREADY, 30 s so far
 ```
 
-启用成功之后，驱动要回调一个 `MSG_XFERREADY` 才开始传图。2026-09-23 实测 Kodak S2000w 会从
-**它自己的工作线程**回调，原来的等待循环阻塞在 `GetMessage` 上，线程消息队列里没有东西就永远
-醒不过来——而 TWAIN 线程被占住后，设备列表、设置、再次扫描全部在队列里排到服务重启。现在：
+启用成功之后，驱动要回调一个 `MSG_XFERREADY` 才开始传图。原来的等待循环阻塞在 `GetMessage` 上，
+没等到就永远醒不过来——而 TWAIN 线程被占住后，设备列表、设置、再次扫描全部在队列里排到服务重启。
+（当初以为 S2000w 是从它自己的工作线程回调，没有日志证实；真正原因见下面"父窗口"那段。）现在：
 
-- 回调里会给等待线程投一条 `WM_NULL` 叫醒它，日志里是
-  `DS callback: MSG 0x0101 on thread A (waiting thread B)`（A≠B 就是这种驱动）；
+- 回调里会给等待线程投一条 `WM_NULL` 叫醒它（防御性处理，驱动从别的线程回调时用得上），日志里是
+  `DS callback: MSG 0x0101 on thread A (waiting thread B)`；
 - 等待改成每秒醒一次，**2 分钟**还没等到就放弃这次扫描、关掉数据源回到 state 4，
   日志 `@ERROR No MSG_XFERREADY after 120 s`，客户端收到"扫描未产出任何图片"，服务继续可用。
 
 2026-09-23 加了 `@DIAG` 日志后再测 S2000w：启用成功、`CAP_FEEDERLOADED=1`、`CAP_DEVICEONLINE=1`，
 2 分钟里**回调 0 次、本线程消息 0 条**。当时 `MSG_OPENDSM` / `MSG_ENABLEDS` 的父窗口都是
 `GetDesktopWindow()`，它属于别的进程（日志里 `hParent=... owned by ... pid` 能看出来），
-TWAINDSM 或驱动往父窗口投的消息本线程根本收不到。现在：
+TWAINDSM 或驱动往父窗口投的消息本线程根本收不到。扫描卡住时 S2000w 面板显示"暂停…"，
+只有在设备上按停止才能释放，之后的打开都会报 `TWRC_BUSY`（见 7.1）。现在：
 
-- 父窗口改成 TWAIN 线程上自建的隐藏窗口（`getTwainParentWindow`），日志 `Created hidden TWAIN parent window`；
+- 父窗口改成 TWAIN 线程上自建的隐藏窗口（`getTwainParentWindow`），日志 `Created hidden TWAIN parent window`。
+  2026-09-24 现场复测，改了父窗口之后 S2000w 能正常扫描。TWAIN 线程空闲时每 100ms 调一次
+  `zhx_PumpMessages` 处理这个窗口的消息，否则别的程序广播窗口消息时会被它卡住；
 - 等待期间每秒拿一条合成的 `WM_NULL` 主动调一次 `MSG_PROCESSEVENT`，DSM 手里有待领的消息就能取到，
   日志 `poll PROCESSEVENT -> TWRC_DSEVENT`；数据源消息不管从哪条路来都会记
   `Data source message 0x0101 received via ...`；

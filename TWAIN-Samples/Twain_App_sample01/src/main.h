@@ -120,6 +120,8 @@ extern "C" __declspec(dllexport) int   zhx_GetState();
 extern "C" __declspec(dllexport) const char* zhx_GetCurrentDevice();
 // 打开驱动自带的设置面板，阻塞到用户关闭
 extern "C" __declspec(dllexport) int   zhx_ShowSettingUI();
+// TWAIN 线程空闲时定期调用，处理隐藏父窗口上积压的窗口消息，不阻塞
+extern "C" __declspec(dllexport) int   zhx_PumpMessages();
 // 最近一次 zhx_Scan 扫出 0 页时的原因诊断（MSG_ENABLEDS 的 condition code、送纸器有无纸、设备是否在线）
 // enableFailed：0 = 启用成功；1 = MSG_ENABLEDS 失败；2 = 启用成功但 2 分钟内驱动没发 MSG_XFERREADY
 extern "C" __declspec(dllexport) int   zhx_GetScanDiagnosis(int *enableFailed, int *conditionCode, int *feederLoaded, int *deviceOnline);

@@ -19,6 +19,7 @@ void  zhx_Exit(void);
 int         zhx_GetState(void);
 const char* zhx_GetCurrentDevice(void);
 int         zhx_ShowSettingUI(void);
+int         zhx_PumpMessages(void);
 int         zhx_GetScanDiagnosis(int *enableFailed, int *conditionCode, int *feederLoaded, int *deviceOnline);
 int         zhx_GetLastOpenResult(int *conditionCode);
 
@@ -92,12 +93,29 @@ func startTwainThread() {
 		C.zhx_Init()
 		syncStateFromDLL()
 		close(ready)
-		for fn := range twainTasks {
-			fn()
+
+		// 空闲时每 100ms 处理一次窗口消息。DLL 在这条线程上建了一个隐藏的顶层窗口
+		// 当 TWAIN 父窗口，只等任务不处理消息的话，别的程序广播消息时会被它卡住。
+		// 任务（扫描、设置界面）执行期间 DLL 自己会处理消息，这里不用管。
+		pump := time.NewTicker(twainPumpInterval)
+		for {
+			select {
+			case fn, ok := <-twainTasks:
+				if !ok {
+					pump.Stop()
+					return
+				}
+				fn()
+			case <-pump.C:
+				C.zhx_PumpMessages()
+			}
 		}
 	}()
 	<-ready
 }
+
+// twainPumpInterval 是 TWAIN 线程空闲时处理窗口消息的间隔，见 startTwainThread。
+const twainPumpInterval = 100 * time.Millisecond
 
 // inTwain 把 fn 投递到 TWAIN 线程执行并等待其完成。
 // 所有请求天然串行化，扫描期间的其他请求会排队。
