@@ -13,6 +13,7 @@ scansvc 维护小工具：导出扫描仪能力、查看设置项、查看配置
   scansvc-tools.bat options [设备名]     查看设置项
   scansvc-tools.bat set [设备名] -Set "dpi=300,colorMode=gray"     修改设置项（不带 -Set 会让你挑）
   scansvc-tools.bat scan [设备名] -Count 1 -Extension jpeg -Set "dpi=300"   扫描测试（HTTP 异步接口）
+  scansvc-tools.bat setting-ui [设备名]  打开扫描仪驱动自带的设置界面（关掉界面才会返回）
   scansvc-tools.bat upload <文件名> -Server <业务系统地址> -Token <令牌> -Set "archive_id=123"
                                         转发上传测试（文件名就是扫描返回地址的最后一段）
   scansvc-tools.bat config              设置项配置状态（内置 / 现场覆盖）
@@ -458,6 +459,31 @@ function Set-Options {
     }
 }
 
+# Open-SettingUI 打开扫描仪驱动自带的设置界面：先 /api/connect 连上设备，再 /api/setting-ui。
+# 界面弹在运行 scansvc.exe 的那台机器、那个登录用户的桌面上。
+# 请求会一直挂到界面被关掉，所以不设超时；界面开着时服务的其它请求（扫描、读设置）都在排队。
+# 这里改的参数由驱动自己保存，但扫描请求里带的 scannerOptions 会在扫描前再覆盖一遍。
+function Open-SettingUI {
+    param([string] $Name)
+
+    $device = Select-Device -Name $Name
+    if (-not $device) { return }
+
+    Write-Host ''
+    Write-Host ('连接 ' + $device + ' ...')
+    $conn = Invoke-ApiPost -Path '/api/connect' -Body @{ device = $device } -TimeoutSec 120
+    if ($null -eq $conn) { return }
+
+    Write-Host '正在打开驱动设置界面，请到扫描仪所在电脑的桌面上操作；关掉界面后这里才会返回。' -ForegroundColor Cyan
+    Write-Host '（界面开着时服务的其它请求都会排队；界面没弹出来的话，看看是不是被别的窗口挡住了）' -ForegroundColor DarkGray
+    # TimeoutSec 0 = 不限时，界面开多久就等多久
+    $res = Invoke-ApiPost -Path '/api/setting-ui' -Body @{} -TimeoutSec 0
+    if ($null -eq $res) { return }
+
+    Write-Host ''
+    Write-Host '设置界面已关闭。' -ForegroundColor Green
+}
+
 # Invoke-HttpScan 走 HTTP 异步扫描：发起任务，然后每秒轮询，把扫出来的页打印出来。
 # 和客户端文档第 7 章描述的流程完全一致，可以拿它验证服务端这条链路。
 function Invoke-HttpScan {
@@ -710,6 +736,7 @@ function Show-Menu {
         Write-Host '  3) 导出扫描仪能力（适配新扫描仪时发给开发）'
         Write-Host '  4) 查看某台扫描仪的设置项'
         Write-Host '  5) 修改设置项（会连接扫描仪）'
+        Write-Host '  5u) 打开扫描仪驱动自带的设置界面'
         Write-Host '  6) 扫描测试（走 HTTP 异步接口，客户端文档第 7 章那套）'
         Write-Host '  7) 转发上传测试（需要业务系统地址）'
         Write-Host '  ---'
@@ -729,6 +756,7 @@ function Show-Menu {
             '3' { Invoke-Dump -Name '' }
             '4' { Show-Options -Name '' }
             '5' { Set-Options -Name '' -Pairs '' }
+            '5u' { Open-SettingUI -Name '' }
             '6' { Invoke-HttpScan -Name '' -Pairs '' -Pages 1 -Ext 'jpeg' }
             '7' { Invoke-UploadTest -FileName '' -ServerUrl $Server -TokenValue $Token -Extra '' }
             '8' { Show-Config }
@@ -754,6 +782,7 @@ switch ($Command.ToLower()) {
     'options'         { Show-Options -Name $Device }
     'set'             { Set-Options -Name $Device -Pairs $Set }
     'scan'            { Invoke-HttpScan -Name $Device -Pairs $Set -Pages $Count -Ext $Extension }
+    'setting-ui'      { Open-SettingUI -Name $Device }
     'upload'          { Invoke-UploadTest -FileName $Device -ServerUrl $Server -TokenValue $Token -Extra $Set }
     'config'          { Show-Config }
     'builtin-config'  { Save-BuiltinConfig }
@@ -762,7 +791,7 @@ switch ($Command.ToLower()) {
     'autostart'       { Set-Autostart }
     default {
         Write-Host ('不认识的命令: ' + $Command) -ForegroundColor Yellow
-        Write-Host '可用: status | devices | diagnose | dump [设备名] | options [设备名] | set [设备名] | scan [设备名] | upload [文件名] | config | builtin-config | start | stop | autostart'
+        Write-Host '可用: status | devices | diagnose | dump [设备名] | options [设备名] | set [设备名] | scan [设备名] | setting-ui [设备名] | upload [文件名] | config | builtin-config | start | stop | autostart'
         exit 1
     }
 }

@@ -11,6 +11,7 @@ rem    scansvc-tools.bat devices
 rem    scansvc-tools.bat diagnose           TWAIN environment check
 rem    scansvc-tools.bat dump "Uniscan Q400"
 rem    scansvc-tools.bat options "Uniscan Q400"
+rem    scansvc-tools.bat setting-ui 4       driver settings dialog
 rem    scansvc-tools.bat config
 rem    scansvc-tools.bat builtin-config
 rem    scansvc-tools.bat -Port 18081 status
