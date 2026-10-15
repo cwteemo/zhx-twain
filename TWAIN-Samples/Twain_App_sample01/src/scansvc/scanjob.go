@@ -64,7 +64,8 @@ var (
 // snapshot 拷一份出去给 HTTP 响应用，避免边写边序列化。调用方须持有 scanJobMu。
 func (j *scanJob) snapshot() scanJob {
 	cp := *j
-	cp.Pages = append([]scanPage(nil), j.Pages...)
+	// 从空切片起拷：刚发起、还没扫出页时也要序列化成 [] 而不是 null
+	cp.Pages = append([]scanPage{}, j.Pages...)
 	return cp
 }
 
@@ -116,6 +117,14 @@ func preparePage(path, ext, host string, page int) (scanPage, error) {
 	flat, err := moveToScanRoot(converted)
 	if err != nil {
 		return scanPage{}, fmt.Errorf("移到扫描根目录失败: %w", err)
+	}
+	// TIFF 的同名 JPEG 预览（见 imageconv.go）也要跟着挪，名字跟挪过去的 TIFF 对齐
+	// （重名加了 _1 后缀时预览也得是 _1），否则 /file/<名>?thumbnail=1 找不到预览、只能回 TIFF 原图。
+	if preview := strings.TrimSuffix(converted, filepath.Ext(converted)) + ".jpeg"; flat != converted && preview != converted && fileExist(preview) {
+		dst := strings.TrimSuffix(flat, filepath.Ext(flat)) + ".jpeg"
+		if err := os.Rename(preview, dst); err != nil {
+			log.Printf("第 %d 页的 JPEG 预览移到扫描根目录失败: %v", page, err)
+		}
 	}
 
 	url, err := fileURL(host, flat)

@@ -16,6 +16,8 @@ TWAIN-Samples/
 ├── pub/external/              # 第三方：twain.h、FreeImage.h + lib/win32|win64/FreeImage.lib
 ├── Twain_App_sample01/        # ★ 二次开发主战场：TWAIN 应用端
 │   ├── src/                   # 与 UI 无关的 TWAIN 核心 + DLL 导出层 + 纯 Win32 HTTP 服务器
+│   │   └── scansvc/           # ★ Go 扫描服务（WS 5000 / HTTP 18080），全部接口见 scansvc/API.md
+│   │                          #   Linux 对等实现在 /code/scansvc-sane（SANE），接口须保持一致，改协议层两边同步
 │   ├── visual_studio/         # 控制台工程 TWAIN_APP_CMD（TargetName: TWAIN_APP_CMD32/64）
 │   ├── visual_studio_mfc/     # ★ MFC 工程 TWAIN_App_mfc（当前活跃开发目标）
 │   ├── TWAIN_App_QT/          # Qt 版界面工程

@@ -9,6 +9,7 @@ HTTP 和 WebSocket 两条路都通。另外带一组文件 / 目录管理接口�
 [TODO-rfid-zebra.md](TODO-rfid-zebra.md)）和 32 位设备支持。
 
 **文档分工**：本文是给开发和运维看的（编译、部署、全部接口、内部设计）。
+**全部接口（HTTP / WebSocket / 文件管理）的权威参考是 [API.md](API.md)**，也是 TWAIN 版与 Linux SANE 版共同遵守的协议契约。
 **发给客户端（业务系统前端）的是这两份**：
 
 - [CLIENT_API.md](CLIENT_API.md) —— 对接说明：WebSocket 扫描协议、取图、转发上传、错误提示、对接约定
