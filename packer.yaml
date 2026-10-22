@@ -1,0 +1,174 @@
+# pack-panel（打包控制面板）的项目清单：把根目录的 build.bat 包装成网页，面板只负责传参和展示。
+# 格式见 pack-panel 仓库的 README；改完可用 `pack-panel -check -project <本目录>` 自检。
+# build.bat 只能在 Windows 上运行（MSBuild + cgo/MinGW），不 pause、不读输入，可以直接在面板里运行。
+
+name: zhx-twain 扫描服务
+dist: dist
+# build.bat 结尾打印 " done -> <输出目录>"（前面有一个空格）
+output_prefix: " done -> "
+
+checks:
+  - id: go
+    name: Go
+    vars:
+      - { name: ok, value: '{{if runok "go" "env" "GOVERSION"}}1{{end}}' }
+      - { name: ver, value: '{{run "go" "env" "GOVERSION"}}' }
+    ok: '{{.v.ok}}'
+    detail: '{{if .v.ok}}{{.v.ver}}{{else}}未找到 go{{end}}'
+    hint: 安装 Go 1.19+ 并加入 PATH
+  - id: msbuild
+    name: MSBuild
+    vars:
+      # 与 build.bat 一致：先用 vswhere 找，再找 PATH 里的 msbuild.exe
+      - { name: vswhere, value: '{{with env "ProgramFiles(x86)"}}{{printf "%s\\Microsoft Visual Studio\\Installer\\vswhere.exe" .}}{{end}}' }
+      - name: path
+        value: >-
+          {{- $p := "" -}}
+          {{- if and .v.vswhere (isfile .v.vswhere)}}{{$p = run .v.vswhere "-latest" "-products" "*" "-requires" "Microsoft.Component.MSBuild" "-find" "MSBuild\\**\\Bin\\MSBuild.exe"}}{{end -}}
+          {{- if not $p}}{{$p = which "msbuild.exe"}}{{end -}}
+          {{- $p -}}
+    ok: '{{.v.path}}'
+    detail: '{{or .v.path "未找到 MSBuild"}}'
+    hint: 安装 Visual Studio 2017+ 并勾选「使用 C++ 的桌面开发」，或从 VS 开发人员命令提示里启动面板
+  - id: gcc
+    name: MinGW-w64 gcc
+    vars:
+      - { name: gcc, value: '{{run "gcc" "-dumpmachine"}}' }
+      - { name: gcc32, value: '{{run "i686-w64-mingw32-gcc" "-dumpmachine"}}' }
+    ok: '{{or .v.gcc .v.gcc32}}'
+    detail: >-
+      {{- if or .v.gcc .v.gcc32 -}}
+      gcc：{{or .v.gcc "无"}}；i686-w64-mingw32-gcc：{{or .v.gcc32 "无"}}
+      {{- else}}未找到 gcc{{end -}}
+    hint: cgo 需要与目标位数一致的 MinGW-w64：64 位要 x86_64-w64-mingw32，32 位要 i686-w64-mingw32（PATH 里有 i686-w64-mingw32-gcc.exe 时 32 位自动用它）
+
+packages:
+  - id: scansvc
+    title: scansvc（TWAIN DLL + 服务）
+    intro: >-
+      编译 TWAIN_APP_CMD&lt;32|64&gt;.dll（MSBuild）和 scansvc.exe（Go + cgo），把运行需要的文件放进输出目录（默认 dist\x86 或 dist\x64），整个目录拷到操作员机器即可。详见 BUILD.md
+    checks: [go, msbuild, gcc]
+    vars:
+      - { name: bits, value: '{{if eq .f.arch "x64"}}64{{else}}32{{end}}' }
+      - { name: svc, value: TWAIN-Samples/Twain_App_sample01/src/scansvc }
+      - { name: dll, value: 'TWAIN_APP_CMD{{.v.bits}}' }
+      - { name: freeimage, value: 'TWAIN-Samples/Twain_App_sample01/pub/external/bin/{{if eq .f.arch "x64"}}win64{{else}}win32{{end}}/FreeImage.dll' }
+    fields:
+      - key: arch
+        type: radio
+        label: 位数
+        default: x86
+        options:
+          - { value: x86, label: 32 位（x86，默认） }
+          - { value: x64, label: 64 位（x64） }
+        help: 服务、DLL、TWAINDSM.dll 和扫描仪驱动位数必须一致；几乎所有厂商都提供 32 位驱动，只有扫描仪只有 64 位驱动时才用 64 位
+      - key: config
+        type: radio
+        label: DLL 配置
+        modes: [all, dll]
+        default: Release
+        options:
+          - { value: Release, label: Release }
+          - { value: Debug, label: Debug（-debug） }
+      - key: window
+        type: radio
+        label: 窗口
+        modes: [all, go]
+        default: tray
+        options:
+          - { value: tray, label: 无控制台窗口（托盘） }
+          - { value: console, label: 带控制台窗口（调试） }
+        help: 默认 -ldflags "-H=windowsgui"，双击后只在托盘显示，日志写在 exe 旁边的 scansvc.log
+      - key: notest
+        type: checkbox
+        label: 选项
+        modes: [all, go]
+        options:
+          - { value: notest, label: 跳过 Go 单元测试（-notest） }
+        help: 默认跑 go test ./imgfmt ./scanopt ./twaindiag（纯 Go 的包）
+      - key: out
+        type: text
+        label: 输出目录
+        placeholder: '留空为 dist\<位数>'
+        help: '给了这个就不再追加位数子目录；相对路径相对项目目录。不要把 x86 和 x64 输出到同一个目录（FreeImage.dll、TWAINDSM.dll 同名不同位数）'
+      - key: files
+        type: files
+        label: 打包用到的文件
+        files:
+          - { name: '{{.v.dll}}.lib（src\scansvc，cgo 链接用）', path: '{{.v.svc}}/{{.v.dll}}.lib', missing: '没有，「只编 scansvc.exe」前要先编 DLL', missing_level: '{{if eq .mode "go"}}err{{else}}warn{{end}}' }
+          - { name: '{{.v.dll}}.dll（src\scansvc）', path: '{{.v.svc}}/{{.v.dll}}.dll', missing: 编 DLL 后生成, missing_level: warn }
+          - { name: FreeImage.dll, path: '{{.v.freeimage}}', missing: '没有（pub\ 不在仓库里），输出目录会缺 FreeImage.dll', missing_level: warn }
+          - { name: TWAINDSM.dll（src\scansvc，可选）, path: '{{.v.svc}}/TWAINDSM.dll', missing: '没有，打包时再从系统目录（SysWOW64 / System32、twain_32 / twain_64）找', missing_level: ok }
+    modes:
+      - id: all
+        title: 全部编译
+        os: [windows]
+        script: build.bat
+        args:
+          - { when: '{{eq .f.arch "x64"}}', args: [-x64] }
+          - { when: '{{eq .f.config "Debug"}}', args: [-debug] }
+          - { when: '{{eq .f.window "console"}}', args: [-console] }
+          - { when: '{{has .f.notest "notest"}}', args: [-notest] }
+          - { when: '{{.f.out}}', args: [-out, '{{.f.out}}'] }
+        rules: &rules
+          # build.bat 开了延迟变量扩展，! 会被吞掉
+          - fail: '{{containsAny .f.out "\"%!^&|<>"}}'
+            message: 输出目录不能包含 " % ! ^ & | < > 等字符
+            field: out
+        output: &output '{{or .f.out (printf "dist\\%s" .f.arch)}}\'
+        summary: &summary
+          - { label: 目标, value: '{{if eq .f.arch "x64"}}windows/amd64，解决方案平台 x64{{else}}windows/386，解决方案平台 x86（工程里对应 Win32）{{end}}' }
+          - { label: 内容, value: 'scansvc.exe、{{.v.dll}}.dll、FreeImage.dll、TWAINDSM.dll、scansvc-tools.bat、scansvc-tools.ps1' }
+        steps:
+          - { label: 编译 DLL, match: '^\[1/3\] building DLL' }
+          - { label: 单元测试, match: '^\[2/3\] running tests' }
+          - { label: 编译 scansvc.exe, match: '^\[3/3\] building scansvc\.exe' }
+          - { label: 打包, match: '^  (ok|MISSING) ' }
+          - { label: 完成, match: '^ done -> ' }
+        start: 开始编译
+        done: DLL 和 scansvc.exe 已编译并放进输出目录
+      - id: dll
+        title: 只编 DLL
+        os: [windows]
+        script: build.bat
+        args:
+          - [dll]
+          - { when: '{{eq .f.arch "x64"}}', args: [-x64] }
+          - { when: '{{eq .f.config "Debug"}}', args: [-debug] }
+          - { when: '{{.f.out}}', args: [-out, '{{.f.out}}'] }
+        rules: *rules
+        output: *output
+        summary:
+          - { label: 说明, value: 'DLL / .lib 拷到 src\scansvc；之后仍会执行打包步骤，scansvc.exe 没编过时会显示 MISSING' }
+        steps:
+          - { label: 编译 DLL, match: '^\[1/3\] building DLL' }
+          - { label: 打包, match: '^  (ok|MISSING) ' }
+          - { label: 完成, match: '^ done -> ' }
+        start: 开始编译
+        done: DLL 已编译
+      - id: go
+        title: 只编 scansvc.exe
+        os: [windows]
+        script: build.bat
+        args:
+          - [go]
+          - { when: '{{eq .f.arch "x64"}}', args: [-x64] }
+          - { when: '{{eq .f.window "console"}}', args: [-console] }
+          - { when: '{{has .f.notest "notest"}}', args: [-notest] }
+          - { when: '{{.f.out}}', args: [-out, '{{.f.out}}'] }
+        rules:
+          - fail: '{{containsAny .f.out "\"%!^&|<>"}}'
+            message: 输出目录不能包含 " % ! ^ & | < > 等字符
+            field: out
+          - fail: '{{not (isfile (printf "%s/%s.lib" .v.svc .v.dll))}}'
+            message: '缺少 src\scansvc\{{.v.dll}}.lib，请先「只编 DLL」或「全部编译」'
+            field: arch
+        output: *output
+        summary: *summary
+        steps:
+          - { label: 单元测试, match: '^\[2/3\] running tests' }
+          - { label: 编译 scansvc.exe, match: '^\[3/3\] building scansvc\.exe' }
+          - { label: 打包, match: '^  (ok|MISSING) ' }
+          - { label: 完成, match: '^ done -> ' }
+        start: 开始编译
+        done: scansvc.exe 已编译并放进输出目录
